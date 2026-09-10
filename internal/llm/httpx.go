@@ -47,16 +47,11 @@ func postJSON(ctx context.Context, provider, url string, header http.Header, pay
 	return nil
 }
 
-// httpError converts a non-2xx response into a normalized *Error.
+// httpError converts a non-2xx response into a normalized *Error, parsing
+// the provider's error JSON when possible (messages, codes, refined kinds).
 func httpError(provider string, resp *http.Response) error {
-	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	return &Error{
-		Kind:       classifyStatus(resp.StatusCode),
-		StatusCode: resp.StatusCode,
-		RetryAfter: retryAfterSeconds(resp.Header),
-		Provider:   provider,
-		Body:       strings.TrimSpace(string(snippet)),
-	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	return parseProviderError(provider, resp, body)
 }
 
 // streamEvent is one server-sent event: a name and its JSON data payload.

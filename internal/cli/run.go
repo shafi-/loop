@@ -104,7 +104,8 @@ func newRunCmd() *cobra.Command {
 				return err
 			}
 			if !res.Completed {
-				logf("✗ run %s failed at stage %q: %v", res.RunID, res.FailedStage, res.Err)
+				// Failures are never suppressed by --quiet; only progress chatter is.
+				fmt.Fprintf(cmd.ErrOrStderr(), "✗ run %s failed at stage %q: %v\n", res.RunID, res.FailedStage, res.Err)
 				fmt.Fprintf(cmd.ErrOrStderr(), "  resume with: loop run %s --resume %s\n", args[0], res.RunID)
 				os.Exit(1)
 			}

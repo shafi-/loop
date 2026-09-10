@@ -24,7 +24,8 @@ type stageDeps struct {
 	Pipeline  *config.Pipeline
 	Stdout    io.Writer // streaming target for llm text (nil = quiet)
 	CWD       string
-	Log       *RunLog // run event log (executor observability lands here)
+	Log       *RunLog                     // run event log (executor observability lands here)
+	Warnf     func(format string, args ...any) // progress warnings (nil = silent)
 }
 
 // stageOutcome is a stage's effect on the run: its textual output plus an
@@ -48,7 +49,8 @@ var stageRunners = map[config.StageType]stageRunner{
 }
 
 // runLLMStage renders the prompt and asks the provider. When Stdout is
-// set the response streams to it token-by-token.
+// set the response streams to it token-by-token. Failures carry
+// kind-specific hints; silent truncation is surfaced loudly.
 func runLLMStage(ctx context.Context, s *config.Stage, c *Context, d *stageDeps) (*stageOutcome, error) {
 	cfg := s.LLM.Model
 	prompt, err := c.Interpolate(s.LLM.Prompt)
@@ -61,24 +63,48 @@ func runLLMStage(ctx context.Context, s *config.Stage, c *Context, d *stageDeps)
 	}
 	req := llmRequest(cfg, s.LLM.System, []llm.Message{{Role: llm.RoleUser, Content: prompt}})
 
-	var text string
-	if d.Stdout != nil {
-		resp, err := provider.Stream(ctx, req, func(delta string) {
-			fmt.Fprint(d.Stdout, delta)
-		})
-		if err != nil {
-			return nil, err
-		}
-		fmt.Fprintln(d.Stdout)
-		text = resp.Text
-	} else {
-		resp, err := provider.Complete(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		text = resp.Text
+	resp, err := completeLLM(ctx, provider, req, d.Stdout)
+	if err != nil {
+		return nil, llmFailure(err, cfg)
 	}
-	return &stageOutcome{Output: text}, nil
+	if d.Stdout != nil {
+		fmt.Fprintln(d.Stdout)
+	}
+	if resp.StopReason == llm.StopMaxTokens {
+		// A truncated completion stored as if complete would corrupt
+		// downstream stages — surface it loudly and continue.
+		msg := fmt.Sprintf("output may be incomplete: the model stopped at max_tokens (%d) — raise model.max_tokens for stage %q", cfg.MaxTokens, s.ID)
+		if d.Warnf != nil {
+			d.Warnf("! %s", msg)
+		}
+		if d.Log != nil {
+			d.Log.Event("output_truncated", s.ID, map[string]any{"max_tokens": cfg.MaxTokens})
+		}
+	}
+	return &stageOutcome{Output: resp.Text}, nil
+}
+
+// completeLLM dispatches to Stream when there is somewhere to stream to,
+// Complete otherwise. Both return the same aggregate.
+func completeLLM(ctx context.Context, p llm.Provider, req llm.Request, stdout io.Writer) (*llm.Response, error) {
+	if stdout != nil {
+		return p.Stream(ctx, req, func(delta string) { fmt.Fprint(stdout, delta) })
+	}
+	return p.Complete(ctx, req)
+}
+
+// llmFailure wraps a provider error with the model name and an
+// actionable hint, so pipeline authors fix config instead of decoding
+// provider payloads.
+func llmFailure(err error, cfg *config.ModelConfig) error {
+	detail := llm.Hint(err)
+	if d := llm.AuthEnvDetail(err, cfg.APIKeyEnv); d != "" {
+		detail = detail + " — " + d
+	}
+	if detail != "" {
+		return fmt.Errorf("model %s: %w (hint: %s)", cfg.Model, err, detail)
+	}
+	return fmt.Errorf("model %s: %w", cfg.Model, err)
 }
 
 // runAgentStage delegates to the configured executor. The instruction is

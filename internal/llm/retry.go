@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"math/rand/v2"
 	"time"
 )
@@ -52,13 +53,24 @@ func (r *retryProvider) Complete(ctx context.Context, req Request) (*Response, e
 		}
 		lastErr = err
 		if e, ok := AsError(err); !ok || !e.Retryable() || attempt == r.maxAttempts {
-			return nil, err
+			return nil, exhausted(r.maxAttempts, attempt, err)
 		}
 		if serr := r.sleepBackoff(ctx, attempt, err); serr != nil {
 			return nil, serr
 		}
 	}
 	return nil, lastErr
+}
+
+// exhausted annotates the final error so users can tell transient
+// failure from persistent failure at a glance.
+func exhausted(maxAttempts, attempt int, err error) error {
+	if maxAttempts > 1 && attempt == maxAttempts {
+		if e, ok := AsError(err); ok && e.Retryable() {
+			return fmt.Errorf("%w (still failing after %d attempts)", err, maxAttempts)
+		}
+	}
+	return err
 }
 
 func (r *retryProvider) Stream(ctx context.Context, req Request, onDelta StreamFunc) (*Response, error) {
@@ -81,7 +93,7 @@ func (r *retryProvider) Stream(ctx context.Context, req Request, onDelta StreamF
 		}
 		lastErr = err
 		if e, ok := AsError(err); !ok || !e.Retryable() || attempt == r.maxAttempts || emitted {
-			return nil, err
+			return nil, exhausted(r.maxAttempts, attempt, err)
 		}
 		if serr := r.sleepBackoff(ctx, attempt, err); serr != nil {
 			return nil, serr

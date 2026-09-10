@@ -306,6 +306,69 @@ func (failingProvider) Stream(context.Context, llm.Request, llm.StreamFunc) (*ll
 	return nil, fmt.Errorf("simulated provider outage")
 }
 
+// authFailingProvider fails like a rejected API key would.
+type authFailingProvider struct{}
+
+func (authFailingProvider) Complete(context.Context, llm.Request) (*llm.Response, error) {
+	return nil, &llm.Error{Kind: llm.ErrAuth, Provider: "anthropic", Message: "invalid x-api-key"}
+}
+func (authFailingProvider) Stream(context.Context, llm.Request, llm.StreamFunc) (*llm.Response, error) {
+	return nil, &llm.Error{Kind: llm.ErrAuth, Provider: "anthropic", Message: "invalid x-api-key"}
+}
+
+func TestLLMStageAuthFailureCarriesHintAndEnvDetail(t *testing.T) {
+	p := parse(t, `
+name: auth-fail
+stages:
+  - id: call
+    type: llm
+    model: {provider: anthropic, model: test}
+    prompt: hi
+`)
+	t.Setenv("ANTHROPIC_API_KEY", "") // simulate the key being absent
+	r := &Runner{Pipeline: p, Source: []byte("x"), Providers: func(*config.ModelConfig) (llm.Provider, error) { return authFailingProvider{}, nil }, RunsDir: t.TempDir()}
+	res, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Completed {
+		t.Fatal("auth failure must halt the run")
+	}
+	for _, want := range []string{"model test:", "hint:", "ANTHROPIC_API_KEY is not set"} {
+		if !strings.Contains(res.Err.Error(), want) {
+			t.Errorf("failure %q should mention %q", res.Err, want)
+		}
+	}
+}
+
+func TestLLMStageTruncationIsSurfaced(t *testing.T) {
+	truncated := llm.NewMock(&llm.Response{Text: "half a doc", StopReason: llm.StopMaxTokens})
+	p := parse(t, `
+name: truncation
+stages:
+  - id: call
+    type: llm
+    model: {provider: anthropic, model: test, max_tokens: 100}
+    prompt: hi
+`)
+	dir := t.TempDir()
+	r := &Runner{Pipeline: p, Source: []byte("x"), Providers: func(*config.ModelConfig) (llm.Provider, error) { return truncated, nil }, RunsDir: dir}
+	res, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Completed {
+		t.Fatalf("truncation should warn, not halt: %v", res.Err)
+	}
+	events, err := os.ReadFile(filepath.Join(dir, res.RunID, "events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(events), "output_truncated") {
+		t.Errorf("truncation event missing from run log:\n%s", events)
+	}
+}
+
 func TestRunnerRetryPolicy(t *testing.T) {
 	calls := 0
 	flaky := flakyProviderFunc(func() error {
