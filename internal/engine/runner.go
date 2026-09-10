@@ -22,6 +22,7 @@ type Runner struct {
 	Executors *executor.Registry
 	Providers ProviderFactory // nil → DefaultProviderFactory
 	Human     HumanIO
+	Narrator  Narrator // optional core-loop LLM; nil = silent progress
 	Stdout    io.Writer // llm/agent stream target; nil = quiet
 	RunsDir   string    // default .loop/runs
 	RunID     string    // explicit id; generated when empty
@@ -36,6 +37,7 @@ type RunResult struct {
 	Completed   bool
 	FailedStage string
 	Err         error
+	Summary     string // narrator's failure explanation, when configured
 	Steps       int
 }
 
@@ -107,6 +109,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	defer log.Close()
 	deps.Log = log
 	deps.Warnf = r.runlogf
+	deps.Narrator = r.Narrator
 
 	c := NewContext(r.Pipeline.Vars)
 	indexByID := make(map[string]int, len(r.Pipeline.Stages))
@@ -202,6 +205,12 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			res.FailedStage = s.ID
 			res.Err = fmt.Errorf("stage %s: %w", s.ID, err)
 			state.Failed = s.ID
+			if r.Narrator != nil {
+				if summary := r.Narrator.StageFailed(ctx, s, err); summary != "" {
+					res.Summary = summary
+					log.Event("narration", s.ID, map[string]any{"text": summary})
+				}
+			}
 			log.SaveState(state)
 			return res, nil
 		}
@@ -215,6 +224,13 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			c.outputs[alias] = outcome.Output
 		}
 		c.SetOutput(s.ID, "status", "done")
+
+		if r.Narrator != nil {
+			if line := r.Narrator.StageDone(ctx, s, outcome.Output); line != "" {
+				log.Event("narration", s.ID, map[string]any{"text": line})
+				r.runlogf("ℹ %s", line)
+			}
+		}
 
 		if s.Type == config.StageRouter {
 			target, ok := indexByID[outcome.Next]

@@ -297,6 +297,105 @@ stages:
 	}
 }
 
+// scriptedNarrator implements engine.Narrator with canned lines,
+// recording calls for assertions.
+type scriptedNarrator struct {
+	doneLine     string
+	failLine     string
+	mediateLine  string
+	mediatedWith []string
+	doneCalls    int
+}
+
+func (n *scriptedNarrator) StageDone(_ context.Context, _ *config.Stage, _ string) string {
+	n.doneCalls++
+	return n.doneLine
+}
+func (n *scriptedNarrator) StageFailed(_ context.Context, _ *config.Stage, _ error) string {
+	return n.failLine
+}
+func (n *scriptedNarrator) MediateHuman(_ context.Context, _ *config.Stage, prompt string) string {
+	n.mediatedWith = append(n.mediatedWith, prompt)
+	return n.mediateLine
+}
+
+func TestNarratorWiredIntoRun(t *testing.T) {
+	h := &stubHuman{answers: []string{"yes"}}
+	p := parse(t, `
+name: narrated
+runtime:
+  narrator: {provider: anthropic, model: narr-model}
+stages:
+  - id: spec
+    type: tool
+    run: echo spec-doc
+  - id: approval
+    type: human
+    prompt: "Approve spec-doc? RAW PROMPT MARKER"
+  - id: ship
+    type: tool
+    run: echo shipped
+`)
+	narr := &scriptedNarrator{doneLine: "spec done, awaiting approval", mediateLine: "MEDIATED: approve the spec? (yes/no)"}
+	dir := t.TempDir()
+	r := &Runner{Pipeline: p, Source: []byte("x"), Human: h, Narrator: narr, RunsDir: dir}
+	res, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Completed {
+		t.Fatalf("run failed: %v", res.Err)
+	}
+	// The human saw the mediated question, not the raw prompt.
+	if len(h.asked) != 1 || h.asked[0] != "MEDIATED: approve the spec? (yes/no)" {
+		t.Errorf("human asked = %v", h.asked)
+	}
+	// Mediation saw the raw (interpolated) prompt.
+	if len(narr.mediatedWith) != 1 || !strings.Contains(narr.mediatedWith[0], "RAW PROMPT MARKER") {
+		t.Errorf("mediator input = %v", narr.mediatedWith)
+	}
+	// Completion narration fired for tool stages (human stages narrate too
+	// on completion). 3 stages → 3 done lines.
+	if narr.doneCalls != 3 {
+		t.Errorf("narrator done calls = %d", narr.doneCalls)
+	}
+	// Narration events are in the run log.
+	events, err := os.ReadFile(filepath.Join(dir, res.RunID, "events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(events), "narration") {
+		t.Error("narration events missing from run log")
+	}
+}
+
+func TestNarratorFailureSummaryOnHalt(t *testing.T) {
+	p := parse(t, `
+name: narrated-failure
+stages:
+  - id: boom
+    type: llm
+    model: {provider: anthropic, model: test}
+    prompt: hi
+`)
+	r := &Runner{
+		Pipeline: p, Source: []byte("x"),
+		Providers: func(*config.ModelConfig) (llm.Provider, error) { return failingProvider{}, nil },
+		Narrator:  &scriptedNarrator{failLine: "The provider was unreachable; check your network and resume."},
+		RunsDir:   t.TempDir(),
+	}
+	res, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Completed || res.Summary == "" {
+		t.Fatalf("res = %+v (want failure with summary)", res)
+	}
+	if !strings.Contains(res.Summary, "unreachable") {
+		t.Errorf("summary = %q", res.Summary)
+	}
+}
+
 type failingProvider struct{}
 
 func (failingProvider) Complete(context.Context, llm.Request) (*llm.Response, error) {

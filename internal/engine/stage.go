@@ -21,10 +21,11 @@ type stageDeps struct {
 	Providers ProviderFactory
 	Executors *executor.Registry
 	Human     HumanIO
+	Narrator  Narrator
 	Pipeline  *config.Pipeline
-	Stdout    io.Writer // streaming target for llm text (nil = quiet)
+	Stdout    io.Writer                        // streaming target for llm text (nil = quiet)
 	CWD       string
-	Log       *RunLog                     // run event log (executor observability lands here)
+	Log       *RunLog                          // run event log (executor observability lands here)
 	Warnf     func(format string, args ...any) // progress warnings (nil = silent)
 }
 

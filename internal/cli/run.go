@@ -11,6 +11,7 @@ import (
 
 	"github.com/nerddevsltd/loop/internal/config"
 	"github.com/nerddevsltd/loop/internal/engine"
+	"github.com/nerddevsltd/loop/internal/narrator"
 )
 
 // terminalHuman asks the user questions on stderr and reads replies from
@@ -80,25 +81,41 @@ func newRunCmd() *cobra.Command {
 					fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", a...)
 				}
 			}
+
+			// Resolve the run id BEFORE anything consumes it: the runner
+			// registers it, the start line announces it — they must agree.
+			if resume != "" {
+				runID = resume
+			} else if runID == "" {
+				runID = engine.NewRunID()
+			}
+
+			// The narrator is loop's own LLM commentary — opt-in via
+			// runtime.narrator. Its failures never affect the run.
+			var narr engine.Narrator
+			if pipeline.Runtime != nil && pipeline.Runtime.Narrator != nil {
+				provider, err := engine.DefaultProviderFactory()(pipeline.Runtime.Narrator)
+				if err != nil {
+					return fmt.Errorf("narrator: %w", err)
+				}
+				narr = &narrator.Narrator{Provider: provider, Model: pipeline.Runtime.Narrator.Model, Logf: func(format string, a ...any) {
+					fmt.Fprintf(cmd.ErrOrStderr(), "· "+format+"\n", a...)
+				}}
+			}
+
 			runner := &engine.Runner{
 				Pipeline:  pipeline,
 				Source:    source,
 				Executors: executorRegistry(), // cline registered; availability checked at run time
 				Human:     newTerminalHuman(),
+				Narrator:  narr,
 				Stdout:    os.Stdout,
 				RunsDir:   runsDir,
 				RunID:     runID,
 				ResumeID:  resume,
 				Logf:      logf,
 			}
-			id := resume
-			if id == "" {
-				if runID == "" {
-					runID = engine.NewRunID()
-				}
-				id = runID
-			}
-			logf("run %s starting: %s (%d stages)", id, pipeline.Name, len(pipeline.Stages))
+			logf("run %s starting: %s (%d stages)", runID, pipeline.Name, len(pipeline.Stages))
 			res, err := runner.Run(cmd.Context())
 			if err != nil {
 				return err
@@ -106,6 +123,9 @@ func newRunCmd() *cobra.Command {
 			if !res.Completed {
 				// Failures are never suppressed by --quiet; only progress chatter is.
 				fmt.Fprintf(cmd.ErrOrStderr(), "✗ run %s failed at stage %q: %v\n", res.RunID, res.FailedStage, res.Err)
+				if res.Summary != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "  ↳ %s\n", res.Summary)
+				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "  resume with: loop run %s --resume %s\n", args[0], res.RunID)
 				os.Exit(1)
 			}
