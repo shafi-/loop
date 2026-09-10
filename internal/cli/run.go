@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/nerddevsltd/loop/internal/config"
 	"github.com/nerddevsltd/loop/internal/engine"
-	"github.com/nerddevsltd/loop/internal/executor"
-	"github.com/spf13/cobra"
 )
 
 // terminalHuman asks the user questions on stderr and reads replies from
@@ -83,7 +83,7 @@ func newRunCmd() *cobra.Command {
 			runner := &engine.Runner{
 				Pipeline:  pipeline,
 				Source:    source,
-				Executors: executor.NewRegistry(), // M3 registers cline here
+				Executors: executorRegistry(), // cline registered; availability checked at run time
 				Human:     newTerminalHuman(),
 				Stdout:    os.Stdout,
 				RunsDir:   runsDir,

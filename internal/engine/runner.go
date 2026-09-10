@@ -105,6 +105,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		}
 	}
 	defer log.Close()
+	deps.Log = log
 
 	c := NewContext(r.Pipeline.Vars)
 	indexByID := make(map[string]int, len(r.Pipeline.Stages))

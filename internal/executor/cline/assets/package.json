@@ -1,0 +1,13 @@
+{
+  "name": "loop-cline-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node sidecar host connecting loop's engine to the @cline/sdk agent runtime",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@cline/sdk": "0.0.82"
+  }
+}

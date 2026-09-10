@@ -24,6 +24,7 @@ type stageDeps struct {
 	Pipeline  *config.Pipeline
 	Stdout    io.Writer // streaming target for llm text (nil = quiet)
 	CWD       string
+	Log       *RunLog // run event log (executor observability lands here)
 }
 
 // stageOutcome is a stage's effect on the run: its textual output plus an
@@ -134,11 +135,29 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 		task.Model.APIKey = key
 	}
 
-	res, err := exec.Run(ctx, task, func(ev executor.Event) {
+	// Executor observability: every event lands in the run log (audit
+	// trail), text deltas also stream to the terminal.
+	onEvent := func(ev executor.Event) {
 		if ev.Type == executor.EventText && d.Stdout != nil {
 			fmt.Fprint(d.Stdout, ev.Text)
 		}
-	})
+		if d.Log != nil {
+			detail := ev.Detail
+			if ev.Type == executor.EventNotice {
+				detail = ev.Text
+			}
+			if len(detail) > 500 {
+				detail = detail[:500] + "…"
+			}
+			d.Log.Event("executor_event", s.ID, map[string]any{
+				"kind":   string(ev.Type),
+				"tool":   ev.Tool,
+				"detail": detail,
+			})
+		}
+	}
+
+	res, err := exec.Run(ctx, task, onEvent)
 	if err != nil {
 		return nil, err
 	}
