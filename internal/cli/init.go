@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"github.com/nerddevsltd/loop/internal/examples"
 )
 
 func newInitCmd() *cobra.Command {
@@ -20,7 +22,7 @@ func newInitCmd() *cobra.Command {
 				dir = args[0]
 			}
 			files := map[string]string{
-				filepath.Join(dir, "pipelines", "feature-delivery.yaml"): assetPipeline,
+				filepath.Join(dir, "pipelines", "feature-delivery.yaml"): examples.FeaturePipeline,
 				filepath.Join(dir, "rooms", "leadership.yaml"):           assetRoom,
 				filepath.Join(dir, "README.md"):                          assetReadme,
 			}

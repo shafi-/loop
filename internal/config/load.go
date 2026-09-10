@@ -71,49 +71,71 @@ func decodeStrict(node *yaml.Node, out any) error {
 	return nil
 }
 
-func decodeFile(path string, out any) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
+// Decode strictly decodes config bytes (YAML or JSON — JSON is a YAML
+// subset) into out, with user-facing unknown-field errors. It exists so
+// callers that already hold bytes (the NL→pipeline generator) go through
+// the exact same strict contract as file loaders.
+func Decode(data []byte, out any) error {
 	var node yaml.Node
 	if err := yaml.Unmarshal(data, &node); err != nil {
-		return fmt.Errorf("%s: %w", filepath.Base(path), err)
+		return err
 	}
 	if len(node.Content) == 0 {
-		return fmt.Errorf("%s: file is empty", filepath.Base(path))
+		return fmt.Errorf("document is empty")
 	}
-	doc := node.Content[0]
-	if err := decodeStrict(doc, out); err != nil {
-		return fmt.Errorf("%s: %w", filepath.Base(path), err)
-	}
-	return nil
+	return decodeStrict(node.Content[0], out)
 }
 
-// LoadPipeline reads, strictly decodes, normalizes, and validates a pipeline file.
-func LoadPipeline(path string) (*Pipeline, error) {
+// ParsePipeline validates pipeline bytes and returns the normalized pipeline.
+func ParsePipeline(data []byte) (*Pipeline, error) {
 	var p Pipeline
-	if err := decodeFile(path, &p); err != nil {
+	if err := Decode(data, &p); err != nil {
 		return nil, err
 	}
 	p.normalize()
 	if errs := p.Validate(); len(errs) > 0 {
-		return nil, errors.New("pipeline " + filepath.Base(path) + ": " + ValidationErrors(errs).Error())
+		return nil, ValidationErrors(errs)
 	}
 	return &p, nil
 }
 
-// LoadRoom reads, strictly decodes, normalizes, and validates a room file.
-func LoadRoom(path string) (*Room, error) {
+// ParseRoom validates room bytes and returns the normalized room.
+func ParseRoom(data []byte) (*Room, error) {
 	var r Room
-	if err := decodeFile(path, &r); err != nil {
+	if err := Decode(data, &r); err != nil {
 		return nil, err
 	}
 	r.normalize()
 	if errs := r.Validate(); len(errs) > 0 {
-		return nil, errors.New("room " + filepath.Base(path) + ": " + ValidationErrors(errs).Error())
+		return nil, ValidationErrors(errs)
 	}
 	return &r, nil
+}
+
+// LoadPipeline reads, strictly decodes, normalizes, and validates a pipeline file.
+func LoadPipeline(path string) (*Pipeline, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	p, err := ParsePipeline(data)
+	if err != nil {
+		return nil, fmt.Errorf("pipeline %s: %w", filepath.Base(path), err)
+	}
+	return p, nil
+}
+
+// LoadRoom reads, strictly decodes, normalizes, and validates a room file.
+func LoadRoom(path string) (*Room, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseRoom(data)
+	if err != nil {
+		return nil, fmt.Errorf("room %s: %w", filepath.Base(path), err)
+	}
+	return r, nil
 }
 
 // normalize fills provider-dependent defaults. It is separate from Validate

@@ -22,6 +22,7 @@ func NewRootCmd() *cobra.Command {
 		newValidateCmd(),
 		newInitCmd(),
 		newAskCmd(),
+		newNewCmd(),
 	)
 	return root
 }

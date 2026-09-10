@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -25,24 +24,7 @@ func newAskCmd() *cobra.Command {
 		Short: "Send one prompt to an LLM provider and stream the answer (provider smoke test)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts := llm.Options{BaseURL: baseURL, MaxAttempts: maxRetries}
-			if apiKeyEnv == "" {
-				if p, ok := llm.DefaultAPIKeyEnvName[provider]; ok {
-					apiKeyEnv = p
-				}
-			}
-			if apiKeyEnv != "" {
-				opts.APIKey = os.Getenv(apiKeyEnv)
-			}
-			if opts.APIKey == "" && baseURL == "" {
-				return fmt.Errorf("no API key: set %s (or pass --base-url for a local/keyless server)", apiKeyEnv)
-			}
-			if model == "" {
-				if p, ok := llm.DefaultModel[provider]; ok {
-					model = p
-				}
-			}
-			p, err := llm.New(provider, opts)
+			p, model, err := resolveProvider(provider, model, baseURL, apiKeyEnv, maxRetries)
 			if err != nil {
 				return err
 			}
