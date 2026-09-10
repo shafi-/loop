@@ -164,11 +164,19 @@ func (s *Stage) normalize() {
 			s.LLM.Output = s.ID
 		}
 	case StageAgent:
-		if s.Agent != nil && s.Agent.Model != nil {
-			s.Agent.Model.normalize()
-		}
-		if s.Agent != nil && s.Agent.Output == "" {
-			s.Agent.Output = s.ID
+		if s.Agent != nil {
+			if s.Agent.Model != nil {
+				s.Agent.Model.normalize()
+			}
+			if s.Agent.Output == "" {
+				s.Agent.Output = s.ID
+			}
+			if s.Agent.Executor == "" {
+				s.Agent.Executor = DefaultExecutor
+			}
+			if s.Agent.Approval == "" {
+				s.Agent.Approval = ApprovalAuto
+			}
 		}
 	case StageHuman:
 		if s.Human != nil && s.Human.Output == "" {

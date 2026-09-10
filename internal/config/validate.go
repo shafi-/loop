@@ -41,6 +41,11 @@ func (p *Pipeline) Validate() ValidationErrors {
 			if s.Agent.Persona == "" {
 				err(path+".persona", "is required for an agent stage")
 			}
+			switch s.Agent.Approval {
+			case "", ApprovalAuto, ApprovalAsk:
+			default:
+				err(path+".approval", "must be %q or %q (got %q)", ApprovalAuto, ApprovalAsk, s.Agent.Approval)
+			}
 			validateModel(err, path+".model", s.Agent.Model, false) // optional: persona may carry one
 			if s.Agent.MaxIterations < 0 {
 				err(path+".max_iterations", "must not be negative")

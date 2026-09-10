@@ -68,15 +68,27 @@ type LLMStage struct {
 }
 
 // AgentStage runs a persona as an agent with tools until it finishes
-// or exhausts MaxIterations.
+// or exhausts MaxIterations. Execution is delegated to a pluggable
+// executor (v1: the "cline" executor).
 type AgentStage struct {
 	Persona       string       `yaml:"persona"`
 	Input         string       `yaml:"input,omitempty"`
-	Model         *ModelConfig `yaml:"model,omitempty"` // overrides the persona's model
+	Executor      string       `yaml:"executor,omitempty"` // default: cline
+	Approval      string       `yaml:"approval,omitempty"` // auto (default) | ask
+	Model         *ModelConfig `yaml:"model,omitempty"`    // overrides the persona's model
 	Tools         []string     `yaml:"tools,omitempty"`
 	MaxIterations int          `yaml:"max_iterations,omitempty"` // 0 = engine default
 	Output        string       `yaml:"output,omitempty"`
 }
+
+// Valid approval policies for agent stages.
+const (
+	ApprovalAuto = "auto"
+	ApprovalAsk  = "ask"
+)
+
+// DefaultExecutor is used when an agent stage does not name one.
+const DefaultExecutor = "cline"
 
 // ToolStage runs a deterministic local command.
 type ToolStage struct {
