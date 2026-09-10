@@ -1,0 +1,201 @@
+package config
+
+import "fmt"
+
+// Validate checks semantics after normalization and returns every problem it
+// finds. Syntax and unknown fields are rejected earlier, at decode time.
+func (p *Pipeline) Validate() ValidationErrors {
+	var errs ValidationErrors
+	err := func(path, format string, args ...any) {
+		errs = append(errs, ValidationError{Path: path, Message: fmt.Sprintf(format, args...)})
+	}
+
+	if p.Name == "" {
+		err("name", "is required")
+	}
+	if len(p.Stages) == 0 {
+		err("stages", "must list at least one stage")
+	}
+
+	ids := make(map[string]int, len(p.Stages))
+	for i := range p.Stages {
+		s := &p.Stages[i]
+		path := fmt.Sprintf("stages[%d]", i)
+		if s.ID == "" {
+			err(path+".id", "is required")
+		} else if !validIdent(s.ID) {
+			err(path+".id", "must be lowercase letters, digits, '-' or '_' (got %q)", s.ID)
+		} else if prev, dup := ids[s.ID]; dup {
+			err(path+".id", "duplicates stages[%d].id %q", prev, s.ID)
+		} else {
+			ids[s.ID] = i
+		}
+
+		switch s.Type {
+		case StageLLM:
+			validateModel(err, path+".model", s.LLM.Model, true)
+			if s.LLM.Prompt == "" {
+				err(path+".prompt", "is required for an llm stage")
+			}
+		case StageAgent:
+			if s.Agent.Persona == "" {
+				err(path+".persona", "is required for an agent stage")
+			}
+			validateModel(err, path+".model", s.Agent.Model, false) // optional: persona may carry one
+			if s.Agent.MaxIterations < 0 {
+				err(path+".max_iterations", "must not be negative")
+			}
+		case StageTool:
+			if s.Tool.Run == "" {
+				err(path+".run", "is required for a tool stage")
+			}
+		case StageHuman:
+			if s.Human.Prompt == "" {
+				err(path+".prompt", "is required for a human stage")
+			}
+		case StageRouter:
+			if len(s.Router.When) == 0 {
+				err(path+".when", "must list at least one rule")
+			}
+			hasDefault := false
+			for j := range s.Router.When {
+				rule := &s.Router.When[j]
+				rp := fmt.Sprintf("%s.when[%d]", path, j)
+				if rule.Next == "" {
+					err(rp+".next", "is required")
+				}
+				if rule.If == "" {
+					hasDefault = true
+				}
+			}
+			if !hasDefault {
+				err(path+".when", "should include one default rule (no \"if\") so the router always has a next stage")
+			}
+		}
+
+		if s.OnError != "" && s.OnError != OnErrorHalt && s.OnError != OnErrorSkip {
+			err(path+".on_error", "must be %q or %q (got %q)", OnErrorHalt, OnErrorSkip, s.OnError)
+		}
+		if s.Retry != nil {
+			if s.Retry.MaxAttempts < 0 {
+				err(path+".retry.max_attempts", "must not be negative")
+			}
+			if s.Retry.BackoffMs < 0 {
+				err(path+".retry.backoff_ms", "must not be negative")
+			}
+		}
+	}
+
+	// Router targets may reference any stage (forward jumps allowed for rework loops).
+	for i := range p.Stages {
+		s := &p.Stages[i]
+		if s.Type != StageRouter {
+			continue
+		}
+		for j := range s.Router.When {
+			next := s.Router.When[j].Next
+			if _, ok := ids[next]; !ok && next != "" {
+				errs = append(errs, ValidationError{
+					Path:    fmt.Sprintf("stages[%d].when[%d].next", i, j),
+					Message: fmt.Sprintf("references unknown stage %q", next),
+				})
+			}
+		}
+	}
+
+	names := make(map[string]bool, len(p.Personas))
+	for i := range p.Personas {
+		pers := &p.Personas[i]
+		path := fmt.Sprintf("personas[%d]", i)
+		if pers.Name == "" {
+			err(path+".name", "is required")
+		} else if !validIdent(pers.Name) {
+			err(path+".name", "must be lowercase letters, digits, '-' or '_' (got %q)", pers.Name)
+		} else if names[pers.Name] {
+			err(path+".name", "duplicates persona %q", pers.Name)
+		} else {
+			names[pers.Name] = true
+		}
+		validateModel(err, path+".model", pers.Model, false)
+	}
+
+	if p.Runtime != nil && p.Runtime.Narrator != nil {
+		validateModel(err, "runtime.narrator", p.Runtime.Narrator, true)
+	}
+
+	return errs
+}
+
+// validateModel checks a ModelConfig. Required=false lets persona-level
+// models stay optional (an agent inherits its persona's model).
+func validateModel(err func(string, string, ...any), path string, m *ModelConfig, required bool) {
+	if m == nil {
+		if required {
+			err(path, "is required")
+		}
+		return
+	}
+	valid := false
+	for _, prov := range ValidProviders {
+		if m.Provider == prov {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		err(path+".provider", "must be one of: anthropic, openai (got %q)", m.Provider)
+		return
+	}
+	if m.Model == "" {
+		err(path+".model", "is required")
+	}
+	if m.Provider == ProviderAnthropic && m.BaseURL != "" {
+		err(path+".base_url", "is only supported for provider \"openai\"")
+	}
+	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
+		err(path+".temperature", "must be between 0 and 2 (got %v)", *m.Temperature)
+	}
+	if m.MaxTokens < 0 {
+		err(path+".max_tokens", "must not be negative")
+	}
+}
+
+// Validate checks room semantics after normalization.
+func (r *Room) Validate() ValidationErrors {
+	var errs ValidationErrors
+	err := func(path, format string, args ...any) {
+		errs = append(errs, ValidationError{Path: path, Message: fmt.Sprintf(format, args...)})
+	}
+
+	if r.Name == "" {
+		err("name", "is required")
+	}
+	if len(r.Agents) == 0 {
+		err("agents", "must list at least one agent")
+	}
+	seen := make(map[string]bool, len(r.Agents))
+	for i := range r.Agents {
+		a := &r.Agents[i]
+		path := fmt.Sprintf("agents[%d]", i)
+		if a.Name == "" {
+			err(path+".name", "is required")
+		} else if !validIdent(a.Name) {
+			err(path+".name", "must be lowercase letters, digits, '-' or '_' (got %q)", a.Name)
+		} else if seen[a.Name] {
+			err(path+".name", "duplicates agent %q", a.Name)
+		} else {
+			seen[a.Name] = true
+		}
+		validateModel(err, path+".model", a.Model, false)
+	}
+	if r.Settings.SpeakThreshold < 0 || r.Settings.SpeakThreshold > 1 {
+		err("settings.speak_threshold", "must be between 0 and 1 (got %v)", r.Settings.SpeakThreshold)
+	}
+	if r.Settings.MaxSpontaneousReplies < 0 {
+		err("settings.max_spontaneous_replies", "must not be negative")
+	}
+	if r.Settings.HistoryWindow < 0 {
+		err("settings.history_window", "must not be negative")
+	}
+	return errs
+}

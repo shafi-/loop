@@ -1,0 +1,13 @@
+# build output
+/loop
+/dist/
+
+# run artifacts produced by the engine
+.loop/
+
+# go
+*.test
+*.out
+
+# zcode session artifacts
+.zcode/
