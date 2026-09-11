@@ -64,6 +64,13 @@ func newDoctorCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			fmt.Fprintln(out, "checking loop prerequisites…")
 
+			// Credentials source: a .env here is the usual setup.
+			if _, err := os.Stat(".env"); err == nil {
+				fmt.Fprintf(out, "✓ .env found in this directory (loaded at startup; shell env wins)\n")
+			} else {
+				fmt.Fprintf(out, "• no .env file (using shell environment only) — export ANTHROPIC_API_KEY / OPENAI_API_KEY\n")
+			}
+
 			cl := cline.New()
 			problems := cl.Check()
 			if len(problems) == 0 {

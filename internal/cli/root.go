@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/nerddevsltd/loop/internal/dotenv"
 )
 
 // version is set via -ldflags at release time.
@@ -31,10 +33,38 @@ func NewRootCmd() *cobra.Command {
 	return root
 }
 
-// Execute runs the root command and maps errors to exit codes.
+// Execute runs the root command and maps errors to exit codes. A .env in
+// the working directory (and $LOOP_ENV_FILE, if set) is loaded first so
+// every command sees the same credentials.
 func Execute() {
+	loadDotenv()
 	if err := NewRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+// loadDotenv applies .env files: real environment wins, the file fills
+// gaps. Missing files are fine; malformed lines warn on stderr.
+func loadDotenv() {
+	paths := []string{".env"}
+	if p := os.Getenv("LOOP_ENV_FILE"); p != "" {
+		paths = append(paths, p)
+	}
+	for _, path := range paths {
+		loaded, warnings, err := dotenv.Load(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: reading %s: %v\n", path, err)
+			continue
+		}
+		for _, w := range warnings {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+		}
+		if loaded > 0 && path == ".env" {
+			// Small confirmation that credentials came from the file —
+			// surprises about where a key came from are worse than the
+			// one-line notice.
+			fmt.Fprintf(os.Stderr, "· loaded %d variable(s) from %s\n", loaded, path)
+		}
 	}
 }
