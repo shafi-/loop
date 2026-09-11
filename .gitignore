@@ -11,3 +11,7 @@
 
 # zcode session artifacts
 .zcode/
+
+.env*
+.env.*
+!.env.sample
