@@ -76,3 +76,7 @@ rooms/       multi-agent chat rooms          (loop chat <file>)
 The full reference — every command, the YAML schemas for pipelines and
 rooms, model resolution, executors, resume, troubleshooting — lives in
 [USER MANUAL.md](USER%20MANUAL.md).
+
+## License
+
+[MIT](LICENSE)
