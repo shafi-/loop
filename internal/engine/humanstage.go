@@ -28,9 +28,18 @@ func runHumanStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 	if d.Human == nil {
 		return nil, fmt.Errorf("human stage requires an interactive session (no HumanIO configured)")
 	}
+	// The audit trail records both sides of the exchange: what the user was
+	// asked and what they answered. Context snapshots keep only the latest
+	// answer, so revision rounds would otherwise leave no record.
+	if d.Log != nil {
+		d.Log.Event("human_prompt", s.ID, map[string]any{"text": truncateForLog(prompt)})
+	}
 	answer, err := d.Human.Prompt(ctx, prompt)
 	if err != nil {
 		return nil, err
+	}
+	if d.Log != nil {
+		d.Log.Event("human_answer", s.ID, map[string]any{"answer": truncateForLog(answer)})
 	}
 	return &stageOutcome{Output: answer}, nil
 }

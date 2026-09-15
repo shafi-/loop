@@ -177,8 +177,11 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 			fmt.Fprint(d.Stdout, ev.Text)
 		}
 		if d.Log != nil {
+			// Text and notice events carry their payload in Text; tool
+			// events in Detail. Map the right one or the log records
+			// empty payloads — the audit trail must carry the content.
 			detail := ev.Detail
-			if ev.Type == executor.EventNotice {
+			if ev.Type == executor.EventText || ev.Type == executor.EventNotice {
 				detail = ev.Text
 			}
 			if len(detail) > 500 {

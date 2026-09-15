@@ -234,7 +234,11 @@ becomes the stage output; stdout is capped at 1 MiB.
 (required), `output` (defaults to `"<id>.answer"`; the raw answer is
 also kept as `stages.<id>.answer`). With a narrator enabled, the
 narrator mediates the question; your raw answer is always preserved
-verbatim for routing.
+verbatim for routing. At any human prompt: **`/pause`, `/quit`, or
+`/exit`** stops the run cleanly (state saved, exit 0, resumable —
+resume re-runs the prompt); an **empty line re-asks** instead of
+counting as an answer. Both the question and your answer are recorded
+in the run's `events.jsonl`.
 
 **`router`** — deterministic branching; overrides linear flow. Field:
 `when` (required): ordered rules `{ "if": "<expr>", "next": "<stage id>" }`;
@@ -332,17 +336,21 @@ continues and you simply see fewer `·`/`ℹ` lines.
 Every run writes `.loop/runs/<id>/`:
 
 - `pipeline.yaml` — the exact snapshot that ran
-- `events.jsonl` — every stage event, including executor tool activity
+- `events.jsonl` — every stage event: executor activity **with its text
+  content**, human questions and answers, router decisions, narrations
 - `context.json` — the accumulated run context (last snapshot)
-- `state.json` — executed path, failed stage, completion state
+- `state.json` — executed path, stop point (failed or paused stage),
+  completion state
 
 `--resume <id>` restores the context, **replays the recorded path in
-order without re-executing it**, re-runs only the failed stage, then
-continues with fresh stages. Deterministic: earlier stages produce
-identical inputs, the failed stage gets a clean retry.
+order without re-executing it**, re-runs only the stop point (the
+failed stage, or the prompt where you paused), then continues with
+fresh stages. Deterministic: earlier stages produce identical inputs,
+the re-run stage gets a clean retry.
 
 A run announces its id at start; keep it, or pass your own with
-`--run-id`.
+`--run-id`. Stopping mid-run is always safe: `/pause` (or `/quit`,
+`/exit`) at a prompt, or ctrl-c anywhere — both record where to resume.
 
 ---
 

@@ -69,13 +69,14 @@ func (l *RunLog) readPipelineSnapshot() ([]byte, error) {
 }
 
 // runState is the resume pointer for a run: the exact execution path
-// (including rework-loop revisits), the stage that failed (resume re-runs
-// it), and whether the run finished. Order matters — a router can send the
-// run backwards, so "first stage without output" is meaningless; the path
-// is the truth.
+// (including rework-loop revisits), the stop point (a failed or paused
+// stage — resume re-runs it), and whether the run finished. Order
+// matters — a router can send the run backwards, so "first stage
+// without output" is meaningless; the path is the truth.
 type runState struct {
 	Path   []string `json:"path"`
 	Failed string   `json:"failed,omitempty"`
+	Paused string   `json:"paused,omitempty"`
 	Done   bool     `json:"done,omitempty"`
 }
 

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -35,6 +36,8 @@ type Runner struct {
 type RunResult struct {
 	RunID       string
 	Completed   bool
+	Paused      bool   // stopped at a prompt or by interrupt — resumable, not failed
+	PausedStage string // the stage resume will re-run
 	FailedStage string
 	Err         error
 	Summary     string // narrator's failure explanation, when configured
@@ -138,23 +141,29 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			r.runlogf("run %s is already complete — nothing to resume", runID)
 			return &RunResult{RunID: runID, Completed: true}, nil
 		}
-		if st.Failed == "" {
-			return nil, fmt.Errorf("run %s stopped without a recorded failure point and cannot be resumed", runID)
+		// Resume re-runs the failed stage, or the paused one (/pause or an
+		// interrupt): both recorded their point and neither completed.
+		resumeAt := st.Failed
+		if resumeAt == "" {
+			resumeAt = st.Paused
+		}
+		if resumeAt == "" {
+			return nil, fmt.Errorf("run %s stopped without a recorded failure or pause point and cannot be resumed", runID)
 		}
 		state = *st
 		// Replay semantics: skip the recorded execution path in order (it may
-		// revisit stages via rework loops), then re-run the failed stage.
+		// revisit stages via rework loops), then re-run the stop point.
 		// Everything after that executes fresh.
 		for _, id := range state.Path {
 			r.runlogf("= %s (already complete, skipping)", id)
 			log.Event("stage_skipped", id, nil)
 		}
-		failedIdx, ok := indexByID[state.Failed]
+		idx, ok := indexByID[resumeAt]
 		if !ok {
-			return nil, fmt.Errorf("resume point %q (failed stage) not found in snapshotted pipeline", state.Failed)
+			return nil, fmt.Errorf("resume point %q not found in snapshotted pipeline", resumeAt)
 		}
-		next = failedIdx
-		r.runlogf("↺ retrying failed stage %q", state.Failed)
+		next = idx
+		r.runlogf("↺ resuming at stage %q", resumeAt)
 	} else {
 		log.Event("run_started", "", map[string]any{
 			"pipeline": r.Pipeline.Name,
@@ -169,10 +178,13 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	}
 	defer func() {
 		ev := "run_completed"
-		if !res.Completed {
+		switch {
+		case res.Paused:
+			ev = "run_paused"
+		case !res.Completed:
 			ev = "run_failed"
 		}
-		log.Event(ev, res.FailedStage, map[string]any{"steps": res.Steps})
+		log.Event(ev, res.PausedStage, map[string]any{"steps": res.Steps})
 	}()
 
 	for ; next < len(r.Pipeline.Stages) && res.Completed == false; res.Steps++ {
@@ -181,17 +193,34 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			res.Err = fmt.Errorf("run exceeded %d stage transitions — your routers likely form a cycle", maxSteps)
 			return res, nil
 		}
+		s := &r.Pipeline.Stages[next]
 		if ctx.Err() != nil {
+			// An interrupt (ctrl-c) is a pause with a cause: record where to
+			// resume — without this, an interrupted run could not be resumed
+			// at all (its state recorded no stop point).
+			res.Paused = true
+			res.PausedStage = s.ID
 			res.Err = ctx.Err()
+			state.Paused = s.ID
+			log.SaveState(state)
 			return res, nil
 		}
-		s := &r.Pipeline.Stages[next]
 
 		r.runlogf("→ %s (%s)", s.ID, s.Type)
 		log.Event("stage_started", s.ID, map[string]any{"type": string(s.Type)})
 
 		outcome, err := r.runWithRetry(ctx, s, c, deps, log)
 		if err != nil {
+			// A pause (/pause, /quit, /exit at a prompt) is a clean stop:
+			// resumable, not a failure, nothing retried.
+			if errors.Is(err, ErrPaused) {
+				res.Paused = true
+				res.PausedStage = s.ID
+				state.Paused = s.ID
+				state.Failed = ""
+				log.SaveState(state)
+				return res, nil
+			}
 			log.Event("stage_failed", s.ID, map[string]any{"error": err.Error()})
 			if s.OnError == config.OnErrorSkip {
 				r.runlogf("! %s failed, on_error=skip: %v", s.ID, err)
@@ -205,6 +234,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			res.FailedStage = s.ID
 			res.Err = fmt.Errorf("stage %s: %w", s.ID, err)
 			state.Failed = s.ID
+			state.Paused = "" // a failure is the stop point now, not the old pause
 			if r.Narrator != nil {
 				if summary := r.Narrator.StageFailed(ctx, s, err); summary != "" {
 					res.Summary = summary
@@ -277,6 +307,10 @@ func (r *Runner) runWithRetry(ctx context.Context, s *config.Stage, c *Context, 
 		outcome, err := runner(ctx, s, c, d)
 		if err == nil {
 			return outcome, nil
+		}
+		// A user pause is not a transient error — never retried.
+		if errors.Is(err, ErrPaused) {
+			return nil, err
 		}
 		lastErr = err
 		if attempt < attempts {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -19,32 +20,69 @@ import (
 // stdin (stderr keeps stdout clean for stage output streams).
 type terminalHuman struct {
 	in  *bufio.Reader
-	out *os.File
+	out io.Writer
 }
 
 func newTerminalHuman() *terminalHuman {
 	return &terminalHuman{in: bufio.NewReader(os.Stdin), out: os.Stderr}
 }
 
+// humanLineKind classifies one typed line at a human prompt.
+type humanLineKind int
+
+const (
+	humanLineAnswer humanLineKind = iota
+	humanLineEmpty                // blank line — ask again, it is not an answer
+	humanLinePause                // /pause, /quit, /exit — stop the run resumably
+)
+
+// pauseCommands are the human-prompt equivalents of the chat room's
+// session commands. They pause the run cleanly; a pause is resumable and
+// is never mistaken for a stage answer (a stray "not yes" that would
+// route the pipeline into a rework loop).
+var pauseCommands = map[string]bool{"/pause": true, "/quit": true, "/exit": true}
+
+func classifyHumanLine(line string) humanLineKind {
+	t := strings.TrimSpace(line)
+	if t == "" {
+		return humanLineEmpty
+	}
+	if pauseCommands[t] {
+		return humanLinePause
+	}
+	return humanLineAnswer
+}
+
 func (t *terminalHuman) Prompt(ctx context.Context, prompt string) (string, error) {
-	fmt.Fprintf(t.out, "\n── your input needed ──────────────────────\n%s\n> ", strings.TrimRight(prompt, "\n"))
-	answerCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		line, err := t.in.ReadString('\n')
-		if err != nil {
-			errCh <- err
-			return
+	// Empty lines re-ask rather than count as an answer; pause commands
+	// stop the run for real.
+	for {
+		fmt.Fprintf(t.out, "\n── your input needed ──────────────────────\n%s\n", strings.TrimRight(prompt, "\n"))
+		fmt.Fprintf(t.out, "(/pause · /quit · /exit pause the run — resumable)\n> ")
+		answerCh := make(chan string, 1)
+		errCh := make(chan error, 1)
+		go func() {
+			line, err := t.in.ReadString('\n')
+			if err != nil {
+				errCh <- err
+				return
+			}
+			answerCh <- strings.TrimSpace(line)
+		}()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case err := <-errCh:
+			return "", fmt.Errorf("reading answer: %w", err)
+		case line := <-answerCh:
+			switch classifyHumanLine(line) {
+			case humanLineEmpty:
+				continue
+			case humanLinePause:
+				return "", engine.ErrPaused
+			}
+			return line, nil
 		}
-		answerCh <- strings.TrimSpace(line)
-	}()
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case err := <-errCh:
-		return "", fmt.Errorf("reading answer: %w", err)
-	case a := <-answerCh:
-		return a, nil
 	}
 }
 
@@ -88,7 +126,7 @@ func newRunCmd() *cobra.Command {
 
 			logf := func(format string, a ...any) {
 				if !quiet {
-					fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", a)
+					fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", a...)
 				}
 			}
 
@@ -133,6 +171,19 @@ func newRunCmd() *cobra.Command {
 			res, err := runner.Run(cmd.Context())
 			if err != nil {
 				return err
+			}
+			if res.Paused {
+				// A pause is a clean stop: state is saved, resume re-runs the
+				// paused stage. Interrupts (ctrl-c) keep the failure-style
+				// exit code but are just as resumable.
+				if res.Err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "✗ run %s interrupted at stage %q: %v\n", res.RunID, res.PausedStage, res.Err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "  resume with: loop run %s --resume %s\n", args[0], res.RunID)
+					os.Exit(1)
+				}
+				logf("⏸ run %s paused at stage %q", res.RunID, res.PausedStage)
+				fmt.Fprintf(cmd.ErrOrStderr(), "  resume with: loop run %s --resume %s\n", args[0], res.RunID)
+				return nil
 			}
 			if !res.Completed {
 				// Failures are never suppressed by --quiet; only progress chatter is.
