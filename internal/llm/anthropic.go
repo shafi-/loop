@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // Anthropic implements Provider against the native Anthropic Messages API
@@ -22,10 +23,18 @@ const anthropicDefaultMaxTokens = 4096
 func (a *Anthropic) Name() string { return "anthropic" }
 
 func (a *Anthropic) endpoint() string {
+	base := "https://api.anthropic.com"
 	if a.BaseURL != "" {
-		return a.BaseURL
+		base = a.BaseURL
 	}
-	return "https://api.anthropic.com"
+	// loop's convention (shared with ANTHROPIC_BASE_URL providers like
+	// Z.ai): the base carries no /v1 — requests go to <base>/v1/messages.
+	// Tolerate a base that already ends in /v1 or a trailing slash so the
+	// prefix never doubles; the /v1/messages suffix is added at the call
+	// sites. Mirrors the cline host's normalization for the same SDK
+	// boundary.
+	base = strings.TrimRight(base, "/")
+	return strings.TrimSuffix(base, "/v1")
 }
 
 // anthropicRequest is the Messages API wire format.
