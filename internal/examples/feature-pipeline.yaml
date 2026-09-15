@@ -5,6 +5,9 @@
 # run context under `output`; later stages reference earlier results with
 # {{ }} templates (e.g. ${stages.requirements.output}).
 #
+# The approval loop is deliberate: a "no" does NOT redo the whole
+# pipeline — it feeds your words to a revise stage and asks you again.
+#
 # Validate it:   loop validate pipelines/feature-delivery.yaml
 # Run it:        loop run pipelines/feature-delivery.yaml
 
@@ -54,13 +57,18 @@ stages:
     output: architecture_md
 
   # A human checkpoint: the run pauses and asks you in the terminal.
+  # outputs.architecture_md is the shared, mutable slot — architecture
+  # and revise both write it, so this always shows the latest plan.
+  # (stages.architecture.output, by contrast, is that stage's frozen
+  # first run.)
   - id: approval
     type: human
     prompt: |
       Review the architecture below. Reply "yes" to continue or paste
-      your change requests.
+      your change requests — a revise stage will apply them and ask
+      you again.
 
-      ${stages.architecture.output}
+      ${outputs.architecture_md}
     output: approval.answer
 
   # Deterministic branching. The last rule without an "if" is the default.
@@ -69,7 +77,31 @@ stages:
     when:
       - if: "${stages.approval.answer} == 'yes'"
         next: build
-      - next: requirements
+      - next: revise
+
+  # Revision: your words go in, the same outputs.architecture_md slot
+  # comes out (overwritten), so approval always reviews the latest.
+  # Rework loops that ignore the reviewer's words just re-run frozen
+  # stages — this loop listens.
+  - id: revise
+    type: llm
+    prompt: |
+      The reviewer asked for changes to the architecture below. Apply
+      exactly these changes and return the full revised architecture —
+      same structure, nothing else.
+
+      Change requests:
+      ${stages.approval.answer}
+
+      Current architecture:
+      ${outputs.architecture_md}
+    output: architecture_md
+
+  # Back to the reviewer: revisions are never self-approved.
+  - id: back
+    type: router
+    when:
+      - next: approval
 
   # A deterministic local command. stdout is captured into the context.
   - id: build

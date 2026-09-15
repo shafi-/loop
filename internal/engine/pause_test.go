@@ -90,6 +90,44 @@ func TestHumanPauseIsCleanAndResumable(t *testing.T) {
 	if len(h2.asked) != 1 || !strings.Contains(h2.asked[0], "draft v") {
 		t.Errorf("resume prompts = %v", h2.asked)
 	}
+	// The stale pause label is cleared once progress happens: the state
+	// file reports the run's last event, not an old stop point.
+	if st := readStateFile(t, dir, res.RunID); strings.Contains(st, "paused") || !strings.Contains(st, `"done": true`) {
+		t.Errorf("state after resumed completion = %s", st)
+	}
+}
+
+func TestStopPointLabelsClearAfterFailureAndResume(t *testing.T) {
+	p := parse(t, pausePipeline)
+	dir := t.TempDir()
+
+	// Fail at the human stage (EOF-style), leaving a failed label.
+	h1 := &stubHuman{}
+	r := &Runner{Pipeline: p, Source: []byte(pausePipeline), Human: h1, RunsDir: dir}
+	res, err := r.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Completed || res.FailedStage != "approval" {
+		t.Fatalf("res = %+v, want failure at approval", res)
+	}
+	if st := readStateFile(t, dir, res.RunID); !strings.Contains(st, `"failed": "approval"`) {
+		t.Fatalf("state after failure = %s", st)
+	}
+
+	// Resume to completion: the label must not linger.
+	h2 := &stubHuman{answers: []string{"yes"}}
+	r2 := &Runner{ResumeID: res.RunID, Human: h2, RunsDir: dir}
+	res2, err := r2.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res2.Completed {
+		t.Fatalf("resume failed at %s: %v", res2.FailedStage, res2.Err)
+	}
+	if st := readStateFile(t, dir, res.RunID); strings.Contains(st, "failed") || strings.Contains(st, "paused") {
+		t.Errorf("stale stop-point label survived progress: %s", st)
+	}
 }
 
 func TestPauseIsNotRetried(t *testing.T) {

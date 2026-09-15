@@ -174,6 +174,11 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	res := &RunResult{RunID: runID}
 	record := func(stageID string) {
 		state.Path = append(state.Path, stageID)
+		// A completed stage supersedes any stale stop-point label: the
+		// state file must tell the truth about the run's last event
+		// (a failed label lingering after progress misleads readers).
+		state.Failed = ""
+		state.Paused = ""
 		log.SaveState(state)
 	}
 	defer func() {

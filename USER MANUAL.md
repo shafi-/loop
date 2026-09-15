@@ -101,7 +101,10 @@ whether counters are on.
 The example pipeline turns an idea into a reviewed implementation plan:
 an `llm` stage writes requirements, an `agent` stage (the `architect`
 persona, with tools) designs the system, a `human` stage pauses for your
-approval, a `router` branches on your answer.
+approval, and a `router` branches on your answer: `yes` proceeds to
+build; anything else is treated as change requests — a `revise` stage
+applies them and asks you again. Rejections never redo the upstream
+stages; they feed your words forward.
 
 Chat with the leadership room:
 
