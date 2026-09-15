@@ -19,9 +19,9 @@ import (
 func newChatCmd() *cobra.Command {
 	var roomsDir string
 	cmd := &cobra.Command{
-		Use:   "chat <room.yaml>",
+		Use:   "chat <room.yaml> [opening message]",
 		Short: "Open a multi-agent chat room (@name to address someone; others decide whether to speak)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			room, err := config.LoadRoom(args[0])
 			if err != nil {
@@ -50,6 +50,14 @@ func newChatCmd() *cobra.Command {
 			fmt.Fprintln(out, "/agents list · /help · /quit")
 
 			ui := &terminalChatUI{out: out, err: cmd.ErrOrStderr()}
+			// An optional opening message is delivered exactly as if the
+			// user had typed it; the session stays interactive afterwards.
+			// Like typed input, a failed delivery never ends the session.
+			if len(args) == 2 {
+				if err := r.Say(cmd.Context(), args[1], ui); err != nil {
+					fmt.Fprintf(ui.err, "✗ %v\n", err)
+				}
+			}
 			in := bufio.NewReader(os.Stdin)
 			for {
 				fmt.Fprint(out, "\n> ")
