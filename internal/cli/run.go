@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/narrator"
 )
@@ -76,9 +77,18 @@ func newRunCmd() *cobra.Command {
 				pipeline.Vars[k] = v
 			}
 
+			// Opt-in, anonymous, local (internal/counters). A resume is a
+			// rerun; anything else is a fresh run. Counted at start: an
+			// attempt is the event, success or failure is not.
+			if resume != "" {
+				counters.BumpKey("pipeline_reruns", pipeline.Name)
+			} else {
+				counters.BumpKey("pipeline_runs", pipeline.Name)
+			}
+
 			logf := func(format string, a ...any) {
 				if !quiet {
-					fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", a...)
+					fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", a)
 				}
 			}
 

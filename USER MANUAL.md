@@ -71,6 +71,8 @@ may also be fully self-contained with no environment at all.
 | `LOOP_ENV_FILE` | Path to an additional env file, loaded after `./.env`. |
 | `LOOP_NODE` | Node binary for the cline executor (default `node` on PATH; needs ≥ 22). |
 | `LOOP_CLINE_HOST` | Override the host script location (default `~/.loop/executors/cline/index.mjs`). |
+| `LOOP_COUNTERS` | Opt in to anonymous, local-only usage counters (`1` to enable). See [Counters](#counters-opt-in-anonymous-local). |
+| `LOOP_COUNTERS_FILE` | Override the counters file location (default `~/.loop/counters.json`). |
 
 Endpoint conventions differ by family — this is deliberate:
 
@@ -83,7 +85,8 @@ Endpoint conventions differ by family — this is deliberate:
 ./loop doctor
 ```
 
-Reports `.env` presence, node version, and cline executor state.
+Reports `.env` presence, node version, cline executor state, and
+whether counters are on.
 
 ---
 
@@ -174,7 +177,7 @@ Transcripts persist under `.loop/rooms/<room>/transcript.jsonl`.
 
 `install cline` writes the Node host to `~/.loop/executors/cline/` and
 runs `npm install` there. Re-run it after upgrading loop. `doctor`
-reports node version and executor health.
+reports node version, executor health, and counters state.
 
 ---
 
@@ -393,4 +396,19 @@ with file:line warnings.
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
 | `.loop/rooms/<room>/` | chat transcripts |
 | `~/.loop/executors/cline/` | installed cline host |
+| `~/.loop/counters.json` | opt-in usage counters (see below) |
 | `.env` | your credentials (gitignored — keep real keys here, never in YAML) |
+
+### Counters (opt-in, anonymous, local)
+
+loop can keep simple usage counts — workspaces initialized, pipelines
+generated, pipeline runs and reruns (per pipeline name), room sessions.
+This is **off by default**; set `LOOP_COUNTERS=1` to opt in.
+
+What you get is plain numbers in `~/.loop/counters.json` (override with
+`LOOP_COUNTERS_FILE`): no content, no identifiers, no machine info —
+and nothing ever leaves your machine; there is no network call. A
+counters problem (unreadable file, unwritable directory) is silently
+ignored: counting can never break the command it counts for.
+`loop doctor` shows whether counters are on and, if so, the current
+tallies.

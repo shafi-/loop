@@ -13,6 +13,7 @@ import (
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/engine"
 )
 
@@ -38,6 +39,9 @@ func newChatCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Opt-in, anonymous, local (internal/counters): one count
+			// per opened session, keyed by room name.
+			counters.BumpKey("room_sessions", room.Name)
 			r := chat.NewRoom(*room, agents, transcript)
 
 			out := cmd.OutOrStdout()

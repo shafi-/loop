@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/generator"
 )
 
@@ -48,6 +49,8 @@ honest failure. Hand-written pipelines are equally first-class.`,
 			if err != nil {
 				return err
 			}
+			// Opt-in, anonymous, local (internal/counters).
+			counters.Bump("pipelines_generated")
 
 			name := res.Pipeline.Name
 			if out == "" {

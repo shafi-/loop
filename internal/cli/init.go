@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/examples"
 )
 
@@ -43,6 +44,8 @@ func newInitCmd() *cobra.Command {
 				written++
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "\nWorkspace ready (%d file(s)). Next:\n  loop validate pipelines/feature-delivery.yaml\n  loop validate rooms/leadership.yaml\n", written)
+			// Opt-in, anonymous, local (internal/counters).
+			counters.Bump("workspaces_initialized")
 			return nil
 		},
 	}

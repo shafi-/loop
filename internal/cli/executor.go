@@ -3,9 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/executor"
 	"github.com/shafi-/loop/internal/executor/cline"
 )
@@ -84,7 +87,34 @@ func newDoctorCmd() *cobra.Command {
 				fmt.Fprintln(out, "  agent stages need this executor; pipelines using only")
 				fmt.Fprintln(out, "  llm/tool/human/router stages work without it.")
 			}
+
+			// Counters are opt-in; being off is normal, not a problem.
+			if counters.Enabled() {
+				fmt.Fprintf(out, "• counters: on → %s\n", counters.Path())
+				if m := counters.Read(); len(m) > 0 {
+					fmt.Fprintf(out, "  (%s)\n", summarizeCounters(m))
+				}
+			} else {
+				fmt.Fprintf(out, "• counters: off (opt in with LOOP_COUNTERS=1; anonymous, local-only counts)\n")
+			}
 			return nil
 		},
 	}
+}
+
+// summarizeCounters renders the counts as "key n, …" pairs, event maps
+// flattened per name, for the one doctor line.
+func summarizeCounters(m map[string]any) string {
+	var parts []string
+	for event, v := range m {
+		if perName, ok := v.(map[string]any); ok {
+			for name, n := range perName {
+				parts = append(parts, fmt.Sprintf("%s[%s] %v", event, name, n))
+			}
+		} else {
+			parts = append(parts, fmt.Sprintf("%s %v", event, v))
+		}
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, ", ")
 }
