@@ -195,7 +195,14 @@ func (r *Room) decideAll(ctx context.Context, observers []*agent.Agent, ui UI) m
 }
 
 // reply streams one agent's answer and appends it to the transcript.
+// Agents with tools get their tool activity surfaced as a notice and
+// recorded in the transcript — the room's audit trail, and context for
+// the other agents (they learn a file now exists).
 func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
+	a.ToolHook = func(name, detail string) {
+		ui.Notice("🔧 @%s %s", a.Name(), detail)
+		_ = r.Transcript.Append(a.Name(), "[tool] "+detail)
+	}
 	ui.AgentReplyStart(a.Name())
 	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow), func(delta string) {
 		ui.AgentTextDelta(a.Name(), delta)

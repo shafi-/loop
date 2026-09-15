@@ -2,6 +2,15 @@ package config
 
 import "fmt"
 
+// allowedRoomTools is the tool set room agents may use natively. Pipeline
+// agent stages delegate to their executor, whose tool surface is the
+// executor's own contract; rooms execute in-process, so the set is fixed.
+var allowedRoomTools = map[string]bool{
+	"read_file":   true,
+	"write_file":  true,
+	"run_command": true,
+}
+
 // Validate checks semantics after normalization and returns every problem it
 // finds. Syntax and unknown fields are rejected earlier, at decode time.
 func (p *Pipeline) Validate() ValidationErrors {
@@ -171,6 +180,23 @@ func (r *Room) Validate() ValidationErrors {
 	if len(r.Agents) == 0 {
 		err("agents", "must list at least one agent")
 	}
+	pipes := make(map[string]bool, len(r.Pipelines))
+	for i := range r.Pipelines {
+		p := &r.Pipelines[i]
+		path := fmt.Sprintf("pipelines[%d]", i)
+		if p.Name == "" {
+			err(path+".name", "is required")
+		} else if !validIdent(p.Name) {
+			err(path+".name", "must be lowercase letters, digits, '-' or '_' (got %q)", p.Name)
+		} else if pipes[p.Name] {
+			err(path+".name", "duplicates pipeline %q", p.Name)
+		} else {
+			pipes[p.Name] = true
+		}
+		if p.File == "" {
+			err(path+".file", "is required")
+		}
+	}
 	seen := make(map[string]bool, len(r.Agents))
 	for i := range r.Agents {
 		a := &r.Agents[i]
@@ -185,6 +211,12 @@ func (r *Room) Validate() ValidationErrors {
 			seen[a.Name] = true
 		}
 		validateModel(err, path+".model", a.Model)
+		for _, tool := range a.Tools {
+			// Rooms execute tools natively; the set is small on purpose.
+			if !allowedRoomTools[tool] {
+				err(path+".tools", "%q is not a room tool (available: read_file, write_file, run_command)", tool)
+			}
+		}
 	}
 	if r.Settings.SpeakThreshold < 0 || r.Settings.SpeakThreshold > 1 {
 		err("settings.speak_threshold", "must be between 0 and 1 (got %v)", r.Settings.SpeakThreshold)

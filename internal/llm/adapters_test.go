@@ -322,3 +322,88 @@ func TestRegistryUnknownProvider(t *testing.T) {
 		t.Fatal("unknown provider must be rejected")
 	}
 }
+
+// TestOpenAIToolRoundTrip pins the OpenAI-family tool mapping both ways:
+// ToolDef → wire tools, assistant ToolCalls + tool results → wire
+// messages, and response tool_calls → Response.ToolCalls. The agent
+// tool loop (room agents with tools) depends on this path; it must
+// work identically to the Anthropic family.
+func TestOpenAIToolRoundTrip(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"choices": [{"message": {"role": "assistant", "content": "",
+				"tool_calls": [{"id": "call_1", "type": "function",
+					"function": {"name": "write_file", "arguments": "{\"path\":\"plans/x.md\",\"content\":\"# x\"}"}}]},
+				"finish_reason": "tool_calls"}]
+		}`))
+	}))
+	defer srv.Close()
+
+	p := &OpenAI{APIKey: "sk-oai", BaseURL: srv.URL}
+	resp, err := p.Complete(context.Background(), Request{
+		Model: "llama-3.3-70b",
+		Tools: []ToolDef{{
+			Name:        "write_file",
+			Description: "Write a file",
+			Schema:      map[string]any{"type": "object"},
+		}},
+		Messages: []Message{
+			{Role: RoleUser, Content: "persist the plan"},
+			{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "call_0", Name: "read_file", Args: `{"path":"notes.md"}`}}},
+			{Role: RoleTool, ToolCallID: "call_0", Name: "read_file", Content: "prior notes"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Request side: tools array + faithful message history.
+	tools, _ := gotBody["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("tools = %v", tools)
+	}
+	tt := tools[0].(map[string]any)
+	if tt["type"] != "function" {
+		t.Errorf("tool type = %v", tt["type"])
+	}
+	fn := tt["function"].(map[string]any)
+	if fn["name"] != "write_file" || fn["description"] != "Write a file" {
+		t.Errorf("tool function = %v", fn)
+	}
+	msgs := gotBody["messages"].([]any)
+	if len(msgs) != 3 {
+		t.Fatalf("messages = %v", msgs)
+	}
+	asst := msgs[1].(map[string]any)
+	calls := asst["tool_calls"].([]any)
+	c0 := calls[0].(map[string]any)
+	if c0["id"] != "call_0" || c0["function"].(map[string]any)["name"] != "read_file" {
+		t.Errorf("assistant tool_calls = %v", calls)
+	}
+	if args := c0["function"].(map[string]any)["arguments"]; args != `{"path":"notes.md"}` {
+		t.Errorf("arguments must be the raw JSON string, got %v", args)
+	}
+	toolMsg := msgs[2].(map[string]any)
+	if toolMsg["role"] != "tool" || toolMsg["tool_call_id"] != "call_0" || toolMsg["content"] != "prior notes" {
+		t.Errorf("tool result message = %v", toolMsg)
+	}
+
+	// Response side: parsed tool call with raw JSON args.
+	if len(resp.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls = %+v", resp.ToolCalls)
+	}
+	tc := resp.ToolCalls[0]
+	if tc.ID != "call_1" || tc.Name != "write_file" {
+		t.Errorf("tool call = %+v", tc)
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(tc.Args), &args); err != nil || args["path"] != "plans/x.md" {
+		t.Errorf("args = %q (%v)", tc.Args, err)
+	}
+	if resp.StopReason != StopToolUse {
+		t.Errorf("stop reason = %v", resp.StopReason)
+	}
+}

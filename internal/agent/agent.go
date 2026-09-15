@@ -13,11 +13,16 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/llm"
 )
-
 // Agent is one room participant: a persona with a resolved provider.
 type Agent struct {
 	Persona  config.Persona
 	Provider llm.Provider
+	// CWD confines the persona's file tools (empty = process cwd).
+	CWD string
+	// ToolHook, when set, is called once per executed tool with a
+	// compact human-readable line ("wrote plans/x.md (120 bytes)") —
+	// the room wires it to a UI notice and a transcript line.
+	ToolHook func(name, detail string)
 }
 
 // Name returns the persona identifier.
@@ -81,7 +86,14 @@ func (a *Agent) framing(room []config.Persona) string {
 // is explicitly attributed ([name] lines) because provider role arrays
 // cannot represent multi-party conversations cleanly. When onDelta is
 // non-nil the reply streams through it as it is generated.
+//
+// Personas with tools get a bounded agentic loop instead of a single
+// completion: the model may call read_file / write_file / run_command
+// (confined to the workspace) until it produces its final text.
 func (a *Agent) Reply(ctx context.Context, room []config.Persona, conversation string, onDelta llm.StreamFunc) (string, error) {
+	if len(a.Persona.Tools) > 0 {
+		return a.replyWithTools(ctx, room, conversation, onDelta)
+	}
 	system := strings.TrimSpace(a.Persona.System + "\n\n" + a.framing(room) + `
 Reply to the user directly. Stay strictly in your role's perspective.
 Be concise. Do not repeat what other participants already said. Never
@@ -96,6 +108,92 @@ prefix your reply with your own name.`)
 		return "", err
 	}
 	return resp.Text, nil
+}
+
+// replyWithTools is the native tool loop for room agents: rounds of
+// completions with tools available, tool calls executed in-process
+// (path-guarded, output-capped), until the model answers in text or
+// the round budget is spent. Tool rounds use Complete — the final text
+// is delivered as one delta.
+func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conversation string, onDelta llm.StreamFunc) (string, error) {
+	system := strings.TrimSpace(a.Persona.System + "\n\n" + a.framing(room) + `
+Reply to the user directly. Stay strictly in your role's perspective.
+Be concise. Do not repeat what other participants already said. Never
+prefix your reply with your own name.
+
+You have tools: read_file, write_file, run_command — confined to the
+workspace. When a deliverable is worth keeping (a plan, a brief, a
+report), write it to a file and say so in one line. Keep tool use
+purposeful; conversation is still your main job.`)
+
+	msgs := []llm.Message{{Role: llm.RoleUser, Content: conversation}}
+	for round := 0; round < MaxToolRounds; round++ {
+		req := llm.Request{
+			Model:    a.model(),
+			System:   system,
+			Messages: msgs,
+			Tools:    toolDefsFor(a.Persona.Tools),
+		}
+		resp, err := a.Provider.Complete(ctx, req)
+		if err != nil {
+			return "", err
+		}
+		if len(resp.ToolCalls) == 0 {
+			if onDelta != nil && resp.Text != "" {
+				onDelta(resp.Text)
+			}
+			return resp.Text, nil
+		}
+		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: resp.Text, ToolCalls: resp.ToolCalls})
+		for _, tc := range resp.ToolCalls {
+			out, terr := execRoomTool(ctx, tc.Name, tc.Args, a.CWD)
+			a.reportTool(tc, out, terr)
+			// Tool errors go back to the model as results, not as fatal
+			// failures: it can correct a bad path and retry.
+			msgs = append(msgs, llm.Message{Role: llm.RoleTool, ToolCallID: tc.ID, Name: tc.Name, Content: outOrError(out, terr)})
+		}
+	}
+	return "", fmt.Errorf("%s exceeded %d tool rounds without answering — narrow the request", a.Persona.Name, MaxToolRounds)
+}
+
+// reportTool surfaces one executed tool to the room (UI + transcript)
+// as a compact, human-readable line.
+func (a *Agent) reportTool(tc llm.ToolCall, out string, err error) {
+	if a.ToolHook == nil {
+		return
+	}
+	var args map[string]any
+	_ = json.Unmarshal([]byte(tc.Args), &args)
+	path, _ := args["path"].(string)
+	cmd, _ := args["command"].(string)
+
+	var detail string
+	switch tc.Name {
+	case "write_file":
+		detail = "wrote " + path
+	case "read_file":
+		detail = "read " + path
+	case "run_command":
+		detail = cmd
+	default:
+		detail = tc.Name
+	}
+	if err != nil {
+		detail += fmt.Sprintf(" — failed: %v", err)
+	}
+	a.ToolHook(tc.Name, strings.TrimSpace(detail))
+}
+
+// outOrError renders a tool round-trip for the model: errors are
+// content, so the model can recover.
+func outOrError(out string, err error) string {
+	if err != nil {
+		if out != "" {
+			return out + "\nerror: " + err.Error()
+		}
+		return "error: " + err.Error()
+	}
+	return out
 }
 
 // DecideSpeak asks whether this agent should respond to the new message.

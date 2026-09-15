@@ -269,11 +269,20 @@ type RoomSettings struct {
 	HistoryWindow         int     `yaml:"history_window,omitempty"`          // messages of transcript an observer sees
 }
 
+// RoomPipeline is a pipeline a room can command: an in-room alias and
+// the pipeline file. Paths resolve relative to the room file, so a room
+// and its pipelines travel together.
+type RoomPipeline struct {
+	Name string `yaml:"name"` // in-room alias, e.g. "deliver"
+	File string `yaml:"file"` // pipeline YAML, relative to the room file
+}
+
 // Room is a channel of persona agents.
 type Room struct {
-	Name     string       `yaml:"name"`
-	Agents   []Persona    `yaml:"agents"`
-	Settings RoomSettings `yaml:"settings,omitempty"`
+	Name      string         `yaml:"name"`
+	Pipelines []RoomPipeline `yaml:"pipelines,omitempty"`
+	Agents    []Persona      `yaml:"agents"`
+	Settings  RoomSettings   `yaml:"settings,omitempty"`
 }
 
 // DocumentKind distinguishes the two YAML files loop loads.
