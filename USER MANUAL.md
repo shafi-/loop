@@ -13,7 +13,19 @@ models speak.**
 
 ## 1. Setup
 
-### Build
+### Install
+
+One line (macOS / Linux, amd64 or arm64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nerddevsltd/loop/main/install.sh | sh
+```
+
+The script picks the right binary from the latest GitHub release,
+verifies its SHA256 checksum, and installs to `/usr/local/bin`
+(fallback: `~/.local/bin`; override with `INSTALL_DIR=/some/path`).
+
+Or build from source:
 
 ```bash
 go build -o loop ./cmd/loop      # from a checkout of this repository
@@ -21,7 +33,8 @@ go build -o loop ./cmd/loop      # from a checkout of this repository
 
 You only need **Node.js ≥ 22** if you use `agent` stages (they run on the
 cline executor, a Node sidecar). Pipelines made only of `llm`, `tool`,
-`human`, and `router` stages need nothing but the binary.
+`human`, and `router` stages need nothing but the binary. Check what your
+installation can do with `./loop doctor`.
 
 ### Configure credentials
 

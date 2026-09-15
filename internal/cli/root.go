@@ -17,6 +17,7 @@ func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "loop",
 		Short:         "Deterministic agentic harness: YAML pipelines + persona chat rooms",
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
