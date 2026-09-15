@@ -33,7 +33,7 @@ honest failure. Hand-written pipelines are equally first-class.`,
 		Example: `  loop new "triage GitHub issues daily: label bugs, draft fixes, PR for review" -o pipelines/triage.yaml`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, model, err := resolveProvider(provider, model, baseURL, apiKeyEnv, 3)
+			p, provName, model, err := resolveProvider(provider, model, baseURL, apiKeyEnv, 3)
 			if err != nil {
 				return err
 			}
@@ -42,8 +42,8 @@ honest failure. Hand-written pipelines are equally first-class.`,
 					fmt.Fprintf(cmd.ErrOrStderr(), "· "+format+"\n", a...)
 				}
 			}
-			g := &generator.Generator{Provider: p, Model: model, MaxRepairs: maxRepairs, Logf: logf}
-			logf("drafting pipeline with %s (%s)...", provider, model)
+			g := &generator.Generator{Provider: p, ProviderName: provName, Model: model, MaxRepairs: maxRepairs, Logf: logf}
+			logf("drafting pipeline with %s (%s)...", provName, model)
 			res, err := g.Generate(context.Background(), args[0])
 			if err != nil {
 				return err
@@ -71,7 +71,7 @@ honest failure. Hand-written pipelines are equally first-class.`,
 	}
 	f := cmd.Flags()
 	f.StringVarP(&out, "out", "o", "", "write YAML here (file or directory); default: stdout")
-	f.StringVar(&provider, "provider", "anthropic", "provider: anthropic or openai (any base_url-compatible service)")
+	f.StringVar(&provider, "provider", "", "provider: anthropic or openai (default: follows your configured env, else anthropic)")
 	f.StringVar(&model, "model", "", "model id (default: provider-specific)")
 	f.StringVar(&baseURL, "base-url", "", "override API base URL (OpenAI shape)")
 	f.StringVar(&apiKeyEnv, "api-key-env", "", "env var holding the API key")

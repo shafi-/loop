@@ -23,6 +23,7 @@ const defaultMaxRepairs = 2
 // Generator produces pipelines from descriptions using one provider.
 type Generator struct {
 	Provider   llm.Provider
+	ProviderName string // "anthropic" | "openai": emitted model blocks target this family
 	Model      string
 	MaxRepairs int              // repair passes after the first draft; 0 = default
 	Logf       func(format string, args ...any) // progress lines, may be nil
@@ -46,7 +47,7 @@ func (g *Generator) Generate(ctx context.Context, description string) (*Result, 
 		logf = func(string, ...any) {}
 	}
 
-	prompt := buildPrompt(description)
+	prompt := buildPrompt(description, g.ProviderName)
 	var lastErr error
 	for attempt := 0; attempt <= maxRepairs; attempt++ {
 		if attempt > 0 {
@@ -88,10 +89,18 @@ markdown fences. Use double-quoted JSON strings; prompt fields may
 contain \n escapes for multi-line text.`
 
 // buildPrompt composes the contract reference, the worked example, and the
-// user's description into one drafting prompt.
-func buildPrompt(description string) string {
+// user's description into one drafting prompt. A non-empty providerName
+// pins every emitted model block to that API family — without it, models
+// tend to copy the worked example's providers, which may not be what the
+// user has credentials for.
+func buildPrompt(description, providerName string) string {
 	var b strings.Builder
 	b.WriteString(pipelineContract)
+	if providerName != "" {
+		b.WriteString("\n\nPROVIDER CONSTRAINT: every \"model\" object MUST use \"provider\": \"" +
+			providerName + "\" — that is the provider configured in this environment. " +
+			"Never emit any other provider.")
+	}
 	b.WriteString("\n\n--- EXAMPLE (YAML form; emit the same structure as JSON) ---\n")
 	b.WriteString(examplePipeline)
 	b.WriteString("\n--- DESCRIPTION ---\n")

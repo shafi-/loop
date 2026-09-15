@@ -29,7 +29,7 @@ func DefaultProviderFactory() ProviderFactory {
 		}
 		apiKey := os.Getenv(rm.APIKeyEnv)
 		if apiKey == "" && rm.BaseURL == "" {
-			return nil, fmt.Errorf("model %s: env var %s is not set", rm.Model, rm.APIKeyEnv)
+			return nil, fmt.Errorf("model %s: env var %s is not set (provider %q requires it — set the key, or switch this model block to your configured provider)", rm.Model, rm.APIKeyEnv, rm.Provider)
 		}
 		p, err := llm.New(rm.Provider, llm.Options{
 			APIKey:      apiKey,
@@ -53,7 +53,7 @@ func resolveAPIKey(cfg *config.ModelConfig) (string, error) {
 	rm := cfg.Resolve()
 	key := os.Getenv(rm.APIKeyEnv)
 	if key == "" && rm.BaseURL == "" {
-		return "", fmt.Errorf("env var %s is not set", rm.APIKeyEnv)
+		return "", fmt.Errorf("env var %s is not set (provider %q requires it — set the key, or switch this model block to your configured provider)", rm.APIKeyEnv, rm.Provider)
 	}
 	return key, nil
 }

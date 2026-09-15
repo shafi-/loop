@@ -70,3 +70,33 @@ func TestResolveBaseURLEmptyMeansOfficial(t *testing.T) {
 		t.Errorf("no env and no YAML must resolve to the official endpoint (empty): got %q", got)
 	}
 }
+
+// InferProvider is what commands use when nothing names a family: the
+// single configured family wins; both or neither configured falls back
+// to the documented default (anthropic).
+func TestInferProvider(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "")
+
+	if got := InferProvider(); got != "anthropic" {
+		t.Errorf("nothing configured must fall back to anthropic: got %q", got)
+	}
+
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	if got := InferProvider(); got != "openai" {
+		t.Errorf("only openai configured must infer openai: got %q", got)
+	}
+
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+	if got := InferProvider(); got != "openai" {
+		t.Errorf("a bare OPENAI_BASE_URL must count as configured: got %q", got)
+	}
+
+	t.Setenv("ANTHROPIC_API_KEY", "sk-test")
+	if got := InferProvider(); got != "anthropic" {
+		t.Errorf("both configured must fall back to anthropic: got %q", got)
+	}
+}

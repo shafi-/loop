@@ -48,3 +48,17 @@ func ResolveBaseURL(provider, explicit string) string {
 	}
 	return os.Getenv(envBaseURLName(provider))
 }
+
+// InferProvider picks a provider family for callers that name none:
+// if exactly one family is configured (key or BASE_URL set), that family
+// wins; with both or neither configured, anthropic stays the default.
+// Explicit choices — the --provider flag, a YAML provider field — always
+// take precedence over this.
+func InferProvider() string {
+	anthropicConfigured := os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv(EnvAnthropicBaseURL) != ""
+	openaiConfigured := os.Getenv("OPENAI_API_KEY") != "" || os.Getenv(EnvOpenAIBaseURL) != ""
+	if openaiConfigured && !anthropicConfigured {
+		return "openai"
+	}
+	return "anthropic"
+}

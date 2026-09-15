@@ -24,7 +24,7 @@ func newAskCmd() *cobra.Command {
 		Short: "Send one prompt to an LLM provider and stream the answer (provider smoke test)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, model, err := resolveProvider(provider, model, baseURL, apiKeyEnv, maxRetries)
+			p, _, model, err := resolveProvider(provider, model, baseURL, apiKeyEnv, maxRetries)
 			if err != nil {
 				return err
 			}
@@ -55,7 +55,7 @@ func newAskCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&provider, "provider", "anthropic", "provider: anthropic or openai (any base_url-compatible service)")
+	cmd.Flags().StringVar(&provider, "provider", "", "provider: anthropic or openai (default: follows your configured env, else anthropic)")
 	cmd.Flags().StringVar(&model, "model", "", fmt.Sprintf("model id (default: provider-specific, e.g. %s)", "claude-sonnet-4-5 / gpt-5"))
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "override API base URL (OpenAI shape: Ollama, Groq, vLLM, ...)")
 	cmd.Flags().StringVar(&apiKeyEnv, "api-key-env", "", "env var holding the API key (default: provider-specific)")

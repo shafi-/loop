@@ -24,6 +24,11 @@ personas:
       You are a pragmatic software architect. You design the simplest
       system that satisfies the requirements, name concrete trade-offs,
       and avoid resume-driven development. Be terse and concrete.
+    # Agent stages need a model somewhere — on the stage or, like here,
+    # on the persona. The model id is optional (ANTHROPIC_MODEL env or
+    # the built-in default applies). Switch to openai if that's your setup.
+    model:
+      provider: anthropic
 
 stages:
   # A single LLM completion. The prompt is a template over the run context.

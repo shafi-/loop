@@ -29,9 +29,16 @@ func (m *ModelConfig) Resolve() ResolvedModel {
 		return ResolvedModel{}
 	}
 	provider := string(m.Provider)
+	if provider == "" {
+		// Provider not named anywhere: follow whatever the environment
+		// configures (llm.InferProvider). YAML validation rejects empty
+		// providers, so today only code-constructed configs hit this —
+		// but the rule belongs with the rest of resolution.
+		provider = llm.InferProvider()
+	}
 	apiKeyEnv := m.APIKeyEnv
 	if apiKeyEnv == "" {
-		apiKeyEnv = DefaultAPIKeyEnv[m.Provider]
+		apiKeyEnv = DefaultAPIKeyEnv[Provider(provider)]
 	}
 	return ResolvedModel{
 		Provider:  provider,
