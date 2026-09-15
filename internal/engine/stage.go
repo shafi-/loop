@@ -145,14 +145,15 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 		return nil, fmt.Errorf("input template: %w", err)
 	}
 
+	rm := modelCfg.Resolve()
 	task := executor.Task{
 		Instruction: instruction,
 		System:      persona.System,
 		CWD:         d.CWD,
 		Model: executor.ModelSpec{
-			Provider:    string(modelCfg.Provider),
-			Model:       llm.ResolveModel(string(modelCfg.Provider), modelCfg.Model),
-			BaseURL:     llm.ResolveBaseURL(string(modelCfg.Provider), modelCfg.BaseURL),
+			Provider:    rm.Provider,
+			Model:       rm.Model,
+			BaseURL:     rm.BaseURL,
 			Temperature: modelCfg.Temperature,
 			MaxTokens:   modelCfg.MaxTokens,
 		},

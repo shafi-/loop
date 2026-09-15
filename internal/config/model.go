@@ -37,14 +37,16 @@ var DefaultAPIKeyEnv = map[Provider]string{
 	ProviderOpenAI:    "OPENAI_API_KEY",
 }
 
-// ModelConfig selects which LLM a stage, agent, or narrator uses.
+// ModelConfig selects which LLM a stage, agent, or narrator uses. The
+// optional pieces (model id, base_url) resolve via Resolve():
+// caller value > env override > built-in default.
 type ModelConfig struct {
 	Provider    Provider `yaml:"provider"`
-	Model       string   `yaml:"model"`
-	BaseURL     string   `yaml:"base_url,omitempty"`    // OpenAI-shape only
-	APIKeyEnv   string   `yaml:"api_key_env,omitempty"` // env var holding the key
-	Temperature *float64 `yaml:"temperature,omitempty"` // nil = provider default
-	MaxTokens   int      `yaml:"max_tokens,omitempty"`  // 0 = adapter default
+	Model       string   `yaml:"model"`                  // optional; see Resolve()
+	BaseURL     string   `yaml:"base_url,omitempty"`     // redirects the provider's API family
+	APIKeyEnv   string   `yaml:"api_key_env,omitempty"`  // env var holding the key
+	Temperature *float64 `yaml:"temperature,omitempty"`  // nil = provider default
+	MaxTokens   int      `yaml:"max_tokens,omitempty"`   // 0 = adapter default
 }
 
 // RetryPolicy controls per-stage retry on transient failures.

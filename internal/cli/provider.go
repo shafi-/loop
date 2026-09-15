@@ -4,30 +4,30 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nerddevsltd/loop/internal/config"
 	"github.com/nerddevsltd/loop/internal/llm"
 )
 
-// resolveProvider builds a provider from command-line flags, applying the
-// same defaults everywhere: provider-specific key env vars, endpoint and
-// model overrides (ANTHROPIC_BASE_URL / OPENAI_BASE_URL,
-// ANTHROPIC_MODEL / OPENAI_MODEL), and model ids, with a clear error when
-// nothing can authenticate. Returns the provider and the resolved model id.
+// resolveProvider builds a provider from command-line flags. Flag values
+// become the caller-provided ModelConfig; the config resolver applies the
+// shared precedence (flags > env > defaults), and a clear error is
+// returned when nothing can authenticate. Returns the provider and the
+// resolved model id.
 func resolveProvider(provider, model, baseURL, apiKeyEnv string, retries int) (llm.Provider, string, error) {
-	if apiKeyEnv == "" {
-		apiKeyEnv = llm.DefaultAPIKeyEnvName[provider]
+	rm := (&config.ModelConfig{
+		Provider:  config.Provider(provider),
+		Model:     model,
+		BaseURL:   baseURL,
+		APIKeyEnv: apiKeyEnv,
+	}).Resolve()
+	opts := llm.Options{BaseURL: rm.BaseURL, MaxAttempts: retries}
+	opts.APIKey = os.Getenv(rm.APIKeyEnv)
+	if opts.APIKey == "" && rm.BaseURL == "" {
+		return nil, "", fmt.Errorf("no API key: set %s (or pass --base-url for a local/keyless server)", rm.APIKeyEnv)
 	}
-	baseURL = llm.ResolveBaseURL(provider, baseURL)
-	opts := llm.Options{BaseURL: baseURL, MaxAttempts: retries}
-	if apiKeyEnv != "" {
-		opts.APIKey = os.Getenv(apiKeyEnv)
-	}
-	if opts.APIKey == "" && baseURL == "" {
-		return nil, "", fmt.Errorf("no API key: set %s (or pass --base-url for a local/keyless server)", apiKeyEnv)
-	}
-	model = llm.ResolveModel(provider, model)
-	p, err := llm.New(provider, opts)
+	p, err := llm.New(rm.Provider, opts)
 	if err != nil {
 		return nil, "", err
 	}
-	return p, model, nil
+	return p, rm.Model, nil
 }

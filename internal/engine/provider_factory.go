@@ -20,23 +20,20 @@ func DefaultProviderFactory() ProviderFactory {
 	var mu sync.Mutex
 	cache := map[string]llm.Provider{}
 	return func(cfg *config.ModelConfig) (llm.Provider, error) {
-		// Env overrides (ANTHROPIC_BASE_URL / OPENAI_BASE_URL) count as
-		// "custom endpoint" everywhere cfg.BaseURL does, so they must be
-		// resolved before the cache key and the keyless check.
-		baseURL := llm.ResolveBaseURL(string(cfg.Provider), cfg.BaseURL)
-		key := fmt.Sprintf("%s|%s|%s", cfg.Provider, baseURL, cfg.APIKeyEnv)
+		rm := cfg.Resolve()
+		key := fmt.Sprintf("%s|%s|%s", rm.Provider, rm.BaseURL, rm.APIKeyEnv)
 		mu.Lock()
 		defer mu.Unlock()
 		if p, ok := cache[key]; ok {
 			return p, nil
 		}
-		apiKey := os.Getenv(cfg.APIKeyEnv)
-		if apiKey == "" && baseURL == "" {
-			return nil, fmt.Errorf("model %s: env var %s is not set", llm.ResolveModel(string(cfg.Provider), cfg.Model), cfg.APIKeyEnv)
+		apiKey := os.Getenv(rm.APIKeyEnv)
+		if apiKey == "" && rm.BaseURL == "" {
+			return nil, fmt.Errorf("model %s: env var %s is not set", rm.Model, rm.APIKeyEnv)
 		}
-		p, err := llm.New(string(cfg.Provider), llm.Options{
+		p, err := llm.New(rm.Provider, llm.Options{
 			APIKey:      apiKey,
-			BaseURL:     baseURL,
+			BaseURL:     rm.BaseURL,
 			MaxAttempts: 3,
 			BackoffMs:   500,
 		})
@@ -53,20 +50,21 @@ func DefaultProviderFactory() ProviderFactory {
 // factory's providers. A custom endpoint (YAML base_url or the provider's
 // BASE_URL env) makes the key optional — local/keyless servers exist.
 func resolveAPIKey(cfg *config.ModelConfig) (string, error) {
-	key := os.Getenv(cfg.APIKeyEnv)
-	if key == "" && llm.ResolveBaseURL(string(cfg.Provider), cfg.BaseURL) == "" {
-		return "", fmt.Errorf("env var %s is not set", cfg.APIKeyEnv)
+	rm := cfg.Resolve()
+	key := os.Getenv(rm.APIKeyEnv)
+	if key == "" && rm.BaseURL == "" {
+		return "", fmt.Errorf("env var %s is not set", rm.APIKeyEnv)
 	}
 	return key, nil
 }
 
 // llmRequest converts a stage model config into a normalized request
-// header (model params only; messages come from the stage). Model ids
-// resolve here so YAML, env (ANTHROPIC_MODEL / OPENAI_MODEL), and the
-// built-in default fall through in that order.
+// header (model params only; messages come from the stage). Resolution
+// happens inside the config resolver.
 func llmRequest(cfg *config.ModelConfig, system string, messages []llm.Message) llm.Request {
+	rm := cfg.Resolve()
 	return llm.Request{
-		Model:       llm.ResolveModel(string(cfg.Provider), cfg.Model),
+		Model:       rm.Model,
 		System:      system,
 		Messages:    messages,
 		Temperature: cfg.Temperature,
