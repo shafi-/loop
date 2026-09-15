@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -27,7 +28,7 @@ func newValidateCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "✓ %s\n", path)
 			}
 			if failed {
-				os.Exit(1)
+				return errors.New("validation failed")
 			}
 			return nil
 		},

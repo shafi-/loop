@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -177,9 +178,8 @@ func newRunCmd() *cobra.Command {
 				// paused stage. Interrupts (ctrl-c) keep the failure-style
 				// exit code but are just as resumable.
 				if res.Err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "✗ run %s interrupted at stage %q: %v\n", res.RunID, res.PausedStage, res.Err)
-					fmt.Fprintf(cmd.ErrOrStderr(), "  resume with: loop run %s --resume %s\n", args[0], res.RunID)
-					os.Exit(1)
+					return fmt.Errorf("✗ run %s interrupted at stage %q: %v\n  resume with: loop run %s --resume %s",
+						res.RunID, res.PausedStage, res.Err, args[0], res.RunID)
 				}
 				logf("⏸ run %s paused at stage %q", res.RunID, res.PausedStage)
 				fmt.Fprintf(cmd.ErrOrStderr(), "  resume with: loop run %s --resume %s\n", args[0], res.RunID)
@@ -187,12 +187,13 @@ func newRunCmd() *cobra.Command {
 			}
 			if !res.Completed {
 				// Failures are never suppressed by --quiet; only progress chatter is.
-				fmt.Fprintf(cmd.ErrOrStderr(), "✗ run %s failed at stage %q: %v\n", res.RunID, res.FailedStage, res.Err)
+				var b strings.Builder
+				fmt.Fprintf(&b, "✗ run %s failed at stage %q: %v\n", res.RunID, res.FailedStage, res.Err)
 				if res.Summary != "" {
-					fmt.Fprintf(cmd.ErrOrStderr(), "  ↳ %s\n", res.Summary)
+					fmt.Fprintf(&b, "  ↳ %s\n", res.Summary)
 				}
-				fmt.Fprintf(cmd.ErrOrStderr(), "  resume with: loop run %s --resume %s\n", args[0], res.RunID)
-				os.Exit(1)
+				fmt.Fprintf(&b, "  resume with: loop run %s --resume %s", args[0], res.RunID)
+				return errors.New(b.String())
 			}
 			logf("✓ run %s completed", res.RunID)
 			return nil

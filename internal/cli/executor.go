@@ -42,8 +42,7 @@ func newExecutorInstallCmd() *cobra.Command {
 			}
 			dir, err := cline.Install()
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "✗ %v\n", err)
-				os.Exit(1)
+				return err
 			}
 			ex := cline.New()
 			ex.HostPath = dir + "/index.mjs"
