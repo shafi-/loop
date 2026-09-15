@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,10 +22,13 @@ type Message struct {
 }
 
 // Transcript is the room's shared memory: append-only on disk, windowed
-// in prompts.
+// in prompts. It is safe for concurrent use — the room loop, pipeline
+// status relays, and agent tool hooks append from different goroutines.
 type Transcript struct {
 	Messages []Message
 	path     string // empty = in-memory only (tests)
+
+	mu sync.Mutex
 }
 
 // OpenTranscript loads (or creates) the transcript at dir/transcript.jsonl.
@@ -55,7 +59,9 @@ func OpenTranscript(dir string) (*Transcript, error) {
 // Append records a message and persists it immediately.
 func (t *Transcript) Append(from, text string) error {
 	m := Message{TS: time.Now().UTC(), From: from, Text: text}
+	t.mu.Lock()
 	t.Messages = append(t.Messages, m)
+	t.mu.Unlock()
 	if t.path == "" {
 		return nil
 	}
@@ -72,12 +78,19 @@ func (t *Transcript) Append(from, text string) error {
 	return err
 }
 
-// Window returns at most n recent messages, oldest first.
+// Window returns at most n recent messages, oldest first. The result is
+// a copy: callers iterate after the lock is released, and Append may
+// write into the original's spare capacity concurrently.
 func (t *Transcript) Window(n int) []Message {
-	if n <= 0 || len(t.Messages) <= n {
-		return t.Messages
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	msgs := t.Messages
+	if n > 0 && len(msgs) > n {
+		msgs = msgs[len(msgs)-n:]
 	}
-	return t.Messages[len(t.Messages)-n:]
+	out := make([]Message, len(msgs))
+	copy(out, msgs)
+	return out
 }
 
 // Render formats messages with explicit attribution — the form every

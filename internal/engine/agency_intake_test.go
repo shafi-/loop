@@ -55,6 +55,10 @@ func TestAgencyIntakeRoomIsEnvDriven(t *testing.T) {
 	if room.Name != "agency-intake" {
 		t.Errorf("room name = %q, want agency-intake (the pipeline's intake stage reads .loop/rooms/<name>/)", room.Name)
 	}
+	// The room owns the delivery pipeline — the cockpit contract.
+	if len(room.Pipelines) != 1 || room.Pipelines[0].Name != "deliver" || room.Pipelines[0].File != "delivery-pipeline.yaml" {
+		t.Errorf("room pipelines = %+v, want deliver → delivery-pipeline.yaml", room.Pipelines)
+	}
 	if len(room.Agents) != 3 {
 		t.Fatalf("agents = %d, want 3 (lead, strategist, estimator)", len(room.Agents))
 	}

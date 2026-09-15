@@ -174,7 +174,9 @@ Flags: `--run-id` (choose your own id), `--resume <id>`, `--runs-dir`
 
 Open a multi-agent room. The optional opening message is delivered as if
 you typed it, then the session stays interactive. Commands: `/agents`
-(participants with their resolved provider/model), `/help`, `/quit`.
+(participants with their resolved provider/model and tools), `/help`,
+`/quit` — and, when the room owns pipelines (§5), `/pipelines`,
+`/run`, `/approve`, `/status`, `/halt`.
 Transcripts persist under `.loop/rooms/<room>/transcript.jsonl`.
 `--rooms-dir` moves that location.
 
@@ -351,12 +353,21 @@ retried (you'd see duplicated output).
 ```yaml
 name: leadership
 
+pipelines:                      # pipelines this room can command
+  - name: deliver               # in-room alias
+    file: ./delivery.yaml       # resolved relative to the room file
+
 agents:
   - name: ceo                   # address with @ceo
     role: CEO
     system: |
       You are the CEO. ...
     # no model block → follows the configured env family
+  - name: architect
+    role: Architect
+    system: |
+      You design systems. ...
+    tools: [read_file, write_file]   # optional — see "agents with tools"
 
 settings:
   speak_threshold: 0.6          # 0–1; observers above this speak
@@ -373,6 +384,47 @@ reason}`. Priority maps to confidence; only decisions above
 `👁 @name saw the message` — silence with a receipt, never a verbose
 excuse. Failed self-checks are silent (an observer that errs stays
 quiet).
+
+### Agents with tools
+
+`tools:` on a room agent enables a bounded native tool loop inside its
+replies: `read_file`, `write_file`, `run_command` (the fixed set).
+File paths are **confined to the workspace** — absolute paths and `..`
+escapes are refused; tool output is capped; commands run via `sh -c`
+with a 60s timeout; the loop is bounded (8 rounds). Every executed tool
+is noticed in the room (`🔧 @architect wrote plans/x.md`) and recorded
+in the transcript, so the other agents learn the file exists. Tool
+errors go back to the model as results — a bad path is a correction,
+not a dead turn. Caveat worth knowing: `run_command` executes what the
+model asks; grant it only to agents you trust with a shell.
+
+### Rooms command pipelines
+
+A room with a `pipelines:` section is a cockpit. In the session:
+
+| Command | What it does |
+|---|---|
+| `/pipelines` | list owned pipelines |
+| `/run <name> [--var k=v]…` | run one as a **real `loop run` subprocess**, in the background |
+| `/approve <yes\|no\|words>` | answer a pipeline asking for approval (free words understood — the gate contract) |
+| `/status` | active runs: alias, run id, state, last event |
+| `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
+
+The run pushes **status one-liners** into the room as they happen
+(`▸ deliver: → brief (llm)`); its **output stays in files**
+(`.loop/runs/<id>/` and stage-written artifacts) — the room never gets
+a wall of stage output. Gates ask **in the room**; your `/approve`
+answer is fed to the run, where the same terminal semantics apply
+(vocabulary yes/no, one classification call for words, `/pause`
+equivalents via `/halt`). Only **you** start runs; agents can propose,
+nothing spends without your command.
+
+Rules of the road: one active run per pipeline alias, several aliases
+concurrently; when several gates wait at once, name the target
+(`/approve deliver yes`, `/halt deliver`); quitting the room halts all
+runs resumably. Concurrent pipelines writing the **same workspace
+paths** can collide — that's a property of the pipelines, same as two
+terminals.
 
 ---
 

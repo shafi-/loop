@@ -2,8 +2,11 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -37,9 +40,20 @@ func NewRootCmd() *cobra.Command {
 // Execute runs the root command and maps errors to exit codes. A .env in
 // the working directory (and $LOOP_ENV_FILE, if set) is loaded first so
 // every command sees the same credentials.
+//
+// SIGINT/SIGTERM cancel the command context instead of killing the
+// process: a run interrupted mid-stage records its resume point and
+// exits non-zero rather than dying without a trace. A second signal
+// after that restores the default handler — the next one force-kills.
 func Execute() {
 	loadDotenv()
-	if err := NewRootCmd().Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop() // restore default handling: a second ctrl-c must be able to kill
+	}()
+	if err := NewRootCmd().ExecuteContext(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

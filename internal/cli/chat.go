@@ -54,6 +54,13 @@ func newChatCmd() *cobra.Command {
 			fmt.Fprintln(out, "/agents list · /help · /quit")
 
 			ui := &terminalChatUI{out: out, err: cmd.ErrOrStderr()}
+			// Pipelines this room owns: /run commands real `loop run`
+			// subprocesses from inside the conversation.
+			bin, err := executablePath()
+			if err != nil {
+				bin = "loop"
+			}
+			sess := newRoomRunSession(bin, args[0], room.Pipelines, ui, out, transcript)
 			// An optional opening message is delivered exactly as if the
 			// user had typed it; the session stays interactive afterwards.
 			// Like typed input, a failed delivery never ends the session.
@@ -76,6 +83,7 @@ func newChatCmd() *cobra.Command {
 				}
 				switch text {
 				case "/quit", "/exit":
+					sess.Shutdown()
 					fmt.Fprintln(out, "session ended — transcript kept in", filepath.Join(roomsDir, room.Name))
 					return nil
 				case "/help":
@@ -85,8 +93,15 @@ func newChatCmd() *cobra.Command {
 					for _, a := range room.Agents {
 						// Show what would actually run (env/defaults applied).
 						rm := a.Model.Resolve()
-						fmt.Fprintf(out, "  @%s — %s (%s/%s)\n", a.Name, a.Role, rm.Provider, rm.Model)
+						tools := "no tools"
+						if len(a.Tools) > 0 {
+							tools = strings.Join(a.Tools, ", ")
+						}
+						fmt.Fprintf(out, "  @%s — %s (%s/%s; %s)\n", a.Name, a.Role, rm.Provider, rm.Model, tools)
 					}
+					continue
+				}
+				if handleRoomRunCommand(text, sess, out) {
 					continue
 				}
 				if err := r.Say(cmd.Context(), text, ui); err != nil {
@@ -100,6 +115,11 @@ func newChatCmd() *cobra.Command {
 	cmd.Flags().StringVar(&roomsDir, "rooms-dir", "", "where room transcripts are stored (default .loop/rooms)")
 	return cmd
 }
+
+// executablePath resolves the loop binary for room-commanded runs
+// (rooms re-exec the real CLI). A variable so end-to-end tests can
+// point it at a freshly built binary.
+var executablePath = os.Executable
 
 // buildRoomAgents resolves a provider per agent. An agent without a
 // model block is env-driven: whatever family the environment configures
@@ -128,7 +148,90 @@ func printChatHelp(out io.Writer) {
 	fmt.Fprintln(out, `  just type    everyone reads it; tagged agents reply, others may join
   @name text   force a reply from @name (multiple tags allowed)
   /agents      list participants
-  /quit        end the session (transcript is kept)`)
+  /pipelines   list the pipelines this room owns
+  /run <name> [--var k=v]…   run an owned pipeline in the background
+  /approve <yes|no|words>    answer a pipeline asking for approval
+  /status      active runs and where their output lives
+  /halt [name] stop a run cleanly (resumable with /run <name> --resume <id>)
+  /quit        end the session (running pipelines are halted resumably)`)
+}
+
+// handleRoomRunCommand dispatches the pipeline commands. It returns
+// false when the line is not one of them, so the room loop can keep
+// processing (or send it to the agents).
+func handleRoomRunCommand(text string, sess *roomRunSession, out io.Writer) bool {
+	fields := strings.Fields(text)
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
+		return false
+	}
+	switch fields[0] {
+	case "/pipelines":
+		if len(sess.pipelines) == 0 {
+			fmt.Fprintln(out, "this room owns no pipelines — add a `pipelines:` section to the room YAML")
+			return true
+		}
+		for _, p := range sess.pipelines {
+			fmt.Fprintf(out, "  %s — %s\n", p.Name, p.File)
+		}
+		fmt.Fprintln(out, "run one with: /run <name> [--var k=v]…")
+
+	case "/run":
+		if len(fields) < 2 {
+			fmt.Fprintln(out, "usage: /run <name> [--resume <id>] [--var k=v]…")
+			return true
+		}
+		name := fields[1]
+		var resume string
+		var extra []string
+		for i := 2; i < len(fields); i++ {
+			switch fields[i] {
+			case "--resume":
+				if i+1 < len(fields) {
+					i++
+					resume = fields[i]
+				}
+			default:
+				extra = append(extra, fields[i])
+			}
+		}
+		if err := sess.Start(name, resume, extra); err != nil {
+			fmt.Fprintf(out, "✗ %v\n", err)
+		}
+
+	case "/approve":
+		if len(fields) < 2 {
+			fmt.Fprintln(out, "usage: /approve <yes|no|your words>  (or /approve <name> <answer> when several gates wait)")
+			return true
+		}
+		rest := fields[1:]
+		alias := ""
+		if len(rest) > 1 {
+			if _, known := sess.resolveFile(rest[0]); known {
+				alias, rest = rest[0], rest[1:]
+			}
+		}
+		if err := sess.Approve(alias, strings.Join(rest, " ")); err != nil {
+			fmt.Fprintf(out, "✗ %v\n", err)
+		}
+
+	case "/status":
+		for _, line := range sess.Status() {
+			fmt.Fprintln(out, line)
+		}
+
+	case "/halt":
+		alias := ""
+		if len(fields) > 1 {
+			alias = fields[1]
+		}
+		if err := sess.Halt(alias); err != nil {
+			fmt.Fprintf(out, "✗ %v\n", err)
+		}
+
+	default:
+		return false
+	}
+	return true
 }
 
 // terminalChatUI renders room activity for a human.

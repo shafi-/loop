@@ -5,14 +5,22 @@
 # the strategist and estimator read along and speak when their domain
 # is at stake (or stay silent — that's the product).
 #
+# This room is also the cockpit: it OWNS the delivery pipeline. When
+# the brief settles, /run deliver executes it as a real background
+# `loop run` — status one-liners arrive here, output stays in files,
+# and the pipeline's approval gate asks right here (/approve).
+#
 # The transcript this session writes (.loop/rooms/agency-intake/) is
-# the input of delivery-pipeline.yaml in this directory. The room IS
-# the front half of the pipeline.
+# the pipeline's input: the room IS the front half of the pipeline.
 #
 # Validate it:  loop validate examples/agency-intake/intake-room.yaml
 # Open it:      loop chat examples/agency-intake/intake-room.yaml "we need a landing page for our drone photography business, something that feels premium"
 
 name: agency-intake
+
+pipelines:
+  - name: deliver
+    file: delivery-pipeline.yaml
 
 agents:
   - name: lead
@@ -35,7 +43,14 @@ agents:
       single biggest risk, and what "done" looks like. You speak when
       the discussion drifts, or when a decision is being made without
       its trade-off stated out loud. You are terse; you write like a
-      senior person who has shipped this kind of work before.
+      senior person who has shipped this kind of work before. When
+      the brief has settled, offer to persist it (e.g. to
+      briefs/<feature>.md) so the delivery pipeline and future
+      sessions can reuse it.
+    # File tools, confined to the workspace: the strategist can persist
+    # the settled brief itself. Every read/write is noticed in the room
+    # and recorded in the transcript.
+    tools: [read_file, write_file]
 
   - name: estimator
     role: Estimator

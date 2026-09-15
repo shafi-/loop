@@ -251,6 +251,10 @@ func (e *Executor) Run(ctx context.Context, task executor.Task, onEvent func(exe
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	// The child's stderr copier is only finished once Wait returns;
+	// waiting here before reading the buffer avoids racing late writes.
+	stdin.Close()
+	_ = cmd.Wait()
 	tail := strings.TrimSpace(stderr.String())
 	if tail != "" {
 		return nil, fmt.Errorf("cline host exited without completing; stderr: %s", tailLines(tail, 3))
