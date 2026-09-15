@@ -132,7 +132,10 @@ func (p *Pipeline) Validate() ValidationErrors {
 }
 
 // validateModel checks a ModelConfig. Required=false lets persona-level
-// models stay optional (an agent inherits its persona's model).
+// models stay optional (an agent inherits its persona's model). The model
+// *id* inside is always optional: it falls back to ANTHROPIC_MODEL /
+// OPENAI_MODEL env overrides, then the provider's built-in default at
+// resolution time (internal/llm.ResolveModel).
 func validateModel(err func(string, string, ...any), path string, m *ModelConfig, required bool) {
 	if m == nil {
 		if required {
@@ -150,12 +153,6 @@ func validateModel(err func(string, string, ...any), path string, m *ModelConfig
 	if !valid {
 		err(path+".provider", "must be one of: anthropic, openai (got %q)", m.Provider)
 		return
-	}
-	if m.Model == "" {
-		err(path+".model", "is required")
-	}
-	if m.Provider == ProviderAnthropic && m.BaseURL != "" {
-		err(path+".base_url", "is only supported for provider \"openai\"")
 	}
 	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
 		err(path+".temperature", "must be between 0 and 2 (got %v)", *m.Temperature)

@@ -145,5 +145,7 @@ func (a *Agent) model() string {
 	if a.Persona.Model == nil {
 		return ""
 	}
-	return a.Persona.Model.Model
+	// Env override (ANTHROPIC_MODEL / OPENAI_MODEL) and the built-in
+	// default apply when the persona names only a provider.
+	return llm.ResolveModel(string(a.Persona.Model.Provider), a.Persona.Model.Model)
 }

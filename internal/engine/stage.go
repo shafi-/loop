@@ -96,16 +96,18 @@ func completeLLM(ctx context.Context, p llm.Provider, req llm.Request, stdout io
 
 // llmFailure wraps a provider error with the model name and an
 // actionable hint, so pipeline authors fix config instead of decoding
-// provider payloads.
+// provider payloads. The model id is shown resolved (env overrides and
+// built-in defaults applied), not the raw YAML value.
 func llmFailure(err error, cfg *config.ModelConfig) error {
 	detail := llm.Hint(err)
 	if d := llm.AuthEnvDetail(err, cfg.APIKeyEnv); d != "" {
 		detail = detail + " — " + d
 	}
+	model := llm.ResolveModel(string(cfg.Provider), cfg.Model)
 	if detail != "" {
-		return fmt.Errorf("model %s: %w (hint: %s)", cfg.Model, err, detail)
+		return fmt.Errorf("model %s: %w (hint: %s)", model, err, detail)
 	}
-	return fmt.Errorf("model %s: %w", cfg.Model, err)
+	return fmt.Errorf("model %s: %w", model, err)
 }
 
 // runAgentStage delegates to the configured executor. The instruction is
@@ -149,8 +151,8 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 		CWD:         d.CWD,
 		Model: executor.ModelSpec{
 			Provider:    string(modelCfg.Provider),
-			Model:       modelCfg.Model,
-			BaseURL:     modelCfg.BaseURL,
+			Model:       llm.ResolveModel(string(modelCfg.Provider), modelCfg.Model),
+			BaseURL:     llm.ResolveBaseURL(string(modelCfg.Provider), modelCfg.BaseURL),
 			Temperature: modelCfg.Temperature,
 			MaxTokens:   modelCfg.MaxTokens,
 		},

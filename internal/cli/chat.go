@@ -14,6 +14,7 @@ import (
 	"github.com/nerddevsltd/loop/internal/chat"
 	"github.com/nerddevsltd/loop/internal/config"
 	"github.com/nerddevsltd/loop/internal/engine"
+	"github.com/nerddevsltd/loop/internal/llm"
 )
 
 func newChatCmd() *cobra.Command {
@@ -73,7 +74,7 @@ func newChatCmd() *cobra.Command {
 					for _, a := range room.Agents {
 						model := "no model"
 						if a.Model != nil {
-							model = string(a.Model.Provider) + "/" + a.Model.Model
+							model = string(a.Model.Provider) + "/" + llm.ResolveModel(string(a.Model.Provider), a.Model.Model)
 						}
 						fmt.Fprintf(out, "  @%s — %s (%s)\n", a.Name, a.Role, model)
 					}

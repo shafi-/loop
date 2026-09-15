@@ -11,6 +11,7 @@ import (
 
 	"github.com/nerddevsltd/loop/internal/config"
 	"github.com/nerddevsltd/loop/internal/engine"
+	"github.com/nerddevsltd/loop/internal/llm"
 	"github.com/nerddevsltd/loop/internal/narrator"
 )
 
@@ -98,7 +99,8 @@ func newRunCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("narrator: %w", err)
 				}
-				narr = &narrator.Narrator{Provider: provider, Model: pipeline.Runtime.Narrator.Model, Logf: func(format string, a ...any) {
+				narrModel := llm.ResolveModel(string(pipeline.Runtime.Narrator.Provider), pipeline.Runtime.Narrator.Model)
+				narr = &narrator.Narrator{Provider: provider, Model: narrModel, Logf: func(format string, a ...any) {
 					fmt.Fprintf(cmd.ErrOrStderr(), "· "+format+"\n", a...)
 				}}
 			}

@@ -30,11 +30,18 @@ function send(obj) {
 }
 
 function toClineProvider(model) {
-  // loop's two provider families map onto cline's documented IDs.
+  // loop's two provider families map onto cline's documented IDs. A
+  // baseUrl redirects the matching API family (e.g. ANTHROPIC_BASE_URL
+  // pointing at a gateway) — it must not switch the wire format.
+  if (model.provider === "anthropic") {
+    const p = { providerId: "anthropic" };
+    if (model.baseUrl) p.baseUrl = model.baseUrl;
+    return p;
+  }
   if (model.baseUrl) {
     return { providerId: "openai-compatible", baseUrl: model.baseUrl };
   }
-  return { providerId: model.provider === "anthropic" ? "anthropic" : "openai" };
+  return { providerId: "openai" };
 }
 
 async function runTask(task) {
