@@ -35,23 +35,27 @@ echo "installing loop $tag ($os/$arch)…"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-curl -fsSL "$url" | tar -xzf - -C "$tmp"
-[ -f "$tmp/loop" ] || { echo "loop installer: download did not contain the loop binary" >&2; exit 1; }
+curl -fsSL "$url" -o "$tmp/$asset"
 
-# Verify against the release checksums when they are reachable.
+# Verify the tarball against the release checksums when they are
+# reachable. SHA256SUMS carries the checksum of each .tar.gz (as the
+# release pipeline computed it) — verify before extracting.
 sums=$(curl -fsSL "https://github.com/$REPO/releases/download/$tag/SHA256SUMS" 2>/dev/null || true)
 if [ -n "$sums" ]; then
   expected=$(printf '%s\n' "$sums" | grep " $asset\$" | cut -d' ' -f1)
   if [ -n "$expected" ]; then
     if command -v sha256sum >/dev/null; then
-      actual=$(sha256sum "$tmp/loop" | cut -d' ' -f1)
+      actual=$(sha256sum "$tmp/$asset" | cut -d' ' -f1)
     else
-      actual=$(shasum -a 256 "$tmp/loop" | cut -d' ' -f1)
+      actual=$(shasum -a 256 "$tmp/$asset" | cut -d' ' -f1)
     fi
     [ "$actual" = "$expected" ] || { echo "loop installer: checksum mismatch for $asset" >&2; exit 1; }
     echo "checksum verified"
   fi
 fi
+
+tar -xzf "$tmp/$asset" -C "$tmp"
+[ -f "$tmp/loop" ] || { echo "loop installer: download did not contain the loop binary" >&2; exit 1; }
 
 if [ -n "${INSTALL_DIR:-}" ]; then
   dir=$INSTALL_DIR
