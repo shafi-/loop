@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/engine"
-	"github.com/nerddevsltd/loop/internal/executor"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/engine"
+	"github.com/shafi-/loop/internal/executor"
 )
 
 // TestPipelineAgentStageThroughClineExecutor proves the full wiring:

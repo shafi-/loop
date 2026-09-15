@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // resolveProvider builds a provider from command-line flags. Flag values

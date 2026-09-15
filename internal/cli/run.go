@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/engine"
-	"github.com/nerddevsltd/loop/internal/narrator"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/engine"
+	"github.com/shafi-/loop/internal/narrator"
 )
 
 // terminalHuman asks the user questions on stderr and reads replies from

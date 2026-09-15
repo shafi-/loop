@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // A minimal but genuinely valid pipeline in JSON form, as we instruct the

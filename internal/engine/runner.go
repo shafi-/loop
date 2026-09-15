@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/executor"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/executor"
 )
 
 // maxSteps caps total stage transitions per run. The schema allows routers

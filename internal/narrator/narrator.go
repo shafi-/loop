@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // maxNarrationInput caps anything we send for narration — a narrator

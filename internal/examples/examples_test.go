@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/config"
+	"github.com/shafi-/loop/internal/config"
 )
 
 // The example doubles as a few-shot prompt for the generator. If it ever

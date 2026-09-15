@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 
-	"github.com/nerddevsltd/loop/internal/config"
+	"github.com/shafi-/loop/internal/config"
 )
 
 // Narrator is the engine's hook for its own LLM commentary. All methods

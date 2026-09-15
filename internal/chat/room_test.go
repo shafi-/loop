@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/agent"
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/agent"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // recorderUI captures everything the room reports.

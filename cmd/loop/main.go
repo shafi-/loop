@@ -2,7 +2,7 @@
 // persona chat rooms, powered by pluggable LLM providers.
 package main
 
-import "github.com/nerddevsltd/loop/internal/cli"
+import "github.com/shafi-/loop/internal/cli"
 
 func main() {
 	cli.Execute()

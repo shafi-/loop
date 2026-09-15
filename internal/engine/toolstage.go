@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/nerddevsltd/loop/internal/config"
+	"github.com/shafi-/loop/internal/config"
 )
 
 // maxToolOutput caps captured stdout/stderr so a runaway command can't

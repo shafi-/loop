@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // The grand rule, pinned: .env/env configures the baseline, and any

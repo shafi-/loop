@@ -1,6 +1,6 @@
 package config
 
-import "github.com/nerddevsltd/loop/internal/llm"
+import "github.com/shafi-/loop/internal/llm"
 
 // ResolvedModel is a ModelConfig with every optional piece filled in.
 // Nothing here is "" for a valid provider, so callers never re-derive

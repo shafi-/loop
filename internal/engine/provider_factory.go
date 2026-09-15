@@ -5,8 +5,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // ProviderFactory turns a stage's model config into a ready provider.

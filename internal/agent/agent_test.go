@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // Room agents resolve their model through the same env-first rule as

@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nerddevsltd/loop/internal/generator"
+	"github.com/shafi-/loop/internal/generator"
 )
 
 func newNewCmd() *cobra.Command {

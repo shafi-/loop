@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/nerddevsltd/loop/internal/config"
+	"github.com/shafi-/loop/internal/config"
 )
 
 func newValidateCmd() *cobra.Command {

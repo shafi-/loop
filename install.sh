@@ -1,13 +1,13 @@
 #!/bin/sh
 # loop installer — fetches the latest release binary for your platform.
 #
-#   curl -fsSL https://raw.githubusercontent.com/nerddevsltd/loop/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/shafi-/loop/main/install.sh | sh
 #
 # Install location: $INSTALL_DIR, else /usr/local/bin when writable,
 # else ~/.local/bin (added to PATH hints printed at the end).
 set -eu
 
-REPO="nerddevsltd/loop"
+REPO="shafi-/loop"
 
 case "$(uname -s)" in
   Darwin) os=darwin ;;

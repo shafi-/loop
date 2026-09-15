@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nerddevsltd/loop/internal/executor"
+	"github.com/shafi-/loop/internal/executor"
 )
 
 // MinNodeMajor is the SDK's documented floor (Node 22).

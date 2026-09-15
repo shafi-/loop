@@ -1,4 +1,4 @@
-module github.com/nerddevsltd/loop
+module github.com/shafi-/loop
 
 go 1.27.1
 

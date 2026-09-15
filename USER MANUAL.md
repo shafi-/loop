@@ -18,7 +18,7 @@ models speak.**
 One line (macOS / Linux, amd64 or arm64):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nerddevsltd/loop/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/shafi-/loop/main/install.sh | sh
 ```
 
 The script picks the right binary from the latest GitHub release,

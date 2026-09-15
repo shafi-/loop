@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nerddevsltd/loop/internal/executor"
-	"github.com/nerddevsltd/loop/internal/executor/cline"
+	"github.com/shafi-/loop/internal/executor"
+	"github.com/shafi-/loop/internal/executor/cline"
 )
 
 // executorRegistry returns the registry the runner should use, with every

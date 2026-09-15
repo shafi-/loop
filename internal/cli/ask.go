@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 func newAskCmd() *cobra.Command {

@@ -33,7 +33,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           go build -trimpath \
-            -ldflags "-s -w -X github.com/nerddevsltd/loop/internal/cli.version=${GITHUB_REF_NAME}" \
+            -ldflags "-s -w -X github.com/shafi-/loop/internal/cli.version=${GITHUB_REF_NAME}" \
             -o "dist/loop" ./cmd/loop
 
       - name: Package

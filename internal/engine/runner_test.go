@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/executor"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/executor"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // stubHuman answers human prompts from a script and records what it was asked.

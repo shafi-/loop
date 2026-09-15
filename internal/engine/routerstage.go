@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nerddevsltd/loop/internal/config"
+	"github.com/shafi-/loop/internal/config"
 )
 
 // runRouterStage evaluates rules in order; the first true `if` wins, and

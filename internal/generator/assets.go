@@ -3,7 +3,7 @@ package generator
 import (
 	_ "embed"
 
-	"github.com/nerddevsltd/loop/internal/examples"
+	"github.com/shafi-/loop/internal/examples"
 )
 
 //go:embed contract.md

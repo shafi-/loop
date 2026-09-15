@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/executor"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/executor"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // HumanIO is how the engine asks the user a question (human stages).

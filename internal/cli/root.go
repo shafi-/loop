@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nerddevsltd/loop/internal/dotenv"
+	"github.com/shafi-/loop/internal/dotenv"
 )
 
 // version is set via -ldflags at release time.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/executor"
+	"github.com/shafi-/loop/internal/executor"
 )
 
 // fakeHost is a shell script pretending to be the node host: it emits

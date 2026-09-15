@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/nerddevsltd/loop/internal/agent"
-	"github.com/nerddevsltd/loop/internal/chat"
-	"github.com/nerddevsltd/loop/internal/config"
-	"github.com/nerddevsltd/loop/internal/engine"
+	"github.com/shafi-/loop/internal/agent"
+	"github.com/shafi-/loop/internal/chat"
+	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/engine"
 )
 
 func newChatCmd() *cobra.Command {

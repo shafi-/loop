@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nerddevsltd/loop/internal/executor"
-	"github.com/nerddevsltd/loop/internal/llm"
+	"github.com/shafi-/loop/internal/executor"
+	"github.com/shafi-/loop/internal/llm"
 )
 
 // Agent stages hand a concrete ModelSpec to the executor. When no model

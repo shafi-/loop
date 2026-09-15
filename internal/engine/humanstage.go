@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nerddevsltd/loop/internal/config"
+	"github.com/shafi-/loop/internal/config"
 )
 
 // runHumanStage pauses the run and asks the user. The answer is stored
