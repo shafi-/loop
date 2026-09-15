@@ -74,26 +74,31 @@ stages:
     max_iterations: 10
     output: plan_md
 
-  # A human checkpoint: the run pauses here in your terminal.
+  # A human gate: the run pauses here in your terminal. The gate
+  # understands "yes", "no", and free words — one classification call
+  # reads your intent, so the router branches on what you meant.
   # Note the reference: outputs.plan_md is the shared, mutable slot —
   # both plan and revise write it, so this always shows the latest.
   # (stages.plan.output, by contrast, is that stage's frozen first run.)
   - id: approval
     type: human
+    gate: true
     prompt: |
-      Review the delivery plan below. Reply exactly "yes" to approve,
-      or describe what should change — your words feed the revision
-      loop and you'll review again.
+      Review the delivery plan below. Reply yes to approve, no to
+      reject, or describe what should change — free-form is understood,
+      and you'll review the revision.
 
       ${outputs.plan_md}
     output: approval.answer
 
-  # Deterministic branch: approved → ship; anything else → revise.
+  # Deterministic branch on the gate's intent label.
   - id: route
     type: router
     when:
-      - if: "${stages.approval.answer} == 'yes'"
+      - if: "${stages.approval.intent} == 'yes'"
         next: ship
+      - if: "${stages.approval.intent} == 'no'"
+        next: rejected
       - next: revise
 
   # Revision: the client's words go in, the same outputs.plan_md slot
@@ -118,8 +123,16 @@ stages:
     when:
       - next: approval
 
+  # The two endings are terminal: reaching one completes the run
+  # (a rejection is a decision, not a failure — nothing to resume).
+  - id: rejected
+    type: tool
+    terminal: true
+    run: echo "rejected by the client — nothing shipped"
+
   # Deterministic ending: the approved plan lands in the workspace.
   - id: ship
     type: tool
+    terminal: true
     input: ${outputs.plan_md}
     run: mkdir -p deliveries && cat > deliveries/plan.md

@@ -58,9 +58,16 @@ func (p *Pipeline) Validate() ValidationErrors {
 			if s.Human.Prompt == "" {
 				err(path+".prompt", "is required for a human stage")
 			}
+			validateModel(err, path+".model", s.Human.Model) // optional: gate classification
+			if s.Human.Model != nil && !s.Human.Gate {
+				err(path+".model", "is only used with gate: true on a human stage")
+			}
 		case StageRouter:
 			if len(s.Router.When) == 0 {
 				err(path+".when", "must list at least one rule")
+			}
+			if s.Terminal {
+				err(path+".terminal", "does not apply to a router — a router's job is to jump, not to end")
 			}
 			hasDefault := false
 			for j := range s.Router.When {

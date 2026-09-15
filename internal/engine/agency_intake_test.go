@@ -85,10 +85,12 @@ func TestAgencyDeliveryPipelineRunsEndToEndWithRevisionLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// LLM stages in order: brief, then revise. The revision must
-	// overwrite plan_md so approval and ship see the latest.
+	// LLM stages in order: brief, the gate's classifier, then revise.
+	// The revision must overwrite plan_md so approval and ship see the
+	// latest.
 	m := llm.NewMock(
 		&llm.Response{Text: "BRIEF: premium drone photography landing page, four weeks, modest budget", StopReason: llm.StopEndTurn},
+		&llm.Response{Text: "changes", StopReason: llm.StopEndTurn},
 		&llm.Response{Text: "PLAN v2 — revised: shorter hero, budget kept", StopReason: llm.StopEndTurn},
 	)
 	// The demo's agent stage uses the default executor ("cline"); a
@@ -115,14 +117,18 @@ func TestAgencyDeliveryPipelineRunsEndToEndWithRevisionLoop(t *testing.T) {
 	}
 
 	// The room transcript reached the brief prompt verbatim.
-	if m.Calls() != 2 {
-		t.Fatalf("llm calls = %d, want 2 (brief, revise)", m.Calls())
+	if m.Calls() != 3 {
+		t.Fatalf("llm calls = %d, want 3 (brief, gate classifier, revise)", m.Calls())
 	}
 	if got := m.Requests()[0].Messages[0].Content; !strings.Contains(got, "premium landing page for drone photography") {
 		t.Errorf("brief prompt did not include the transcript:\n%s", got)
 	}
-	// The revision prompt carried the client's words and the current plan.
+	// The classifier saw the client's words against the plan under review.
 	if got := m.Requests()[1].Messages[0].Content; !strings.Contains(got, "make the hero shorter") || !strings.Contains(got, "PLAN v1") {
+		t.Errorf("classifier prompt missing the words or the plan:\n%s", got)
+	}
+	// The revision prompt carried the client's words and the current plan.
+	if got := m.Requests()[2].Messages[0].Content; !strings.Contains(got, "make the hero shorter") || !strings.Contains(got, "PLAN v1") {
 		t.Errorf("revise prompt missing client words or current plan:\n%s", got)
 	}
 	// The planner agent worked from the brief.

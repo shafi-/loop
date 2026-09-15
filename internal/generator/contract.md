@@ -20,13 +20,17 @@ Execution is linear through `stages` in order. Every stage has:
 - `retry` — optional `{ "max_attempts": N, "backoff_ms": N }`
 - `on_error` — optional, `"halt"` (default) or `"skip"`
 - `output` — optional context key; defaults to the stage `id`
+- `terminal` — optional `true`: completing this stage ends the run.
+  Use it for a pipeline's ending branches (e.g. a ship stage and a
+  reject stage) so they don't flow into each other. Not valid on a
+  `router`.
 
 Stage payloads by type — no other fields are allowed:
 
 1. `llm` — one completion. Fields: `model` (optional block; when omitted, or when fields inside are omitted, the environment-configured provider family and model apply), `prompt` (required, template), `system`, `output`.
 2. `agent` — a persona with tools working until done, run by a pluggable executor. Fields: `persona` (required, must appear in `personas`), `input` (template), `executor` (optional, default `cline`), `approval` (`"auto"` default or `"ask"`), `model` (optional override), `tools` (only: `read_file`, `write_file`, `run_command`), `max_iterations`, `output`.
 3. `tool` — deterministic local command. Fields: `run` (required), `input` (piped to stdin), `env` (object), `output`. Captured stdout becomes the stage output.
-4. `human` — pauses and asks the user. Fields: `prompt` (required, template), `output` (defaults to `"<id>.answer"`).
+4. `human` — pauses and asks the user. Fields: `prompt` (required, template), `output` (defaults to `"<id>.answer"`). With `"gate": true` the answer becomes an understood intent: "yes"/"no" (or "y"/"n") are recognized directly; any other words get one classification call. The label lands in the context as `stages.<id>.intent` ("yes" | "no" | "changes") while the raw words stay in `.answer`. Optional `model` (classification call only; requires `gate: true`).
 5. `router` — branches; overrides linear flow. Field: `when` (required): ordered array of `{ "if": "<expr>", "next": "<stage id>" }`. The final rule MUST omit `if` — it is the default arm. `next` may jump forward (skip) or backward (rework loop).
 
 `model` objects (all fields optional — anything omitted resolves from the environment: the configured provider family, its model override, then built-in defaults):
@@ -40,4 +44,6 @@ Optional: `api_key_env` (defaults to `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`), `tem
 
 Templates reference the run context: `{{ vars.idea }}` for pipeline vars,
 `${stages.<id>.output}` for a prior stage's output, `${stages.<id>.answer}`
-for a human stage's answer.
+for a human stage's answer, `${stages.<id>.intent}` for a gate's
+classified intent, `${outputs.<name>}` for a stage's named output alias
+(shared and mutable — a revise stage can overwrite it).

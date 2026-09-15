@@ -52,9 +52,9 @@ Stage by stage:
 | `intake` | Loads the room transcript. Run this before the room exists and it fails with instructions, not mystery. |
 | `brief` | Distills the raw transcript into a structured brief. Unsettled things land under *Open questions* — never invented. |
 | `plan` | The planner persona (an agent with tools) drafts the delivery plan. |
-| `approval` | The run **pauses** and shows you the plan in your terminal. |
-| `route` | Your word is law: exactly `yes` ships, anything else revises. |
-| `revise` → `back` | Your change requests are applied and you review again — revisions are never self-approved. |
+| `approval` | The run **pauses** and shows you the plan. It's a gate: reply `yes`, `no`, or describe changes — free-form is understood (one small classification call reads your intent). |
+| `route` | Your intent is law: `yes` ships, `no` ends the run rejected, changes revise. |
+| `revise` → `back` | Your words are applied and you review again — revisions are never self-approved. |
 | `ship` | Writes the approved plan to `deliveries/plan.md`. |
 
 Interrupt it anywhere (ctrl-c) and it stays resumable:

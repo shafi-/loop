@@ -5,8 +5,10 @@
 # run context under `output`; later stages reference earlier results with
 # {{ }} templates (e.g. ${stages.requirements.output}).
 #
-# The approval loop is deliberate: a "no" does NOT redo the whole
-# pipeline — it feeds your words to a revise stage and asks you again.
+# The approval is a gate: it understands "yes", "no", and free words
+# (one classification call reads your intent). A rejection never redoes
+# the whole pipeline — your words feed a revise stage and you are asked
+# again.
 #
 # Validate it:   loop validate pipelines/feature-delivery.yaml
 # Run it:        loop run pipelines/feature-delivery.yaml
@@ -56,27 +58,33 @@ stages:
     max_iterations: 10
     output: architecture_md
 
-  # A human checkpoint: the run pauses and asks you in the terminal.
-  # outputs.architecture_md is the shared, mutable slot — architecture
-  # and revise both write it, so this always shows the latest plan.
-  # (stages.architecture.output, by contrast, is that stage's frozen
-  # first run.)
+  # A human gate: the run pauses and asks you in the terminal. The gate
+  # understands three kinds of answer — "yes", "no", or free words.
+  # Crisp yes/no is recognized directly (no model involved); free words
+  # get one classification call, so the router below branches on your
+  # actual intent, not on exact string matching. outputs.architecture_md
+  # is the shared, mutable slot — architecture and revise both write it,
+  # so this always shows the latest plan.
   - id: approval
     type: human
+    gate: true
     prompt: |
-      Review the architecture below. Reply "yes" to continue or paste
-      your change requests — a revise stage will apply them and ask
-      you again.
+      Review the architecture below. Reply yes to approve, no to reject,
+      or describe what should change — free-form is understood.
 
       ${outputs.architecture_md}
     output: approval.answer
 
-  # Deterministic branching. The last rule without an "if" is the default.
+  # Deterministic branching on the gate's intent label
+  # (stages.approval.intent: "yes" | "no" | "changes"). The last rule
+  # without an "if" is the default.
   - id: quality
     type: router
     when:
-      - if: "${stages.approval.answer} == 'yes'"
+      - if: "${stages.approval.intent} == 'yes'"
         next: build
+      - if: "${stages.approval.intent} == 'no'"
+        next: rejected
       - next: revise
 
   # Revision: your words go in, the same outputs.architecture_md slot
@@ -103,7 +111,15 @@ stages:
     when:
       - next: approval
 
+  # The two endings are terminal stages: reaching one completes the
+  # run — no guard routers needed after them.
+  - id: rejected
+    type: tool
+    terminal: true
+    run: echo "rejected by the reviewer — nothing built"
+
   # A deterministic local command. stdout is captured into the context.
   - id: build
     type: tool
+    terminal: true
     run: echo "building..."

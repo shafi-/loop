@@ -103,7 +103,16 @@ type ToolStage struct {
 // HumanStage pauses the run and asks the user a question in the terminal.
 type HumanStage struct {
 	Prompt string `yaml:"prompt"`
-	Output string `yaml:"output,omitempty"` // context key for the answer; defaults to "<stage id>.answer"
+	// Gate turns the answer into an understood intent: "yes"/"no" (and
+	// their one-letter forms) are recognized directly; any other words
+	// get one LLM classification call. The label lands in the context as
+	// stages.<id>.intent ("yes" | "no" | "changes"); the raw words stay
+	// in .answer. Routers branch on the intent, exactly matched.
+	Gate bool `yaml:"gate,omitempty"`
+	// Model configures the gate's classification call (words only).
+	// Omitted = env-driven, like every other model.
+	Model  *ModelConfig `yaml:"model,omitempty"`
+	Output string       `yaml:"output,omitempty"` // context key for the answer; defaults to "<stage id>.answer"
 }
 
 // RouteRule is one router arm. A rule with an empty If is the default arm.
@@ -124,6 +133,11 @@ type Stage struct {
 	Type    StageType
 	Retry   *RetryPolicy
 	OnError string // OnErrorHalt | OnErrorSkip
+	// Terminal ends the run when this stage completes. It lets a
+	// pipeline have several ending branches (approve ships, reject
+	// halts) without guard routers after each one — a jumped-to stage
+	// otherwise flows linearly onward.
+	Terminal bool
 
 	LLM    *LLMStage
 	Agent  *AgentStage
@@ -133,9 +147,10 @@ type Stage struct {
 }
 
 type stageCommonYAML struct {
-	ID      string       `yaml:"id"`
-	Retry   *RetryPolicy `yaml:"retry,omitempty"`
-	OnError string       `yaml:"on_error,omitempty"`
+	ID       string       `yaml:"id"`
+	Retry    *RetryPolicy `yaml:"retry,omitempty"`
+	OnError  string       `yaml:"on_error,omitempty"`
+	Terminal bool         `yaml:"terminal,omitempty"`
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler with a two-phase decode: peek at
@@ -220,6 +235,7 @@ func (s *Stage) init(t StageType, c stageCommonYAML) {
 	s.Type = t
 	s.Retry = c.Retry
 	s.OnError = c.OnError
+	s.Terminal = c.Terminal
 }
 
 // Persona is an agent identity shared by rooms and pipeline agent stages.

@@ -100,11 +100,13 @@ whether counters are on.
 
 The example pipeline turns an idea into a reviewed implementation plan:
 an `llm` stage writes requirements, an `agent` stage (the `architect`
-persona, with tools) designs the system, a `human` stage pauses for your
-approval, and a `router` branches on your answer: `yes` proceeds to
-build; anything else is treated as change requests — a `revise` stage
-applies them and asks you again. Rejections never redo the upstream
-stages; they feed your words forward.
+persona, with tools) designs the system, and a **gated** `human` stage
+pauses for your approval — reply `yes`, `no`, or describe what should
+change; free-form is understood (one classification call reads your
+intent). A `router` branches on that intent: `yes` proceeds to build,
+`no` ends the run rejected, and change requests feed a `revise` stage
+that asks you again. Rejections never redo the upstream stages; they
+feed your words forward.
 
 Chat with the leadership room:
 
@@ -216,6 +218,13 @@ stages:
 
 ### Stage types
 
+Every stage also takes `id`, `retry`, `on_error` — and `terminal: true`:
+completing a terminal stage **ends the run** (marked done, not
+resumable). Terminals let a pipeline have several ending branches — a
+ship stage and a reject stage — without guard routers after each one,
+because a jumped-to stage otherwise flows linearly onward. Not valid on
+routers.
+
 **`llm`** — one templated completion. Fields: `model` (optional),
 `prompt` (required), `system`, `output`. The response text becomes the
 stage output.
@@ -243,6 +252,43 @@ resume re-runs the prompt); an **empty line re-asks** instead of
 counting as an answer. Both the question and your answer are recorded
 in the run's `events.jsonl`.
 
+**`gate: true`** on a human stage turns the answer into an understood
+intent. The gate offers three kinds of answer:
+
+- **yes / no** (or `y` / `n`) — recognized directly and deterministically.
+  No model is involved, so even a keyless environment gates crisp answers.
+- **words** — anything else gets **one** classification call that sees
+  the question you were asked (artifact included) and your words, and
+  labels the intent. If the classifier misbehaves, the gate falls back
+  to `changes` — the safe loop, never a misread approval.
+
+The label lands in the context as `stages.<id>.intent`
+(`yes` | `no` | `changes`); your raw words stay in
+`stages.<id>.answer` (that's what a revise stage consumes). Routers
+branch on the intent, exactly matched — determinism where work runs,
+judgment where models speak. An optional `model:` on the stage
+configures the classification call (otherwise env-driven; the field is
+only legal with `gate: true`).
+
+```yaml
+- id: approval
+  type: human
+  gate: true
+  prompt: |
+    Review the plan below. Reply yes to approve, no to reject, or
+    describe what should change — free-form is understood.
+
+    ${outputs.plan_md}
+- id: route
+  type: router
+  when:
+    - if: "${stages.approval.intent} == 'yes'"
+      next: ship
+    - if: "${stages.approval.intent} == 'no'"
+      next: rejected
+    - next: revise
+```
+
 **`router`** — deterministic branching; overrides linear flow. Field:
 `when` (required): ordered rules `{ "if": "<expr>", "next": "<stage id>" }`;
 the final rule must omit `if` (the default arm). Expressions compare an
@@ -269,9 +315,15 @@ gaps. Validation only rejects contradictions (a misspelled provider).
 Reference earlier results with `{{ ... }}` or `${ ... }`:
 
 - `vars.<name>` — pipeline inputs
-- `stages.<id>.output` — any stage's result (`.output` may be omitted)
+- `stages.<id>.output` — any stage's result (`.output` may be omitted);
+  frozen at that stage's own run
 - `stages.<id>.answer` — a human stage's raw reply
-- `outputs.<name>` — a stage's alias when it sets an explicit `output`
+- `stages.<id>.intent` — a gate's classified intent (`yes` | `no` |
+  `changes`), when the human stage sets `gate: true`
+- `outputs.<name>` — a stage's alias when it sets an explicit `output`;
+  shared and **mutable** — a revise stage writing the same alias
+  overwrites it, so references always see the latest (the revision-loop
+  idiom)
 
 Unknown references are **hard errors** — a deterministic run never
 silently substitutes empty strings.

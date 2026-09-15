@@ -285,6 +285,14 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 				state.Done = true
 			}
 		}
+		if s.Terminal {
+			// A terminal stage ends the run here: pipelines with several
+			// ending branches (approve ships, reject halts) need no guard
+			// routers after each one.
+			res.Completed = true
+			state.Done = true
+			r.runlogf("■ %s is a terminal — run complete", s.ID)
+		}
 		record(s.ID)
 		log.SaveContext(c)
 	}

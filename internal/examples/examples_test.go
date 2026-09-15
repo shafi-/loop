@@ -84,6 +84,7 @@ func TestFeaturePipelineRevisionLoopListens(t *testing.T) {
 	}
 	m := llm.NewMock(
 		&llm.Response{Text: "REQUIREMENTS DOC", StopReason: llm.StopEndTurn},
+		&llm.Response{Text: "changes", StopReason: llm.StopEndTurn}, // gate classifier
 		&llm.Response{Text: "ARCHITECTURE v2 — revised", StopReason: llm.StopEndTurn},
 	)
 	ex := &stubExec{out: "ARCHITECTURE v1 — first draft"}
@@ -105,17 +106,23 @@ func TestFeaturePipelineRevisionLoopListens(t *testing.T) {
 	if !res.Completed {
 		t.Fatalf("example run failed at %s: %v", res.FailedStage, res.Err)
 	}
-	// Two LLM calls total — requirements once, revise once. A third
-	// means the loop re-ran requirements (the old wasteful pattern).
-	if m.Calls() != 2 {
-		t.Errorf("llm calls = %d, want 2 (requirements, revise — never re-run)", m.Calls())
+	// Three LLM calls total — requirements once, the gate's classifier
+	// once, revise once. The second review's "yes" is vocabulary: no
+	// call. A fourth means the loop re-ran requirements.
+	if m.Calls() != 3 {
+		t.Errorf("llm calls = %d, want 3 (requirements, classify, revise)", m.Calls())
 	}
 	// The agent ran exactly once: rejections must not redo its work.
 	if ex.calls != 1 {
 		t.Errorf("architecture runs = %d, want 1", ex.calls)
 	}
+	// The classifier saw the reviewer's words and the question asked.
+	classifier := m.Requests()[1].Messages[0].Content
+	if !strings.Contains(classifier, "make it simpler") || !strings.Contains(classifier, "ARCHITECTURE v1") {
+		t.Errorf("classifier prompt missing the words or the plan under review:\n%s", classifier)
+	}
 	// The revise prompt carried the reviewer's words and the current plan.
-	revise := m.Requests()[1].Messages[0].Content
+	revise := m.Requests()[2].Messages[0].Content
 	if !strings.Contains(revise, "make it simpler") || !strings.Contains(revise, "ARCHITECTURE v1") {
 		t.Errorf("revise prompt missing reviewer words or current plan:\n%s", revise)
 	}

@@ -189,6 +189,9 @@ func (s *Stage) normalize() {
 		if s.Human == nil {
 			s.Human = &HumanStage{}
 		}
+		if s.Human.Model != nil {
+			s.Human.Model.normalize()
+		}
 		if s.Human.Output == "" {
 			s.Human.Output = s.ID + ".answer"
 		}
