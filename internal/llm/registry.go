@@ -1,5 +1,7 @@
 package llm
 
+import "fmt"
+
 // Options carries construction-time settings for a provider, mapped from
 // config.ModelConfig by the engine layer.
 type Options struct {
@@ -36,7 +38,7 @@ func New(name string, opts Options) (Provider, error) {
 	case "mock":
 		p = NewMock()
 	default:
-		return nil, &Error{Kind: ErrBadRequest, Provider: name, Body: "unknown provider (want anthropic or openai)"}
+		return nil, &Error{Kind: ErrBadRequest, Provider: name, Body: fmt.Sprintf("unknown provider %q (want anthropic or openai — check PROVIDER if set in your env)", name)}
 	}
 	if opts.MaxAttempts > 1 {
 		p = WithRetry(p, opts.MaxAttempts, opts.BackoffMs)

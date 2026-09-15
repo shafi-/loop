@@ -1,6 +1,9 @@
 package llm
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 // Per-provider env overrides, read by ResolveModel/ResolveBaseURL. Set
 // them in the shell or .env and pipelines/rooms need no model block
@@ -10,6 +13,11 @@ const (
 	EnvOpenAIModel      = "OPENAI_MODEL"
 	EnvAnthropicBaseURL = "ANTHROPIC_BASE_URL"
 	EnvOpenAIBaseURL    = "OPENAI_BASE_URL"
+
+	// EnvProvider names the intended provider family ("anthropic" or
+	// "openai", case-insensitive). It is the env-level intention: above
+	// family inference, below explicit YAML/flags.
+	EnvProvider = "PROVIDER"
 )
 
 func envModelName(provider string) string {
@@ -50,11 +58,16 @@ func ResolveBaseURL(provider, explicit string) string {
 }
 
 // InferProvider picks a provider family for callers that name none:
-// if exactly one family is configured (key or BASE_URL set), that family
-// wins; with both or neither configured, anthropic stays the default.
-// Explicit choices — the --provider flag, a YAML provider field — always
-// take precedence over this.
+// an explicit PROVIDER env value is the user's stated intention and wins;
+// otherwise, if exactly one family is configured (key or BASE_URL set),
+// that family is used; with both or neither configured, anthropic stays
+// the default. Explicit YAML/flags still outrank all of this.
+// An invalid PROVIDER value is returned as-is so the consumer's error
+// names it instead of silently falling back.
 func InferProvider() string {
+	if p := strings.ToLower(strings.TrimSpace(os.Getenv(EnvProvider))); p != "" {
+		return p
+	}
 	anthropicConfigured := os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv(EnvAnthropicBaseURL) != ""
 	openaiConfigured := os.Getenv("OPENAI_API_KEY") != "" || os.Getenv(EnvOpenAIBaseURL) != ""
 	if openaiConfigured && !anthropicConfigured {

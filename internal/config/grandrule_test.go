@@ -81,4 +81,11 @@ stages:
 	if m := model("key-only"); m.Provider != "openai" || m.APIKeyEnv != "MY_KEY" {
 		t.Errorf("key-only stage: family inferred from env, key var explicit: %+v", m)
 	}
+
+	// PROVIDER states the env-level intention, but explicit YAML still
+	// outranks it.
+	t.Setenv("PROVIDER", "openai")
+	if m := model("family-only"); m.Provider != "anthropic" {
+		t.Errorf("explicit YAML provider must beat PROVIDER env: %+v", m)
+	}
 }

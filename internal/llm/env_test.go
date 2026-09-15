@@ -71,15 +71,20 @@ func TestResolveBaseURLEmptyMeansOfficial(t *testing.T) {
 	}
 }
 
-// InferProvider is what commands use when nothing names a family: the
-// single configured family wins; both or neither configured falls back
-// to the documented default (anthropic).
+// InferProvider picks a provider family for callers that name none: an
+// explicit PROVIDER env is the user's stated intention and wins; the
+// single configured family wins next; both or neither configured falls
+// back to the documented default (anthropic).
 func TestInferProvider(t *testing.T) {
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("ANTHROPIC_BASE_URL", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("OPENAI_BASE_URL", "")
+	reset := func() {
+		t.Setenv("PROVIDER", "")
+		t.Setenv("ANTHROPIC_API_KEY", "")
+		t.Setenv("ANTHROPIC_BASE_URL", "")
+		t.Setenv("OPENAI_API_KEY", "")
+		t.Setenv("OPENAI_BASE_URL", "")
+	}
 
+	reset()
 	if got := InferProvider(); got != "anthropic" {
 		t.Errorf("nothing configured must fall back to anthropic: got %q", got)
 	}
@@ -98,5 +103,28 @@ func TestInferProvider(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "sk-test")
 	if got := InferProvider(); got != "anthropic" {
 		t.Errorf("both configured must fall back to anthropic: got %q", got)
+	}
+
+	// PROVIDER is the stated intention: it wins over family inference
+	// even when only the other family is configured.
+	reset()
+	t.Setenv("PROVIDER", "openai")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-test")
+	if got := InferProvider(); got != "openai" {
+		t.Errorf("PROVIDER must override configured-family inference: got %q", got)
+	}
+
+	reset()
+	t.Setenv("PROVIDER", "  Anthropic  ") // case and space tolerant
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	if got := InferProvider(); got != "anthropic" {
+		t.Errorf("PROVIDER must be trimmed and case-insensitive: got %q", got)
+	}
+
+	// Invalid values are surfaced, not silently swallowed.
+	reset()
+	t.Setenv("PROVIDER", "gemini")
+	if got := InferProvider(); got != "gemini" {
+		t.Errorf("invalid PROVIDER must pass through to error surfaces: got %q", got)
 	}
 }

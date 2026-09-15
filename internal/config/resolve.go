@@ -23,9 +23,10 @@ type ResolvedModel struct {
 //	   below; naming a provider inherits the model id. A config may also
 //	   be fully self-contained with no environment at all.
 //	2. The environment fills what's left. The shell beats the .env file
-//	   (dotenv only fills gaps). The configured family supplies the
-//	   provider, the model (ANTHROPIC_MODEL / OPENAI_MODEL), and the
-//	   endpoint (ANTHROPIC_BASE_URL / OPENAI_BASE_URL).
+//	   (dotenv only fills gaps). PROVIDER names the intended family
+//	   outright; without it, the configured family supplies the provider,
+//	   the model (ANTHROPIC_MODEL / OPENAI_MODEL), and the endpoint
+//	   (ANTHROPIC_BASE_URL / OPENAI_BASE_URL).
 //	3. Built-in defaults are the floor: official endpoints,
 //	   claude-sonnet-4-5 / gpt-5, family-specific key vars.
 //
