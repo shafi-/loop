@@ -14,16 +14,23 @@ type ResolvedModel struct {
 	APIKeyEnv string
 }
 
-// Resolve applies loop's single precedence rule for model config:
+// Resolve applies loop's grand rule for model configuration — the same
+// rule at every consumer (commands, pipeline stages, room agents, the
+// narrator):
 //
-//	caller-provided value > env override > built-in default
+//	1. Explicit values win. YAML model blocks and CLI flags may override
+//	   partially: naming a model inherits provider/endpoint/key from
+//	   below; naming a provider inherits the model id. A config may also
+//	   be fully self-contained with no environment at all.
+//	2. The environment fills what's left. The shell beats the .env file
+//	   (dotenv only fills gaps). The configured family supplies the
+//	   provider, the model (ANTHROPIC_MODEL / OPENAI_MODEL), and the
+//	   endpoint (ANTHROPIC_BASE_URL / OPENAI_BASE_URL).
+//	3. Built-in defaults are the floor: official endpoints,
+//	   claude-sonnet-4-5 / gpt-5, family-specific key vars.
 //
-// Each caller hands in its own ModelConfig — a stage's YAML block, a
-// persona's, or one assembled from command-line flags — and gets back
-// the concrete values to use. Only the missing pieces are filled:
-// explicit values are never second-guessed, env (ANTHROPIC_MODEL,
-// OPENAI_MODEL, ANTHROPIC_BASE_URL, OPENAI_BASE_URL) fills gaps, and
-// the built-in defaults are the floor.
+// Only the missing pieces are filled; explicit values are never
+// second-guessed.
 func (m *ModelConfig) Resolve() ResolvedModel {
 	if m == nil {
 		// No model config at all = fully env-driven: the configured
