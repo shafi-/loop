@@ -1,0 +1,125 @@
+# Agency delivery pipeline — act two of the flagship demo
+#
+# This pipeline consumes what the intake room produced: its first
+# stage simply loads the room transcript. The hand-off between
+# judgment (the room) and determinism (this pipeline) is a file —
+# auditable, resumable, no copy-paste.
+#
+# Open the room first (see intake-room.yaml), settle the brief,
+# /quit, then:
+#
+#   loop validate examples/agency-intake/delivery-pipeline.yaml
+#   loop run   examples/agency-intake/delivery-pipeline.yaml
+#
+# Flow: load transcript → distill brief → planner drafts the delivery
+# plan → you approve → (revisions loop back through you) → the
+# approved plan is written to deliveries/plan.md.
+#
+# No model blocks anywhere: every stage follows the provider family
+# and model configured in .env. Pin a model block only to override.
+
+name: agency-delivery
+description: Turn the intake room's settled transcript into a shipped delivery plan
+
+personas:
+  - name: planner
+    role: Delivery planner
+    system: |
+      You are a delivery planner at a small agency. You turn an
+      approved brief into a plan people can actually execute: ordered
+      workstreams, concrete tasks, owners and dependencies, and the
+      risks worth watching. You kill scope that isn't in the brief.
+      You write tight markdown, no filler.
+
+stages:
+  # The hand-off: the room's transcript is this pipeline's input.
+  # stdout (the raw JSONL) lands in the run context for the next stage.
+  - id: intake
+    type: tool
+    run: |
+      test -f .loop/rooms/agency-intake/transcript.jsonl || {
+        echo "no intake transcript found — open the room first:" >&2
+        echo "  loop chat examples/agency-intake/intake-room.yaml \"<your client request>\"" >&2
+        exit 1
+      }
+      cat .loop/rooms/agency-intake/transcript.jsonl
+    output: transcript
+
+  # Judgment, distilled: raw transcript in, structured brief out.
+  - id: brief
+    type: llm
+    prompt: |
+      Below is the JSONL transcript of an agency intake conversation
+      (each line: ts, from, text; "from: user" is the client). Distill
+      it into a delivery brief with these sections: Goal, Audience,
+      In scope, Out of scope, Constraints (deadline/budget/brand),
+      Success criteria, Open questions. If the room left something
+      unsettled, put it under Open questions — do not invent answers.
+
+      Transcript:
+      ${stages.intake.output}
+    output: brief_md
+
+  # An agent stage: the planner persona with tools, looping until done.
+  - id: plan
+    type: agent
+    persona: planner
+    input: |
+      Draft the delivery plan for this brief. Workstream breakdown,
+      ordered tasks, dependencies, timeline shape, risks. Stay inside
+      the brief's scope.
+
+      ${stages.brief.output}
+    tools: [read_file, write_file, run_command]
+    max_iterations: 10
+    output: plan_md
+
+  # A human checkpoint: the run pauses here in your terminal.
+  # Note the reference: outputs.plan_md is the shared, mutable slot —
+  # both plan and revise write it, so this always shows the latest.
+  # (stages.plan.output, by contrast, is that stage's frozen first run.)
+  - id: approval
+    type: human
+    prompt: |
+      Review the delivery plan below. Reply exactly "yes" to approve,
+      or describe what should change — your words feed the revision
+      loop and you'll review again.
+
+      ${outputs.plan_md}
+    output: approval.answer
+
+  # Deterministic branch: approved → ship; anything else → revise.
+  - id: route
+    type: router
+    when:
+      - if: "${stages.approval.answer} == 'yes'"
+        next: ship
+      - next: revise
+
+  # Revision: the client's words go in, the same outputs.plan_md slot
+  # comes out (overwritten), so approval always reviews the latest.
+  - id: revise
+    type: llm
+    prompt: |
+      The client reviewed the delivery plan below and requested
+      changes. Apply exactly these changes and return the full revised
+      plan — same structure, nothing else.
+
+      Change requests:
+      ${stages.approval.answer}
+
+      Current plan:
+      ${outputs.plan_md}
+    output: plan_md
+
+  # Back to the client: revisions are never self-approved.
+  - id: back
+    type: router
+    when:
+      - next: approval
+
+  # Deterministic ending: the approved plan lands in the workspace.
+  - id: ship
+    type: tool
+    input: ${outputs.plan_md}
+    run: mkdir -p deliveries && cat > deliveries/plan.md
