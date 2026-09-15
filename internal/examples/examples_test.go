@@ -16,9 +16,8 @@ func TestFeaturePipelineAlwaysValidates(t *testing.T) {
 	}
 }
 
-// Validation alone can't catch a model-less agent stage (personas may
-// omit the model block) — it only fails at runtime. The flagship example
-// must actually be runnable, so guard the structure here.
+// The example deliberately demonstrates explicit model blocks (env-driven
+// configs omit them), so guard that its agent stages keep them.
 func TestFeaturePipelineAgentStagesHaveModels(t *testing.T) {
 	p, err := config.ParsePipeline([]byte(FeaturePipeline))
 	if err != nil {
@@ -39,6 +38,6 @@ func TestFeaturePipelineAgentStagesHaveModels(t *testing.T) {
 		if m := personas[s.Agent.Persona]; m != nil {
 			continue
 		}
-		t.Errorf("agent stage %q (persona %q) has no model on stage or persona — the example would fail at runtime", s.ID, s.Agent.Persona)
+		t.Errorf("agent stage %q (persona %q) lost its model block — the example teaches explicit models", s.ID, s.Agent.Persona)
 	}
 }

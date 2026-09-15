@@ -26,14 +26,15 @@ type ResolvedModel struct {
 // the built-in defaults are the floor.
 func (m *ModelConfig) Resolve() ResolvedModel {
 	if m == nil {
-		return ResolvedModel{}
+		// No model config at all = fully env-driven: the configured
+		// provider family, its env model, its default key var.
+		m = &ModelConfig{}
 	}
 	provider := string(m.Provider)
 	if provider == "" {
 		// Provider not named anywhere: follow whatever the environment
-		// configures (llm.InferProvider). YAML validation rejects empty
-		// providers, so today only code-constructed configs hit this —
-		// but the rule belongs with the rest of resolution.
+		// configures (llm.InferProvider). This is the env-first rule the
+		// whole file exists for — YAML names a family only to override it.
 		provider = llm.InferProvider()
 	}
 	apiKeyEnv := m.APIKeyEnv

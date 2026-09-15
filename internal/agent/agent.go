@@ -142,9 +142,6 @@ now? Responding without real value is noise. Silence is respectable.`,
 }
 
 func (a *Agent) model() string {
-	if a.Persona.Model == nil {
-		return ""
-	}
-	// Precedence (caller > env > default) lives in the config resolver.
+	// Nil-safe: a persona without a model block is env-driven.
 	return a.Persona.Model.Resolve().Model
 }

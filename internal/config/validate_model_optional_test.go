@@ -2,21 +2,21 @@ package config
 
 import "testing"
 
-// The model id inside a model block is optional: resolution falls back to
-// the ANTHROPIC_MODEL / OPENAI_MODEL env, then built-in defaults. A
-// base_url is valid for both provider styles (env endpoints made the old
-// openai-only restriction incoherent).
-func TestValidateModelIDOptional(t *testing.T) {
+// The whole model layer is env-driven when YAML stays quiet: no model
+// block at all, or an empty one, both validate — resolution fills them
+// from the environment. Only contradictions (misspelled provider) error.
+func TestValidateModelOptional(t *testing.T) {
 	p, err := ParsePipeline([]byte(`
-name: no-model-ids
+name: env-driven
 stages:
   - id: a
     type: llm
-    model:
-      provider: anthropic
-      base_url: https://gateway.corp/anthropic
     prompt: "say hi"
   - id: b
+    type: llm
+    model: {}
+    prompt: "say hi again"
+  - id: c
     type: agent
     persona: worker
     input: "ship it"
@@ -24,13 +24,23 @@ personas:
   - name: worker
     role: dev
     system: build it
-    model:
-      provider: openai
 `))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	if errs := p.Validate(); len(errs) > 0 {
-		t.Fatalf("model ids and anthropic base_url should validate clean, got: %v", errs)
+		t.Fatalf("model-less stages should validate clean, got: %v", errs)
+	}
+
+	// A misspelled provider is still caught (ParsePipeline validates).
+	if _, err := ParsePipeline([]byte(`
+name: bad-provider
+stages:
+  - id: a
+    type: llm
+    model: {provider: gemini}
+    prompt: "hi"
+`)); err == nil {
+		t.Fatal("misspelled provider must still be rejected")
 	}
 }

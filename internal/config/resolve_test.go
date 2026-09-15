@@ -49,3 +49,20 @@ func TestResolvePrecedence(t *testing.T) {
 		}
 	}
 }
+
+// A nil model config is fully env-driven: provider family, model id, and
+// key var all come from the environment (or its defaults). This is what
+// YAML with no model block resolves to.
+func TestResolveNilIsEnvDriven(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_BASE_URL", "")
+	t.Setenv("ANTHROPIC_MODEL", "")
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	t.Setenv("OPENAI_MODEL", "env-model")
+
+	var m *ModelConfig
+	rm := m.Resolve()
+	if rm.Provider != "openai" || rm.Model != "env-model" || rm.APIKeyEnv != "OPENAI_API_KEY" {
+		t.Errorf("nil config must resolve from env: got %+v", rm)
+	}
+}

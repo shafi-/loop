@@ -87,4 +87,21 @@ stages:
 	if gotModel != "yaml-model" {
 		t.Errorf("YAML model must beat OPENAI_MODEL, got %q", gotModel)
 	}
+
+	// No model block at all: fully env-driven, zero YAML model config.
+	barePipeline := parse(t, `
+name: no-model-anywhere
+stages:
+  - id: greet
+    type: llm
+    prompt: "say hi"
+`)
+	gotModel = ""
+	r = &Runner{Pipeline: barePipeline, Source: []byte("x"), Providers: DefaultProviderFactory(), RunsDir: t.TempDir()}
+	if res, err := r.Run(context.Background()); err != nil || !res.Completed {
+		t.Fatalf("model-less run failed: res=%+v err=%v", res, err)
+	}
+	if gotModel != "claude-from-env" {
+		t.Errorf("model-less stage should follow env (anthropic family configured here), got %q", gotModel)
+	}
 }

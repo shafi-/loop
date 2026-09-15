@@ -155,35 +155,48 @@ func (p *Pipeline) normalize() {
 }
 
 func (s *Stage) normalize() {
+	// A declared type always carries its payload struct: `model:` is
+	// optional (env-driven), so a missing block must not leave the
+	// engine a nil payload — validation still enforces required fields.
 	switch s.Type {
 	case StageLLM:
-		if s.LLM != nil && s.LLM.Model != nil {
+		if s.LLM == nil {
+			s.LLM = &LLMStage{}
+		}
+		if s.LLM.Model != nil {
 			s.LLM.Model.normalize()
 		}
-		if s.LLM != nil && s.LLM.Output == "" {
+		if s.LLM.Output == "" {
 			s.LLM.Output = s.ID
 		}
 	case StageAgent:
-		if s.Agent != nil {
-			if s.Agent.Model != nil {
-				s.Agent.Model.normalize()
-			}
-			if s.Agent.Output == "" {
-				s.Agent.Output = s.ID
-			}
-			if s.Agent.Executor == "" {
-				s.Agent.Executor = DefaultExecutor
-			}
-			if s.Agent.Approval == "" {
-				s.Agent.Approval = ApprovalAuto
-			}
+		if s.Agent == nil {
+			s.Agent = &AgentStage{}
+		}
+		if s.Agent.Model != nil {
+			s.Agent.Model.normalize()
+		}
+		if s.Agent.Output == "" {
+			s.Agent.Output = s.ID
+		}
+		if s.Agent.Executor == "" {
+			s.Agent.Executor = DefaultExecutor
+		}
+		if s.Agent.Approval == "" {
+			s.Agent.Approval = ApprovalAuto
 		}
 	case StageHuman:
-		if s.Human != nil && s.Human.Output == "" {
+		if s.Human == nil {
+			s.Human = &HumanStage{}
+		}
+		if s.Human.Output == "" {
 			s.Human.Output = s.ID + ".answer"
 		}
 	case StageTool:
-		if s.Tool != nil && s.Tool.Output == "" {
+		if s.Tool == nil {
+			s.Tool = &ToolStage{}
+		}
+		if s.Tool.Output == "" {
 			s.Tool.Output = s.ID
 		}
 	}

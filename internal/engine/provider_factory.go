@@ -62,6 +62,9 @@ func resolveAPIKey(cfg *config.ModelConfig) (string, error) {
 // header (model params only; messages come from the stage). Resolution
 // happens inside the config resolver.
 func llmRequest(cfg *config.ModelConfig, system string, messages []llm.Message) llm.Request {
+	if cfg == nil {
+		cfg = &config.ModelConfig{}
+	}
 	rm := cfg.Resolve()
 	return llm.Request{
 		Model:       rm.Model,

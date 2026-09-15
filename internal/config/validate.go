@@ -33,7 +33,7 @@ func (p *Pipeline) Validate() ValidationErrors {
 
 		switch s.Type {
 		case StageLLM:
-			validateModel(err, path+".model", s.LLM.Model, true)
+			validateModel(err, path+".model", s.LLM.Model)
 			if s.LLM.Prompt == "" {
 				err(path+".prompt", "is required for an llm stage")
 			}
@@ -46,7 +46,7 @@ func (p *Pipeline) Validate() ValidationErrors {
 			default:
 				err(path+".approval", "must be %q or %q (got %q)", ApprovalAuto, ApprovalAsk, s.Agent.Approval)
 			}
-			validateModel(err, path+".model", s.Agent.Model, false) // optional: persona may carry one
+			validateModel(err, path+".model", s.Agent.Model) // optional: persona may carry one
 			if s.Agent.MaxIterations < 0 {
 				err(path+".max_iterations", "must not be negative")
 			}
@@ -121,38 +121,27 @@ func (p *Pipeline) Validate() ValidationErrors {
 		} else {
 			names[pers.Name] = true
 		}
-		validateModel(err, path+".model", pers.Model, false)
+		validateModel(err, path+".model", pers.Model)
 	}
 
 	if p.Runtime != nil && p.Runtime.Narrator != nil {
-		validateModel(err, "runtime.narrator", p.Runtime.Narrator, true)
+		validateModel(err, "runtime.narrator", p.Runtime.Narrator)
 	}
 
 	return errs
 }
 
-// validateModel checks a ModelConfig. Required=false lets persona-level
-// models stay optional (an agent inherits its persona's model). The model
-// *id* inside is always optional: it falls back to ANTHROPIC_MODEL /
-// OPENAI_MODEL env overrides, then the provider's built-in default at
-// resolution time (internal/llm.ResolveModel).
-func validateModel(err func(string, string, ...any), path string, m *ModelConfig, required bool) {
+// validateModel checks a ModelConfig when present. Everything about it is
+// optional: an omitted block, or an omitted provider inside one, falls
+// back to the env-configured family at resolution time
+// (ModelConfig.Resolve). Only contradictions are errors — e.g. a
+// misspelled provider.
+func validateModel(err func(string, string, ...any), path string, m *ModelConfig) {
 	if m == nil {
-		if required {
-			err(path, "is required")
-		}
 		return
 	}
-	valid := false
-	for _, prov := range ValidProviders {
-		if m.Provider == prov {
-			valid = true
-			break
-		}
-	}
-	if !valid {
+	if m.Provider != "" && m.Provider != ProviderAnthropic && m.Provider != ProviderOpenAI {
 		err(path+".provider", "must be one of: anthropic, openai (got %q)", m.Provider)
-		return
 	}
 	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
 		err(path+".temperature", "must be between 0 and 2 (got %v)", *m.Temperature)
@@ -188,7 +177,7 @@ func (r *Room) Validate() ValidationErrors {
 		} else {
 			seen[a.Name] = true
 		}
-		validateModel(err, path+".model", a.Model, false)
+		validateModel(err, path+".model", a.Model)
 	}
 	if r.Settings.SpeakThreshold < 0 || r.Settings.SpeakThreshold > 1 {
 		err("settings.speak_threshold", "must be between 0 and 1 (got %v)", r.Settings.SpeakThreshold)

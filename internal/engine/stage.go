@@ -53,7 +53,7 @@ var stageRunners = map[config.StageType]stageRunner{
 // set the response streams to it token-by-token. Failures carry
 // kind-specific hints; silent truncation is surfaced loudly.
 func runLLMStage(ctx context.Context, s *config.Stage, c *Context, d *stageDeps) (*stageOutcome, error) {
-	cfg := s.LLM.Model
+	cfg := s.LLM.Model // nil = env-driven (Resolve handles it)
 	prompt, err := c.Interpolate(s.LLM.Prompt)
 	if err != nil {
 		return nil, fmt.Errorf("prompt template: %w", err)
@@ -99,6 +99,9 @@ func completeLLM(ctx context.Context, p llm.Provider, req llm.Request, stdout io
 // provider payloads. The model id is shown resolved (env overrides and
 // built-in defaults applied), not the raw YAML value.
 func llmFailure(err error, cfg *config.ModelConfig) error {
+	if cfg == nil {
+		cfg = &config.ModelConfig{}
+	}
 	detail := llm.Hint(err)
 	if d := llm.AuthEnvDetail(err, cfg.APIKeyEnv); d != "" {
 		detail = detail + " — " + d
@@ -133,8 +136,10 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 	if modelCfg == nil {
 		modelCfg = persona.Model
 	}
+	// Still nil = no model named anywhere: the task carries whatever
+	// family the environment configures (Resolve fills it in).
 	if modelCfg == nil {
-		return nil, fmt.Errorf("agent stage %q: no model configured on the stage or persona %q", s.ID, persona.Name)
+		modelCfg = &config.ModelConfig{}
 	}
 
 	if s.Agent.Input == "" {

@@ -79,13 +79,9 @@ func newChatCmd() *cobra.Command {
 					continue
 				case "/agents":
 					for _, a := range room.Agents {
-						model := "no model"
-						if a.Model != nil {
-							// Show what would actually run (env/defaults applied).
-							rm := a.Model.Resolve()
-							model = rm.Provider + "/" + rm.Model
-						}
-						fmt.Fprintf(out, "  @%s — %s (%s)\n", a.Name, a.Role, model)
+						// Show what would actually run (env/defaults applied).
+						rm := a.Model.Resolve()
+						fmt.Fprintf(out, "  @%s — %s (%s/%s)\n", a.Name, a.Role, rm.Provider, rm.Model)
 					}
 					continue
 				}
@@ -101,26 +97,23 @@ func newChatCmd() *cobra.Command {
 	return cmd
 }
 
-// buildRoomAgents resolves a provider per agent. Chat needs every agent
-// to have a model — silent bystanders would be a config bug.
+// buildRoomAgents resolves a provider per agent. An agent without a
+// model block is env-driven: whatever family the environment configures
+// (ModelConfig.Resolve fills in provider, model id, and key var).
 func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 	factory := engine.DefaultProviderFactory()
 	agents := make([]*agent.Agent, 0, len(room.Agents))
-	var missing []string
 	for i := range room.Agents {
 		p := room.Agents[i]
-		if p.Model == nil {
-			missing = append(missing, p.Name)
-			continue
+		model := p.Model
+		if model == nil {
+			model = &config.ModelConfig{}
 		}
-		provider, err := factory(p.Model)
+		provider, err := factory(model)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
 		}
 		agents = append(agents, &agent.Agent{Persona: p, Provider: provider})
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("agents without a model config cannot participate in chat: %s — add model: to each", strings.Join(missing, ", "))
 	}
 	return agents, nil
 }
