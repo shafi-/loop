@@ -32,8 +32,11 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "0"
         run: |
+          # The -X path must match the module path; go.mod is its source
+          # of truth — never hardcode it here.
+          MODULE=$(go list -m)
           go build -trimpath \
-            -ldflags "-s -w -X github.com/shafi-/loop/internal/cli.version=${GITHUB_REF_NAME}" \
+            -ldflags "-s -w -X ${MODULE}/internal/cli.version=${GITHUB_REF_NAME}" \
             -o "dist/loop" ./cmd/loop
 
       - name: Package

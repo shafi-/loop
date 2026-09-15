@@ -7,7 +7,8 @@
 # else ~/.local/bin (added to PATH hints printed at the end).
 set -eu
 
-REPO="shafi-/loop"
+# Override for forks:  curl ... | REPO=you/loop sh
+REPO="${REPO:-shafi-/loop}"
 
 case "$(uname -s)" in
   Darwin) os=darwin ;;
