@@ -35,7 +35,14 @@ function toClineProvider(model) {
   // pointing at a gateway) — it must not switch the wire format.
   if (model.provider === "anthropic") {
     const p = { providerId: "anthropic" };
-    if (model.baseUrl) p.baseUrl = model.baseUrl;
+    if (model.baseUrl) {
+      // loop's convention (like ANTHROPIC_BASE_URL and loop's own
+      // adapter) is a base WITHOUT /v1: requests go to <base>/v1/messages.
+      // The SDK's anthropic provider appends /messages directly, so it
+      // needs the /v1 folded in — otherwise every call 404s behind a
+      // 200 status and looks like "stream ended without a finish chunk".
+      p.baseUrl = model.baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "") + "/v1";
+    }
     return p;
   }
   if (model.baseUrl) {
