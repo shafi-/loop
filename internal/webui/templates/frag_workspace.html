@@ -1,0 +1,5 @@
+{{define "picker_pipelines"}}<select class="picker" data-fills="run-file" aria-label="pick a pipeline">{{range .Pipelines}}<option value="{{.Path}}">{{if .Name}}{{.Name}} · {{.Path}}{{else}}{{.Path}}{{end}}</option>{{end}}<option value="__custom__">custom path…</option></select>{{end}}
+
+{{define "picker_rooms"}}<select class="picker" data-fills="host-file" aria-label="pick a room">{{range .WSRooms}}<option value="{{.Path}}">{{if .Name}}{{.Name}} · {{.Path}}{{else}}{{.Path}}{{end}}</option>{{end}}<option value="__custom__">custom path…</option></select>{{end}}
+
+{{define "frag_workspace"}}{{if eq .Kind "pipelines"}}{{if .Pipelines}}{{template "picker_pipelines" .}}{{end}}{{else}}{{if .WSRooms}}{{template "picker_rooms" .}}{{end}}{{end}}{{end}}

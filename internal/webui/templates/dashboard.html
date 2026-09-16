@@ -9,12 +9,9 @@
 <section class="card">
   <h2>start a run</h2>
   <form hx-post="/runs" hx-target="#submit-result" hx-swap="innerHTML">
-    {{if .Pipelines}}
-    <select class="picker" data-fills="run-file" aria-label="pick a pipeline">
-      {{range .Pipelines}}<option value="{{.Path}}">{{if .Name}}{{.Name}} · {{.Path}}{{else}}{{.Path}}{{end}}</option>{{end}}
-      <option value="__custom__">custom path…</option>
-    </select>
-    {{end}}
+    <span id="pipeline-picker" class="picker-slot">{{if .Pipelines}}{{template "picker_pipelines" .}}{{end}}</span>
+    <button type="button" class="ghost" title="refresh pipeline list" aria-label="refresh pipeline list"
+            hx-get="/frag/workspace?kind=pipelines" hx-target="#pipeline-picker" hx-swap="innerHTML">↻</button>
     <label>pipeline file <input name="file" id="run-file" placeholder="pipelines/feature-delivery.yaml" required{{if $first}} value="{{$first}}"{{end}}></label>
     <label>vars <input name="vars" placeholder="--var key=value …"></label>
     <button type="submit">run</button>
@@ -25,16 +22,22 @@
 <section class="card">
   <h2>open a room</h2>
   <form method="post" action="/rooms/host">
-    {{if .WSRooms}}
-    <select class="picker" data-fills="host-file" aria-label="pick a room">
-      {{range .WSRooms}}<option value="{{.Path}}">{{if .Name}}{{.Name}} · {{.Path}}{{else}}{{.Path}}{{end}}</option>{{end}}
-      <option value="__custom__">custom path…</option>
-    </select>
-    {{end}}
+    <span id="room-picker" class="picker-slot">{{if .WSRooms}}{{template "picker_rooms" .}}{{end}}</span>
+    <button type="button" class="ghost" title="refresh room list" aria-label="refresh room list"
+            hx-get="/frag/workspace?kind=rooms" hx-target="#room-picker" hx-swap="innerHTML">↻</button>
     <label>room file <input name="file" id="host-file" placeholder="rooms/leadership.yaml" required{{if $firstRoom}} value="{{$firstRoom}}"{{end}}></label>
     <button type="submit">open</button>
   </form>
   <p class="muted">hosts the room on the daemon (or attaches to it if it's already live). pickers list pipelines/ and rooms/ in the workspace; typed paths still work anywhere.</p>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>rooms</h2>
+    <button type="button" class="ghost" title="refresh rooms" aria-label="refresh rooms"
+            hx-get="/frag/rooms" hx-target="#rooms" hx-swap="innerHTML">↻ refresh</button>
+  </div>
+  <div id="rooms" hx-get="/frag/rooms" hx-trigger="load" hx-swap="innerHTML"><p class="muted">loading…</p></div>
 </section>
 
 <div id="runs" hx-get="/frag/runs" hx-trigger="every 3s" hx-swap="innerHTML">

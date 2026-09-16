@@ -176,6 +176,67 @@ func TestServePortTakenIsFriendly(t *testing.T) {
 	}
 }
 
+// TestDashboardPickersOffersWorkspaceFiles: with conventional
+// pipelines/ and rooms/ directories present, the dashboard offers
+// pickers (labeled, prefilled) instead of a bare typed path.
+func TestDashboardPickersOffersWorkspaceFiles(t *testing.T) {
+	bin := loopBinary(t)
+	port := freePort(t)
+	ws, home := t.TempDir(), shortHome(t)
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(ws, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("pipelines/release-check.yaml", "name: release-check\nstages: []\n")
+	write("rooms/ops.yaml", "name: ops\nagents: []\n")
+
+	startPortedServe(t, bin, ws, home, port)
+	waitPing(t, port)
+
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	page := string(body)
+	for _, want := range []string{
+		`<select class="picker" data-fills="run-file"`,
+		`release-check · pipelines/release-check.yaml`,
+		`<select class="picker" data-fills="host-file"`,
+		`ops · rooms/ops.yaml`,
+		`value="pipelines/release-check.yaml"`,
+		`value="rooms/ops.yaml"`,
+		`custom path…`,
+		// lists are preloaded once and refreshed on demand, not polled
+		`hx-get="/frag/workspace?kind=pipelines"`,
+		`hx-get="/frag/workspace?kind=rooms"`,
+		`hx-get="/frag/rooms" hx-trigger="load"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard missing %q", want)
+		}
+	}
+
+	// The picker refresh endpoint re-renders a single picker.
+	resp, err = http.Get(fmt.Sprintf("http://127.0.0.1:%d/frag/workspace?kind=pipelines", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(string(body), `data-fills="run-file"`) ||
+		strings.Contains(string(body), `data-fills="host-file"`) {
+		t.Errorf("frag/workspace?kind=pipelines = %d %q", resp.StatusCode, string(body))
+	}
+}
+
 // TestServeSocketAndPortPickOne: the two daemon-naming flags are
 // mutually exclusive (in-process: returns before touching any socket).
 func TestServeSocketAndPortPickOne(t *testing.T) {

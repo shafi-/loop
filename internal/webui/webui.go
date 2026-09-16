@@ -41,6 +41,8 @@ type pageData struct {
 	// workspace offered none; the forms fall back to typed paths)
 	Pipelines []daemon.WorkspaceFile
 	WSRooms   []daemon.WorkspaceFile
+	// Kind selects which picker frag_workspace renders
+	Kind string
 }
 
 // SidecarRun is one entry of the room sidecar: the run plus a compact
@@ -110,6 +112,8 @@ func New(version, socket string) (http.Handler, error) {
 	mux.Handle("GET /assets/", noCache(http.FileServer(http.FS(files))))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { dashboard(tmpl, cl, w) })
 	mux.HandleFunc("GET /frag/runs", func(w http.ResponseWriter, r *http.Request) { fragRuns(tmpl, cl, w) })
+	mux.HandleFunc("GET /frag/rooms", func(w http.ResponseWriter, r *http.Request) { fragRooms(tmpl, cl, w) })
+	mux.HandleFunc("GET /frag/workspace", func(w http.ResponseWriter, r *http.Request) { fragWorkspace(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /runs", func(w http.ResponseWriter, r *http.Request) { submit(tmpl, cl, w, r) })
 	mux.HandleFunc("GET /runs/{id}", func(w http.ResponseWriter, r *http.Request) { runPage(tmpl, cl, w, r) })
 	mux.HandleFunc("GET /runs/{id}/timeline", func(w http.ResponseWriter, r *http.Request) { timeline(tmpl, cl, w, r) })
@@ -144,12 +148,11 @@ func noCache(next http.Handler) http.Handler {
 
 func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	runs, _ := cl.Runs(true)
-	rooms, _ := cl.Rooms()
 	workspace := workspaceOf(cl)
 	wk, _ := cl.Workspace()
 	renderPage(tmpl, w, "dashboard", pageData{
 		Title: "runs", Workspace: workspace,
-		Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms,
+		Active: splitActive(runs), History: splitHistory(runs),
 		Pipelines: wk.Pipelines, WSRooms: wk.Rooms,
 	})
 }
@@ -183,8 +186,31 @@ func roomHost(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter,
 
 func fragRuns(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	runs, _ := cl.Runs(true)
+	if err := tmpl.ExecuteTemplate(w, "frag_runs", pageData{Active: splitActive(runs), History: splitHistory(runs)}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// fragRooms renders the hosted-rooms card. The dashboard preloads it
+// once on load and re-fetches only when the user asks — rooms rarely
+// change, so they don't ride the runs poll.
+func fragRooms(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	rooms, _ := cl.Rooms()
-	if err := tmpl.ExecuteTemplate(w, "frag_runs", pageData{Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms}); err != nil {
+	if err := tmpl.ExecuteTemplate(w, "frag_rooms", pageData{Rooms: rooms}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// fragWorkspace re-renders one dashboard picker (kind=pipelines or
+// kind=rooms) for the refresh buttons; the pickers are otherwise
+// rendered once with the page.
+func fragWorkspace(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	wk, _ := cl.Workspace()
+	data := pageData{Pipelines: wk.Pipelines, WSRooms: wk.Rooms, Kind: "pipelines"}
+	if r.URL.Query().Get("kind") == "rooms" {
+		data.Kind = "rooms"
+	}
+	if err := tmpl.ExecuteTemplate(w, "frag_workspace", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

@@ -152,6 +152,17 @@
     }
   });
 
+  // After a picker refresh swap, aim the paired path input at the new
+  // first option — the refresh exists because the lists changed.
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var t = e.detail.target;
+    if (!t || !t.querySelector) return;
+    var sel = t.querySelector("select[data-fills]");
+    if (!sel) return;
+    var input = document.getElementById(sel.getAttribute("data-fills"));
+    if (input && sel.value && sel.value !== "__custom__") input.value = sel.value;
+  });
+
   // Chat auto-scroll follows the reader: snap to the newest message
   // only when the reader is already near the bottom — scrolling up to
   // read history must never be yanked back by arriving events. The

@@ -243,6 +243,19 @@ func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 		t.Errorf("proxied ping = %d %q", resp.StatusCode, body)
 	}
 
+	// Rooms are not part of the runs poll anymore: they preload once
+	// via their own fragment, and the workspace pickers re-render on
+	// demand for the refresh buttons.
+	if _, b := get(t, ts.URL+"/frag/rooms"); !strings.Contains(b, "no rooms hosted") {
+		t.Errorf("frag/rooms = %q", b)
+	}
+	if resp, b := get(t, ts.URL+"/frag/workspace?kind=pipelines"); resp.StatusCode != 200 {
+		t.Errorf("frag/workspace = %d %q", resp.StatusCode, b)
+	}
+	if _, b := get(t, ts.URL+"/"); !strings.Contains(b, `hx-get="/frag/rooms" hx-trigger="load"`) {
+		t.Errorf("dashboard missing the rooms preload")
+	}
+
 	// Unknown run ids render 404s, not stack traces.
 	if resp, _ = get(t, ts.URL+"/runs/9999"); resp.StatusCode != 404 {
 		t.Errorf("unknown run = %d", resp.StatusCode)

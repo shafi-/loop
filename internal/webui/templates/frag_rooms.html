@@ -1,0 +1,15 @@
+{{define "frag_rooms"}}
+{{$rooms := .Rooms}}
+{{if not $rooms}}<p class="muted">no rooms hosted — open one above.</p>{{else}}
+<table>
+  <tr><th>room</th><th>agents</th><th>state</th></tr>
+  {{range $rooms}}
+  <tr>
+    <td><a href="/rooms/{{.Name}}">{{.Name}}</a></td>
+    <td class="muted">{{range $i, $a := .Agents}}{{if $i}}, {{end}}@{{$a}}{{end}}</td>
+    <td>{{if .Busy}}<span class="badge b-running">thinking…</span>{{else}}<span class="badge b-done">idle</span>{{end}}</td>
+  </tr>
+  {{end}}
+</table>
+{{end}}
+{{end}}
