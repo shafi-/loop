@@ -249,6 +249,29 @@ func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 	}
 }
 
+// The page head carries the identity: favicon set, theme color, and a
+// title (plus nav brand) that names the workspace so project tabs are
+// tellable apart.
+func TestHeadIdentity(t *testing.T) {
+	_, handler := newUI(t, t.TempDir())
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	_, body := get(t, ts.URL+"/")
+	for _, want := range []string{
+		`rel="icon" type="image/svg+xml" href="/assets/favicon.svg"`,
+		`rel="alternate icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png"`,
+		`rel="apple-touch-icon" href="/assets/apple-touch-icon.png"`,
+		`<meta name="theme-color" content="#0d1117">`,
+		`<title>webui · loop — runs</title>`, // daemon CWD is this package's dir
+		`<svg class="mark" viewBox="0 0 64 64"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard head missing %q", want)
+		}
+	}
+}
+
 func get(t *testing.T, url string) (*http.Response, string) {
 	t.Helper()
 	resp, err := http.Get(url)

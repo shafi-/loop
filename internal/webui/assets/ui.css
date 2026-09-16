@@ -15,6 +15,10 @@ nav {
   padding: .6rem 1.2rem; border-bottom: 1px solid var(--edge); background: var(--panel);
 }
 nav .brand { color: var(--ok); font-weight: 700; }
+nav .brand .mark {
+  width: 1em; height: 1em; vertical-align: -.08em;
+  margin-right: .3em;
+}
 nav a { color: var(--accent); text-decoration: none; }
 nav .spacer { flex: 1; }
 main { max-width: 60rem; margin: 0 auto; padding: 1.2rem; }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>@media (prefers-color-scheme: light){.r{stroke:#1a7f37}.h{fill:#1a7f37}}</style>
+  <path class="r" d="M32 12 A20 20 0 1 1 13.2 25.2" fill="none" stroke="#3fb950" stroke-width="8"/>
+  <circle class="h" cx="13.2" cy="25.2" r="4" fill="#3fb950"/>
+  <path class="h" d="M47 12 L31 5.5 L31 18.5 Z" fill="#3fb950"/>
+</svg>
