@@ -31,9 +31,17 @@ Or build from source:
 go build -o loop ./cmd/loop      # from a checkout of this repository
 ```
 
-You only need **Node.js ≥ 22** if you use `agent` stages (they run on the
-cline executor, a Node sidecar). Pipelines made only of `llm`, `tool`,
-`human`, and `router` stages need nothing but the binary. Check what your
+Then run the onboarding command:
+
+```bash
+./loop setup
+```
+
+It checks your provider config and installs the agent executor —
+agent stages (the cline executor) normally need Node.js ≥ 22, but
+`loop setup` compiles a **standalone host** instead, so nothing but
+the loop binary is needed at runtime. Pipelines made only of `llm`,
+`tool`, `human`, and `router` stages never needed it. Check what your
 installation can do with `./loop doctor`.
 
 ### Configure credentials
@@ -463,19 +471,46 @@ A run announces its id at start; keep it, or pass your own with
 
 ## 8. Executors (agent stages)
 
-Agent stages delegate to an executor. v1 ships **cline**: a Node
-sidecar (JSONL over stdio) hosting the cline agent SDK. The Go engine
+Agent stages delegate to an executor. v1 ships **cline**: a sidecar
+hosting the cline agent SDK, speaking JSONL over stdio. The Go engine
 owns determinism and the audit trail; the host owns the agentic loop.
 
-```bash
-./loop executor install cline   # writes ~/.loop/executors/cline + npm install
-```
-
-Requirements: Node ≥ 22. Old system node? Point at a newer one:
+### `loop setup` — the onboarding command
 
 ```bash
-LOOP_NODE=/opt/homebrew/opt/node@25/bin/node ./loop run ...
+./loop setup
 ```
+
+Makes this installation ready to use, idempotently (safe to re-run):
+
+1. **Providers** — reports what your environment (shell + `.env`)
+   configures and what model-less configs resolve to; missing keys get
+   copy-paste instructions.
+2. **Agent executor** — installs the cline host, preferring a
+   **standalone compiled binary**: if neither bun ≥ 1.1 nor Node 22+ is
+   present, it fetches the bun toolchain once (~30 MB, from bun's
+   GitHub releases into `~/.loop/bin/`), installs the SDK, and compiles
+   the host. After that, **agent stages need no Node or bun at
+   runtime**. If compilation is not possible, the script mode remains.
+3. **Doctor** — the final health check.
+
+### Install and run modes
+
+```bash
+./loop executor install cline   # refresh the host files + SDK + standalone host
+```
+
+Two host forms, picked automatically in this order:
+
+- **Standalone** (`~/.loop/executors/cline/host`): a self-contained
+  executable — nothing else required at runtime.
+- **Script** (`~/.loop/executors/cline/index.mjs`): needs Node ≥ 22.
+  Old system node? Point at a newer one:
+  `LOOP_NODE=/opt/homebrew/opt/node@25/bin/node ./loop run ...`
+
+Overrides: `LOOP_NODE` (script-mode interpreter), `LOOP_CLINE_HOST`
+(script location), `LOOP_CLINE_HOST_BIN` (standalone location),
+`LOOP_BUN` (toolchain used at install time).
 
 The executor receives the fully resolved model spec (family, model,
 endpoint, key — env rules apply, including per-family endpoint
@@ -492,7 +527,7 @@ activity is auditable like everything else.
 | `HTTP 503 (model_not_found): No available channel for model ...` | Your endpoint serves a different model catalog. Point `*_MODEL` at a model the endpoint actually offers. |
 | `HTTP 403 (auth): credit limit insufficient` | The endpoint account is out of credit. Top up or switch endpoints. |
 | `context_length_exceeded` / `prompt is too long` | The input outgrew the model's window. Shorten upstream stages or raise the model tier. |
-| `node 16 is too old: the cline executor needs Node 22+` | Set `LOOP_NODE` to a modern node binary. |
+| `node 16 is too old: the cline executor needs Node 22+` | Run `loop setup` (compiles a standalone host, no Node needed), or set `LOOP_NODE` to a modern node binary. |
 | `No output generated. The model stream ended without a finish chunk` | The endpoint answered the SDK's request with a non-stream response (often a 404 behind a 200 from a gateway). Check the base URL convention: anthropic bases carry **no** `/v1`. |
 | `unknown reference "stages.x.y"` | A template referenced a stage that hasn't run (or a typo). Router "when" values are interpolated before comparison. |
 | Output truncated mid-text | The model hit `max_tokens`; loop logs `output_truncated` in the run log. Raise `max_tokens` on that stage. |

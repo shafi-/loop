@@ -29,6 +29,9 @@ echo '{"type":"done","output":"architecture doc ready"}'
 	}
 	t.Setenv("LOOP_NODE", "sh")
 	t.Setenv("LOOP_CLINE_HOST", host)
+	// Keep the standalone host out of the picture (a real machine may
+	// have one): this test proves the script-mode env overrides.
+	t.Setenv("LOOP_CLINE_HOST_BIN", filepath.Join(dir, "no-standalone-host"))
 	t.Setenv("ANTHROPIC_API_KEY", "test-key") // executor resolves keys from env like providers do
 
 	p, err := config.ParsePipeline([]byte(`

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -63,42 +64,52 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Check loop's prerequisites and report problems",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			out := cmd.OutOrStdout()
-			fmt.Fprintln(out, "checking loop prerequisites…")
-
-			// Credentials source: a .env here is the usual setup.
-			if _, err := os.Stat(".env"); err == nil {
-				fmt.Fprintf(out, "✓ .env found in this directory (loaded at startup; shell env wins)\n")
-			} else {
-				fmt.Fprintf(out, "• no .env file (using shell environment only) — export ANTHROPIC_API_KEY / OPENAI_API_KEY\n")
-			}
-
-			cl := cline.New()
-			problems := cl.Check()
-			if len(problems) == 0 {
-				fmt.Fprintf(out, "✓ cline executor: node + host + @cline/sdk all present\n")
-				fmt.Fprintf(out, "  (node %s, host %s)\n", cl.NodeBin, cl.HostPath)
-			} else {
-				fmt.Fprintf(out, "✗ cline executor:\n")
-				for _, p := range problems {
-					fmt.Fprintf(out, "  - %v\n", p)
-				}
-				fmt.Fprintln(out, "  agent stages need this executor; pipelines using only")
-				fmt.Fprintln(out, "  llm/tool/human/router stages work without it.")
-			}
-
-			// Counters are opt-in; being off is normal, not a problem.
-			if counters.Enabled() {
-				fmt.Fprintf(out, "• counters: on → %s\n", counters.Path())
-				if m := counters.Read(); len(m) > 0 {
-					fmt.Fprintf(out, "  (%s)\n", summarizeCounters(m))
-				}
-			} else {
-				fmt.Fprintf(out, "• counters: off (opt in with LOOP_COUNTERS=1; anonymous, local-only counts)\n")
-			}
-			return nil
+			return runDoctor(cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
+}
+
+// runDoctor is the health check body, shared with `loop setup`.
+func runDoctor(out, errOut io.Writer) error {
+	fmt.Fprintln(out, "checking loop prerequisites…")
+
+	// Credentials source: a .env here is the usual setup.
+	if _, err := os.Stat(".env"); err == nil {
+		fmt.Fprintf(out, "✓ .env found in this directory (loaded at startup; shell env wins)\n")
+	} else {
+		fmt.Fprintf(out, "• no .env file (using shell environment only) — export ANTHROPIC_API_KEY / OPENAI_API_KEY, or run `loop setup`\n")
+	}
+
+	cl := cline.New()
+	switch {
+	case cl.StandaloneHost():
+		fmt.Fprintf(out, "✓ cline executor: standalone host (%s) — no Node needed\n", cl.HostBin)
+	default:
+		problems := cl.Check()
+		if len(problems) == 0 {
+			fmt.Fprintf(out, "✓ cline executor: node + host + @cline/sdk all present\n")
+			fmt.Fprintf(out, "  (node %s, host %s)\n", cl.NodeBin, cl.HostPath)
+		} else {
+			fmt.Fprintf(out, "✗ cline executor:\n")
+			for _, p := range problems {
+				fmt.Fprintf(errOut, "  - %v\n", p)
+			}
+			fmt.Fprintln(out, "  agent stages need this executor; pipelines using only")
+			fmt.Fprintln(out, "  llm/tool/human/router stages work without it — or run `loop setup`")
+			fmt.Fprintln(out, "  for a self-contained install (no Node needed afterward).")
+		}
+	}
+
+	// Counters are opt-in; being off is normal, not a problem.
+	if counters.Enabled() {
+		fmt.Fprintf(out, "• counters: on → %s\n", counters.Path())
+		if m := counters.Read(); len(m) > 0 {
+			fmt.Fprintf(out, "  (%s)\n", summarizeCounters(m))
+		}
+	} else {
+		fmt.Fprintf(out, "• counters: off (opt in with LOOP_COUNTERS=1; anonymous, local-only counts)\n")
+	}
+	return nil
 }
 
 // summarizeCounters renders the counts as "key n, …" pairs, event maps

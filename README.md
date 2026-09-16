@@ -28,8 +28,16 @@ go build -o loop ./cmd/loop
 
 ## Quickstart
 
-Set one key — everything else (provider, model, endpoint) resolves from
-it, per the [grand rule](USER%20MANUAL.md#the-grand-rule):
+Run the onboarding command — it checks your provider config, installs
+the agent executor (fetching a self-contained toolchain if needed, so
+**no Node.js required afterward**), and health-checks the result:
+
+```bash
+loop setup
+```
+
+Set one key if you haven't — everything else (provider, model,
+endpoint) resolves from it, per the [grand rule](USER%20MANUAL.md#the-grand-rule):
 
 ```bash
 export ANTHROPIC_API_KEY=sk-...   # or OPENAI_API_KEY; gateways: see the manual
@@ -42,11 +50,7 @@ loop init
 loop run pipelines/feature-delivery.yaml
 ```
 
-The example includes an `agent` stage; those run on the cline executor,
-which needs Node.js ≥ 22 (`loop doctor` checks your setup). Pipelines
-made only of `llm`, `tool`, `human`, and `router` stages need nothing
-but the binary.
-
+The example includes an `agent` stage; `loop setup` made it runnable.
 Then open a room:
 
 ```bash

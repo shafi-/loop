@@ -21,10 +21,17 @@ import (
 // MinNodeMajor is the SDK's documented floor (Node 22).
 const MinNodeMajor = 22
 
-// Executor runs tasks through the cline host process.
+// Executor runs tasks through the cline host process. Two host forms
+// are supported, checked in this order:
+//
+//   - HostBin: a standalone compiled host (bun build --compile) — runs
+//     directly, no Node or bun needed at runtime.
+//   - HostPath: the index.mjs script, executed by NodeBin (≥ 22) — the
+//     classic mode.
 type Executor struct {
-	NodeBin  string // default: LOOP_NODE env, else "node"
-	HostPath string // default: ResolveHostPath()
+	NodeBin  string // script mode: default LOOP_NODE env, else "node"
+	HostPath string // script mode: default ResolveHostPath()
+	HostBin  string // standalone mode: default ResolveHostBin()
 }
 
 // New builds an executor with environment-driven defaults.
@@ -33,7 +40,7 @@ func New() *Executor {
 	if node == "" {
 		node = "node"
 	}
-	return &Executor{NodeBin: node, HostPath: ResolveHostPath()}
+	return &Executor{NodeBin: node, HostPath: ResolveHostPath(), HostBin: ResolveHostBin()}
 }
 
 // Name implements executor.Executor.
@@ -60,14 +67,43 @@ func ResolveHostPath() string {
 	return filepath.Join(home, ".loop", "executors", "cline", "index.mjs")
 }
 
+// ResolveHostBin returns the canonical standalone-host path (the compile
+// output of `loop executor install cline`). It does not imply existence —
+// Check and Run stat it.
+func ResolveHostBin() string {
+	if p := os.Getenv("LOOP_CLINE_HOST_BIN"); p != "" {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".loop", "executors", "cline", "host")
+}
+
+// StandaloneHost reports whether the standalone host binary is present
+// and executable — the no-runtime-dependencies mode.
+func (e *Executor) StandaloneHost() bool {
+	if e.HostBin == "" {
+		return false
+	}
+	fi, err := os.Stat(e.HostBin)
+	return err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0
+}
+
 // Check verifies prerequisites and returns actionable problems. Doctor
-// surfaces all of them; Run fails fast on the first.
+// surfaces all of them; Run fails fast on the first. A standalone host
+// satisfies everything by itself; the script mode needs Node ≥ 22 (or
+// a bun able to run it) plus the installed SDK.
 func (e *Executor) Check() []error {
+	if e.StandaloneHost() {
+		return nil
+	}
 	var problems []error
 	if major, ok := e.probeNodeMajor(); !ok {
-		problems = append(problems, fmt.Errorf("node not found or unrecognized (%s): install Node.js %d+ — https://nodejs.org", e.NodeBin, MinNodeMajor))
+		problems = append(problems, fmt.Errorf("node not found or unrecognized (%s): install Node.js %d+ — https://nodejs.org, or run `loop setup` for a self-contained install", e.NodeBin, MinNodeMajor))
 	} else if major < MinNodeMajor {
-		problems = append(problems, fmt.Errorf("node %d is too old: the cline executor needs Node %d+", major, MinNodeMajor))
+		problems = append(problems, fmt.Errorf("node %d is too old: the cline executor needs Node %d+ — or run `loop setup` for a self-contained install", major, MinNodeMajor))
 	}
 	if _, err := os.Stat(e.HostPath); err != nil {
 		problems = append(problems, fmt.Errorf("host script missing at %s: run `loop executor install cline`", e.HostPath))
@@ -144,18 +180,26 @@ type hostEvent struct {
 }
 
 // Run implements executor.Executor: spawn the host, stream its events,
-// collect the final output.
+// collect the final output. The standalone host runs directly; the
+// script mode runs under the configured Node.
 func (e *Executor) Run(ctx context.Context, task executor.Task, onEvent func(executor.Event)) (*executor.Result, error) {
-	// Preconditions: the host must exist (with an install hint if not);
-	// a confirmed-but-too-old node is refused with a friendly message.
-	// An unconfirmable interpreter is left to the spawn error.
-	if _, err := os.Stat(e.HostPath); err != nil {
-		return nil, fmt.Errorf("cline host missing at %s: run `loop executor install cline`", e.HostPath)
+	// Preconditions for the script mode: the host must exist (with an
+	// install hint if not); a confirmed-but-too-old node is refused with
+	// a friendly message. The standalone host has no preconditions
+	// beyond existing. An unconfirmable interpreter is left to the
+	// spawn error.
+	var cmd *exec.Cmd
+	if e.StandaloneHost() {
+		cmd = exec.CommandContext(ctx, e.HostBin)
+	} else {
+		if _, err := os.Stat(e.HostPath); err != nil {
+			return nil, fmt.Errorf("cline host missing at %s: run `loop executor install cline`", e.HostPath)
+		}
+		if major, ok := e.probeNodeMajor(); ok && major < MinNodeMajor {
+			return nil, fmt.Errorf("node %d is too old: the cline executor needs Node %d+ — or run `loop setup` for a self-contained install", major, MinNodeMajor)
+		}
+		cmd = exec.CommandContext(ctx, e.NodeBin, e.HostPath)
 	}
-	if major, ok := e.probeNodeMajor(); ok && major < MinNodeMajor {
-		return nil, fmt.Errorf("node %d is too old: the cline executor needs Node %d+", major, MinNodeMajor)
-	}
-
 	wire := taskWire{
 		Type:        "task",
 		TaskID:      newTaskID(),
@@ -179,7 +223,6 @@ func (e *Executor) Run(ctx context.Context, task executor.Task, onEvent func(exe
 		return nil, err
 	}
 
-	cmd := exec.CommandContext(ctx, e.NodeBin, e.HostPath)
 	if task.CWD != "" {
 		cmd.Dir = task.CWD
 	}
