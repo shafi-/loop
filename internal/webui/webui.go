@@ -20,8 +20,7 @@ var files embed.FS
 // pageData is the shell every full page renders inside; fragments use
 // the fields they need.
 type pageData struct {
-	Title   string
-	Version string
+	Title string
 	// Workspace names the daemon's directory, shown in the nav brand
 	// ("loop · webapp") so two project tabs are tellable apart.
 	Workspace string
@@ -146,10 +145,10 @@ func noCache(next http.Handler) http.Handler {
 func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	runs, _ := cl.Runs(true)
 	rooms, _ := cl.Rooms()
-	version, workspace := daemonMeta(cl)
+	workspace := workspaceOf(cl)
 	wk, _ := cl.Workspace()
 	renderPage(tmpl, w, "dashboard", pageData{
-		Title: "runs", Version: version, Workspace: workspace,
+		Title: "runs", Workspace: workspace,
 		Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms,
 		Pipelines: wk.Pipelines, WSRooms: wk.Rooms,
 	})
@@ -202,8 +201,7 @@ func runPage(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, 
 		return
 	}
 	events, _ := cl.Events(id, 0)
-	version, workspace := daemonMeta(cl)
-	renderPage(tmpl, w, "run", pageData{Title: id, Version: version, Workspace: workspace, Info: info, Rows: Timeline(events)})
+	renderPage(tmpl, w, "run", pageData{Title: id, Workspace: workspaceOf(cl), Info: info, Rows: Timeline(events)})
 }
 
 // timeline is the live fragment: htmx refetches it on every streamed
@@ -341,8 +339,7 @@ func roomData(cl *daemon.Client, w http.ResponseWriter, r *http.Request) (pageDa
 		return pageData{}, false
 	}
 	lines, _ := cl.RoomTranscript(info.Name, 0)
-	version, workspace := daemonMeta(cl)
-	data := pageData{Title: info.Name, Version: version, Workspace: workspace, FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents, info.Runs)}
+	data := pageData{Title: info.Name, Workspace: workspaceOf(cl), FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents, info.Runs)}
 	if waiting, ok := anyWaiting(info.Runs); ok {
 		data.Waiting = &waiting
 	}
@@ -411,13 +408,13 @@ func roomApprove(tmpl *template.Template, cl *daemon.Client, w http.ResponseWrit
 	roomChat(tmpl, cl, w, r)
 }
 
-// daemonMeta asks the daemon who it is, once per full page: the
-// version footer and the workspace name the nav brand shows.
-func daemonMeta(cl *daemon.Client) (version, workspace string) {
+// workspaceOf asks the daemon for the workspace name the nav brand
+// shows; empty when the daemon can't be reached.
+func workspaceOf(cl *daemon.Client) string {
 	if p, err := cl.Ping(); err == nil {
-		return p.Version, p.Workspace
+		return p.Workspace
 	}
-	return "?", ""
+	return ""
 }
 
 // splitActive/splitHistory divide the daemon's runs list (active first,

@@ -20,6 +20,8 @@ nav .brand .mark {
   margin-right: .3em;
 }
 nav a { color: var(--accent); text-decoration: none; }
+nav a.gh { color: var(--muted); display: inline-flex; align-items: center; }
+nav a.gh:hover { color: var(--fg); }
 nav .spacer { flex: 1; }
 main { max-width: 60rem; margin: 0 auto; padding: 1.2rem; }
 

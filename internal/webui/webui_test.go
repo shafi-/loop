@@ -265,6 +265,8 @@ func TestHeadIdentity(t *testing.T) {
 		`<meta name="theme-color" content="#0d1117">`,
 		`<title>webui · loop — runs</title>`, // daemon CWD is this package's dir
 		`<svg class="mark" viewBox="0 0 64 64"`,
+		`<a href="https://shafi-.github.io/loop/" target="_blank" rel="noreferrer">docs</a>`,
+		`<a class="gh" href="https://github.com/shafi-/loop"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard head missing %q", want)
