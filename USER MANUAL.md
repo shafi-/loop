@@ -36,7 +36,7 @@ go build -o loop ./cmd/loop      # from a checkout of this repository
 Then run the onboarding command:
 
 ```bash
-./loop setup
+loop setup
 ```
 
 It checks your provider config and installs the agent executor —
@@ -44,7 +44,7 @@ agent stages (the cline executor) normally need Node.js ≥ 22, but
 `loop setup` compiles a **standalone host** instead, so nothing but
 the loop binary is needed at runtime. Pipelines made only of `llm`,
 `tool`, `human`, and `router` stages never needed it. Check what your
-installation can do with `./loop doctor`.
+installation can do with `loop doctor`.
 
 ### Configure credentials
 
@@ -92,7 +92,7 @@ Endpoint conventions differ by family — this is deliberate:
 ### Check your setup
 
 ```bash
-./loop doctor
+loop doctor
 ```
 
 Reports `.env` presence, node version, cline executor state, and
@@ -103,9 +103,9 @@ whether counters are on.
 ## 2. Quickstart
 
 ```bash
-./loop init                      # scaffold pipelines/ + rooms/ + README
-./loop validate pipelines/feature-delivery.yaml
-./loop run pipelines/feature-delivery.yaml
+loop init                      # scaffold pipelines/ + rooms/ + README
+loop validate pipelines/feature-delivery.yaml
+loop run pipelines/feature-delivery.yaml
 ```
 
 The example pipeline turns an idea into a reviewed implementation plan:
@@ -121,7 +121,7 @@ feed your words forward.
 Chat with the leadership room:
 
 ```bash
-./loop chat rooms/leadership.yaml "@architect evaluate: is this feasible?"
+loop chat rooms/leadership.yaml "@architect evaluate: is this feasible?"
 ```
 
 Tag an agent → it must reply. Untagged agents judge whether they should
@@ -130,7 +130,7 @@ speak; when they decline you'll see `👁 @ceo @cfo saw the message`.
 Smoke-test your provider configuration:
 
 ```bash
-./loop ask "In one sentence, introduce yourself."
+loop ask "In one sentence, introduce yourself."
 ```
 
 ---
@@ -548,7 +548,7 @@ owns determinism and the audit trail; the host owns the agentic loop.
 ### `loop setup` — the onboarding command
 
 ```bash
-./loop setup
+loop setup
 ```
 
 Makes this installation ready to use, idempotently (safe to re-run):
@@ -567,7 +567,7 @@ Makes this installation ready to use, idempotently (safe to re-run):
 ### Install and run modes
 
 ```bash
-./loop executor install cline   # refresh the host files + SDK + standalone host
+loop executor install cline   # refresh the host files + SDK + standalone host
 ```
 
 Two host forms, picked automatically in this order:
@@ -576,7 +576,7 @@ Two host forms, picked automatically in this order:
   executable — nothing else required at runtime.
 - **Script** (`~/.loop/executors/cline/index.mjs`): needs Node ≥ 22.
   Old system node? Point at a newer one:
-  `LOOP_NODE=/opt/homebrew/opt/node@25/bin/node ./loop run ...`
+  `LOOP_NODE=/opt/homebrew/opt/node@25/bin/node loop run ...`
 
 Overrides: `LOOP_NODE` (script-mode interpreter), `LOOP_CLINE_HOST`
 (script location), `LOOP_CLINE_HOST_BIN` (standalone location),
