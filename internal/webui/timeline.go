@@ -22,7 +22,7 @@ type Row struct {
 	// Detail carries supporting text (the question, the answer, an
 	// error). LongBlk marks it for a collapsible block instead of an
 	// inline span — gate prompts embed whole documents.
-	Detail string
+	Detail  string
 	LongBlk bool
 }
 
@@ -34,21 +34,21 @@ func Timeline(events []daemon.EventLine) []Row {
 	rows := []Row{}
 	for _, ev := range events {
 		var p struct {
-			Pipeline   string `json:"pipeline"`
-			Stage      string `json:"stage"`
-			StageType  string `json:"stage_type"`
-			Attempt    int    `json:"attempt"`
-			Error      string `json:"error"`
-			Next       string `json:"next"`
-			Text       string `json:"text"`
-			Answer     string `json:"answer"`
-			Intent     string `json:"intent"`
-			Via        string `json:"via"`
-			Kind       string `json:"kind"`
-			Tool       string `json:"tool"`
-			Detail     string `json:"detail"`
-			Steps      int    `json:"steps"`
-			MaxTokens  int    `json:"max_tokens"`
+			Pipeline  string `json:"pipeline"`
+			Stage     string `json:"stage"`
+			StageType string `json:"stage_type"`
+			Attempt   int    `json:"attempt"`
+			Error     string `json:"error"`
+			Next      string `json:"next"`
+			Text      string `json:"text"`
+			Answer    string `json:"answer"`
+			Intent    string `json:"intent"`
+			Via       string `json:"via"`
+			Kind      string `json:"kind"`
+			Tool      string `json:"tool"`
+			Detail    string `json:"detail"`
+			Steps     int    `json:"steps"`
+			MaxTokens int    `json:"max_tokens"`
 		}
 		_ = json.Unmarshal(ev.Event, &p)
 

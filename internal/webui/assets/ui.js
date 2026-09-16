@@ -21,7 +21,7 @@
       timer = setTimeout(function () {
         timer = null;
         refresh();
-      }, 150);
+      }, 450);
     };
     es.addEventListener("end", function () {
       refresh();
@@ -31,5 +31,14 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll("[data-sse-connect]").forEach(connect);
+    scrollChat();
   });
+
+  // Chat views keep the newest message in view: after every swap into
+  // the live region, and once on open.
+  function scrollChat() {
+    var log = document.querySelector(".chat-log");
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+  document.body.addEventListener("htmx:afterSwap", scrollChat);
 })();

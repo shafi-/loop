@@ -64,6 +64,40 @@ func TestTimelineClassification(t *testing.T) {
 	}
 }
 
+// ChatView sorts transcript lines into chat shapes: user bubbles, agent
+// bubbles, tool notices, run events, gate asks.
+func TestChatViewClassification(t *testing.T) {
+	lines := []daemon.RoomLine{
+		{Seq: 1, From: "user", Text: "@scout report"},
+		{Seq: 2, From: "scout", Text: "on it"},
+		{Seq: 3, From: "scout", Text: "[tool] wrote plans/x.md"},
+		{Seq: 4, From: "deliver", Text: "▸ run 99 starting: demo (2 stages)"},
+		{Seq: 5, From: "deliver", Text: "[approval needed] Ship it? — reply yes, no, or your change requests"},
+		{Seq: 6, From: "system", Text: "turn failed: scout: context canceled"},
+	}
+	chat := ChatView(lines, []string{"scout"})
+	want := []struct{ kind, from string }{
+		{"user", "you"},
+		{"agent", "scout"},
+		{"tool", "scout"},
+		{"run", "deliver"},
+		{"gate", "deliver"},
+		{"system", ""},
+	}
+	if len(chat) != len(want) {
+		t.Fatalf("chat = %d msgs, want %d: %+v", len(chat), len(want), chat)
+	}
+	for i, w := range want {
+		if chat[i].Kind != w.kind || chat[i].From != w.from {
+			t.Errorf("msg %d = {%s %q}, want {%s %q}", i, chat[i].Kind, chat[i].From, w.kind, w.from)
+		}
+	}
+	// The gate ask drops its bracket marker and the progress bullet.
+	if strings.Contains(chat[4].Text, "approval needed") || strings.Contains(chat[3].Text, "▸") {
+		t.Errorf("run lines carry markup: %+v %+v", chat[3], chat[4])
+	}
+}
+
 // fakeLoop is the daemon's child stand-in: exact stderr shapes, one
 // stdin answer, receipt file.
 func fakeLoop(t *testing.T, dir string) string {

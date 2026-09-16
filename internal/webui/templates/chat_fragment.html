@@ -1,0 +1,30 @@
+{{define "chat_fragment"}}
+{{if not .Chat}}<p class="muted chat-empty">the room hasn't spoken yet — say hello.</p>{{end}}
+{{range .Chat}}
+  {{if eq .Kind "user"}}
+  <div class="bubble msg-user">{{.Text}}</div>
+  {{else if eq .Kind "agent"}}
+  <div class="bubble msg-agent"><div class="who">@{{.From}}</div>{{.Text}}</div>
+  {{else if eq .Kind "tool"}}
+  <div class="bubble msg-tool">🔧 @{{.From}} {{.Text}}</div>
+  {{else if eq .Kind "gate"}}
+  <div class="msg-run gate">✋ {{.From}}: {{.Text}}</div>
+  {{else if eq .Kind "system"}}
+  <div class="msg-system">⚠ {{.Text}}</div>
+  {{else}}
+  <div class="msg-run">{{.From}} — {{.Text}}</div>
+  {{end}}
+{{end}}
+{{if .Waiting}}
+<div class="bubble msg-gatecard">
+  <div class="who">✋ {{.Waiting.RunID}} is asking</div>
+  <pre class="question">{{.Waiting.Prompt}}</pre>
+  <form hx-post="/rooms/{{.Room.Name}}/approve" hx-target="#chat-log" hx-swap="innerHTML">
+    <input name="text" placeholder="your words — or press a button" autocomplete="off">
+    <button type="submit" name="quick" value="yes" class="b-done">yes</button>
+    <button type="submit" name="quick" value="no" class="b-failed">no</button>
+    <button type="submit">send words</button>
+  </form>
+</div>
+{{end}}
+{{end}}

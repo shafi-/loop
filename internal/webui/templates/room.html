@@ -1,8 +1,33 @@
 {{define "room"}}
 {{template "head" .}}
 <p><a href="/">← all runs</a></p>
-<div id="runbody" data-sse-connect="/api/rooms/{{.Room.Name}}/stream?after={{.Room.Lines}}" data-refresh="/rooms/{{.Room.Name}}/fragment">
-  {{template "frag_room" .}}
+
+<section class="card roomhead">
+  <h1>room <code>{{.Room.Name}}</code>{{if .Room.Busy}} <span class="badge b-running">thinking…</span>{{end}}</h1>
+  <p class="muted">{{range $i, $a := .Room.Agents}}{{if $i}}, {{end}}@{{$a}}{{end}}</p>
+</section>
+
+<div id="chat-log" class="chat-log" data-sse-connect="/api/rooms/{{.Room.Name}}/stream?after={{.Room.Lines}}" data-refresh="/rooms/{{.Room.Name}}/chat">
+  {{template "chat_fragment" .}}
 </div>
+
+<section class="card composer">
+  <form hx-post="/rooms/{{.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML">
+    <input name="text" placeholder="@name your message — or just talk to the room" autocomplete="off" autofocus>
+    <button type="submit">send</button>
+  </form>
+  {{if .Room.Pipelines}}
+  <form class="runline" hx-post="/rooms/{{.Room.Name}}/run" hx-target="#chat-log" hx-swap="innerHTML">
+    <label>run
+      <select name="alias">
+        {{range .Room.Pipelines}}<option value="{{.}}">{{.}}</option>{{end}}
+      </select>
+    </label>
+    <label>vars <input name="vars" placeholder="--var key=value …"></label>
+    <button type="submit">run</button>
+  </form>
+  {{end}}
+</section>
+
 {{template "foot" .}}
 {{end}}

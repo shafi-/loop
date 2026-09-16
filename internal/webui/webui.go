@@ -27,7 +27,8 @@ type pageData struct {
 	Info    daemon.RunInfo
 	Rows    []Row
 	Room    daemon.RoomInfo
-	Lines   []daemon.RoomLine
+	Chat    []ChatMsg
+	Waiting *daemon.RunInfo // the room run at a gate, if any
 }
 
 // New builds the dashboard: pages and action endpoints rendered from the
@@ -66,7 +67,7 @@ func New(version, socket string) (http.Handler, error) {
 	mux.HandleFunc("POST /runs/{id}/halt", func(w http.ResponseWriter, r *http.Request) { halt(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /runs/{id}/resume", func(w http.ResponseWriter, r *http.Request) { resume(tmpl, cl, w, r) })
 	mux.HandleFunc("GET /rooms/{name}", func(w http.ResponseWriter, r *http.Request) { roomPage(tmpl, cl, w, r) })
-	mux.HandleFunc("GET /rooms/{name}/fragment", func(w http.ResponseWriter, r *http.Request) { roomFragment(tmpl, cl, w, r) })
+	mux.HandleFunc("GET /rooms/{name}/chat", func(w http.ResponseWriter, r *http.Request) { roomChat(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/say", func(w http.ResponseWriter, r *http.Request) { roomSay(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/run", func(w http.ResponseWriter, r *http.Request) { roomRun(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/approve", func(w http.ResponseWriter, r *http.Request) { roomApprove(tmpl, cl, w, r) })
@@ -206,35 +207,41 @@ func parseVars(s string) []string {
 // ─── rooms ───────────────────────────────────────────────────────────
 
 func roomPage(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
-	info, known, err := cl.Room(r.PathValue("name"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	data, ok := roomData(cl, w, r)
+	if !ok {
 		return
 	}
-	if !known {
-		http.NotFound(w, r)
-		return
-	}
-	lines, _ := cl.RoomTranscript(info.Name, 0)
-	renderPage(tmpl, w, "room", pageData{
-		Title: info.Name, Version: versionOf(cl), Room: info, Lines: lines,
-	})
+	renderPage(tmpl, w, "room", data)
 }
 
-// roomFragment is the room's live body: transcript, say box, run
-// controls — refetched on every streamed transcript append.
-func roomFragment(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+// roomData assembles the chat view: messages, the room, and any run
+// waiting at a gate. ok=false means the response is already written.
+func roomData(cl *daemon.Client, w http.ResponseWriter, r *http.Request) (pageData, bool) {
 	info, known, err := cl.Room(r.PathValue("name"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return pageData{}, false
 	}
 	if !known {
 		http.NotFound(w, r)
-		return
+		return pageData{}, false
 	}
 	lines, _ := cl.RoomTranscript(info.Name, 0)
-	if err := tmpl.ExecuteTemplate(w, "frag_room", pageData{Room: info, Lines: lines}); err != nil {
+	data := pageData{Title: info.Name, Version: versionOf(cl), Room: info, Chat: ChatView(lines, info.Agents)}
+	if waiting, ok := anyWaiting(info.Runs); ok {
+		data.Waiting = &waiting
+	}
+	return data, true
+}
+
+// roomChat is the room's live body: just the messages and gate card —
+// the composer lives outside the swap so typing survives refreshes.
+func roomChat(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	data, ok := roomData(cl, w, r)
+	if !ok {
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "chat_fragment", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -250,7 +257,7 @@ func roomSay(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, 
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	roomFragment(tmpl, cl, w, r)
+	roomChat(tmpl, cl, w, r)
 }
 
 func roomRun(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
@@ -268,7 +275,7 @@ func roomRun(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, 
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	roomFragment(tmpl, cl, w, r)
+	roomChat(tmpl, cl, w, r)
 }
 
 // roomApprove answers a waiting gate of one of the room's runs.
@@ -286,7 +293,7 @@ func roomApprove(tmpl *template.Template, cl *daemon.Client, w http.ResponseWrit
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	roomFragment(tmpl, cl, w, r)
+	roomChat(tmpl, cl, w, r)
 }
 
 func versionOf(cl *daemon.Client) string {
