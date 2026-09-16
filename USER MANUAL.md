@@ -178,6 +178,34 @@ get the stage, the parsed provider error with a hint, and a resume id.
 Flags: `--run-id` (choose your own id), `--resume <id>`, `--runs-dir`
 (default `.loop/runs`), `-q/--quiet` (failures still print).
 
+### `loop serve` — the core as a daemon
+
+Run loop's core engine as a local server. While it is up, runs are
+submitted to it (`loop run --daemon <pipeline.yaml>`) and executed as
+its children: **the run outlives your terminal** — close the laptop's
+session, the run continues; stop the daemon (ctrl-c) and active runs
+pause, resumable exactly like a ctrl-c. The daemon keeps no state of
+its own: runs live in `.loop/runs/` as always, so even a hard-killed
+daemon leaves resumable runs behind.
+
+The point of one owner: a gate asked by *any* run is answerable from
+*any* client, because the daemon holds every run's stdin. Today that
+client is the attached CLI; the web UI is the next one. Submitting a
+run while others are active is allowed (independent pipelines are
+fine) but the response warns you — concurrent runs share the
+daemon's workspace and can write the same files.
+
+Flags: `--socket` (default `~/.loop/daemon.sock`, override with
+`LOOP_DAEMON_SOCK`), `--runs-dir`. Starting a second daemon on a live
+socket reports instead of stealing it.
+
+`loop run --daemon <pipeline.yaml>` submits and attaches: progress
+renders locally in the same shapes as a direct run, gate questions
+appear inline and your typed line is delivered to the run, and
+ctrl-c halts the run (it records its pause point on the daemon side).
+`--resume <id>` reattaches to a past run; `--run-id` is not
+supported (the daemon assigns ids).
+
 ### `loop chat <room.yaml> [opening message]`
 
 Open a multi-agent room. The optional opening message is delivered as if

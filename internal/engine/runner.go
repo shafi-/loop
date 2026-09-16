@@ -183,13 +183,17 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	}
 	defer func() {
 		ev := "run_completed"
+		stage := res.PausedStage
 		switch {
 		case res.Paused:
 			ev = "run_paused"
 		case !res.Completed:
 			ev = "run_failed"
+			// The event names where the run stopped: for a failure that is
+			// the failed stage, not the (empty) pause pointer.
+			stage = res.FailedStage
 		}
-		log.Event(ev, res.PausedStage, map[string]any{"steps": res.Steps})
+		log.Event(ev, stage, map[string]any{"steps": res.Steps})
 	}()
 
 	for ; next < len(r.Pipeline.Stages) && res.Completed == false; res.Steps++ {
@@ -212,7 +216,10 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		}
 
 		r.runlogf("→ %s (%s)", s.ID, s.Type)
-		log.Event("stage_started", s.ID, map[string]any{"type": string(s.Type)})
+		// The stage type travels as "stage_type": RunLog merges payload
+		// keys over the entry, so a payload "type" would clobber the
+		// event kind and the line would no longer say stage_started.
+		log.Event("stage_started", s.ID, map[string]any{"stage_type": string(s.Type)})
 
 		outcome, err := r.runWithRetry(ctx, s, c, deps, log)
 		if err != nil {

@@ -65,7 +65,7 @@ func TestSupervisorApproveRoutesToChildStdin(t *testing.T) {
 	bin := writeFakeChild(t, dir)
 	sup, _ := newTestSupervisor(t, bin)
 
-	if err := sup.Start(Spec{Alias: "demo", File: bin}); err != nil {
+	if _, err := sup.Start(Spec{Alias: "demo", File: bin}); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, 5*time.Second, func() bool {
@@ -92,10 +92,10 @@ func TestSupervisorRefusesSecondRunPerAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	sup, _ := newTestSupervisor(t, script)
-	if err := sup.Start(Spec{Alias: "demo", File: script}); err != nil {
+	if _, err := sup.Start(Spec{Alias: "demo", File: script}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sup.Start(Spec{Alias: "demo", File: script}); err == nil || !strings.Contains(err.Error(), "already running") {
+	if _, err := sup.Start(Spec{Alias: "demo", File: script}); err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Errorf("second run on a busy alias must be refused: %v", err)
 	}
 	sup.Shutdown()
@@ -106,14 +106,14 @@ func TestSupervisorRunInfoTracksPhase(t *testing.T) {
 	bin := writeFakeChild(t, dir)
 	sup, _ := newTestSupervisor(t, bin)
 
-	if err := sup.Start(Spec{Alias: "demo", File: bin}); err != nil {
+	if _, err := sup.Start(Spec{Alias: "demo", File: bin}); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, 5*time.Second, func() bool {
 		runs := sup.Runs()
 		return len(runs) == 1 && runs[0].Waiting
 	}, "Runs to report the waiting gate")
-	if runs := sup.Runs(); runs[0].RunID == "" || runs[0].Alias != "demo" {
+	if runs := sup.Runs(); runs[0].RunID == "" || runs[0].Alias != "demo" || runs[0].Prompt == "" {
 		t.Errorf("Runs() = %+v", runs)
 	}
 

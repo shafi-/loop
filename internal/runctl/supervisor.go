@@ -19,6 +19,7 @@ import (
 type Spec struct {
 	Alias    string   // host-side label (room alias, dashboard label)
 	File     string   // pipeline YAML, absolute or host-cwd-relative
+	RunID    string   // explicit fresh-run id; generated when empty. Hosts that key runs by id (the daemon) set alias = run id so one name serves both.
 	ResumeID string   // non-empty: resume this run instead of starting fresh
 	Extra    []string // forwarded to the child verbatim (e.g. --var k=v)
 }
@@ -34,6 +35,7 @@ type Driver struct {
 	cmd      *exec.Cmd
 	stdin    io.WriteCloser
 	waiting  bool // a gate is asking
+	prompt   string // the open gate's question, "" when not waiting
 	lastLine string
 	done     chan struct{}
 	ended    bool
@@ -44,6 +46,13 @@ func (d *Driver) Waiting() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.waiting
+}
+
+// Prompt is the open gate's question ("" when no gate is asking).
+func (d *Driver) Prompt() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.prompt
 }
 
 // LastLine is the most recent progress line the child emitted.
@@ -85,6 +94,7 @@ type RunInfo struct {
 	Alias    string
 	RunID    string
 	Waiting  bool   // a gate is asking
+	Prompt   string // the gate's question when Waiting
 	Alive    bool   // child still running
 	LastLine string // latest progress line, "" before the first
 }
@@ -121,23 +131,30 @@ func NewSupervisor(bin string, h Handlers) *Supervisor {
 	return &Supervisor{bin: bin, handlers: h, runs: map[string]*Driver{}}
 }
 
-// Start launches one run; extra args (e.g. --var k=v) are forwarded to
-// the child verbatim. One active run per alias. The busy check and the
-// map insert share one lock section (the spawn is a fork/exec, fast)
-// so two overlapping Starts cannot both claim an alias.
-func (s *Supervisor) Start(spec Spec) error {
+// Start launches one run and returns the run id it will execute under
+// (the resume id when resuming, a generated one otherwise). Extra args
+// (e.g. --var k=v) are forwarded to the child verbatim. One active run
+// per alias. The busy check and the map insert share one lock section
+// (the spawn is a fork/exec, fast) so two overlapping Starts cannot
+// both claim an alias.
+func (s *Supervisor) Start(spec Spec) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, busy := s.runs[spec.Alias]; busy {
-		return fmt.Errorf("%s is already running — /status shows it, or /halt stops it", spec.Alias)
+		return "", fmt.Errorf("%s is already running — /status shows it, or /halt stops it", spec.Alias)
 	}
 
 	runID := spec.ResumeID
+	if runID == "" {
+		runID = spec.RunID
+	}
 	args := []string{"run", spec.File}
-	if runID != "" {
+	if spec.ResumeID != "" {
 		args = append(args, "--resume", runID)
 	} else {
-		runID = engine.NewRunID()
+		if runID == "" {
+			runID = engine.NewRunID()
+		}
 		args = append(args, "--run-id", runID)
 	}
 	args = append(args, spec.Extra...)
@@ -146,14 +163,14 @@ func (s *Supervisor) Start(spec Spec) error {
 	cmd.Stdout = nil // llm streaming stays out of the host: output lives in files
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return err
+		return "", err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("starting %s: %w", s.bin, err)
+		return "", fmt.Errorf("starting %s: %w", s.bin, err)
 	}
 
 	d := &Driver{Alias: spec.Alias, File: spec.File, RunID: runID, cmd: cmd, stdin: stdin, done: make(chan struct{})}
@@ -164,6 +181,7 @@ func (s *Supervisor) Start(spec Spec) error {
 			d.mu.Lock()
 			d.lastLine = text
 			d.waiting = false
+			d.prompt = ""
 			d.mu.Unlock()
 			if s.handlers.OnNotice != nil {
 				s.handlers.OnNotice(d, text)
@@ -172,6 +190,7 @@ func (s *Supervisor) Start(spec Spec) error {
 		Gate: func(prompt string) {
 			d.mu.Lock()
 			d.waiting = true
+			d.prompt = prompt
 			d.mu.Unlock()
 			if s.handlers.OnGate != nil {
 				s.handlers.OnGate(d, prompt)
@@ -202,7 +221,7 @@ func (s *Supervisor) Start(spec Spec) error {
 			s.finish(d, "completed", fmt.Sprintf("✓ %s finished", d.Alias))
 		}
 	}()
-	return nil
+	return runID, nil
 }
 
 // finish retires a run exactly once and hands the outcome to the host.
@@ -307,6 +326,7 @@ func (s *Supervisor) Runs() []RunInfo {
 			Alias:    d.Alias,
 			RunID:    d.RunID,
 			Waiting:  d.Waiting(),
+			Prompt:   d.Prompt(),
 			Alive:    d.Alive(),
 			LastLine: d.LastLine(),
 		})

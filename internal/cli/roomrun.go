@@ -96,7 +96,8 @@ func (s *roomRunSession) Start(alias, resumeID string, extra []string) error {
 	if !ok {
 		return fmt.Errorf("no pipeline %q in this room — /pipelines lists what it owns", alias)
 	}
-	return s.sup.Start(runctl.Spec{Alias: alias, File: file, ResumeID: resumeID, Extra: extra})
+	_, err := s.sup.Start(runctl.Spec{Alias: alias, File: file, ResumeID: resumeID, Extra: extra})
+	return err
 }
 
 // Approve answers a waiting gate (see runctl.Supervisor.Approve).

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -94,12 +95,26 @@ func newRunCmd() *cobra.Command {
 		resume  string
 		quiet   bool
 		runsDir string
+		daemon  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "run <pipeline.yaml>",
 		Short: "Execute a pipeline",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if daemon && runID != "" {
+				return fmt.Errorf("--run-id is not supported with --daemon (the daemon assigns ids; use --resume to reattach)")
+			}
+			if daemon {
+				file, err := filepath.Abs(args[0])
+				if err != nil {
+					return err
+				}
+				logf := func(format string, a ...any) {
+					fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", a...)
+				}
+				return runViaDaemon(cmd.Context(), logf, file, resume, vars)
+			}
 			source, err := os.ReadFile(args[0])
 			if err != nil {
 				return err
@@ -205,5 +220,6 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&resume, "resume", "", "resume a previous run by id (replays its snapshotted pipeline)")
 	f.StringVar(&runsDir, "runs-dir", "", "where runs are stored (default .loop/runs)")
 	f.BoolVarP(&quiet, "quiet", "q", false, "suppress progress lines on stderr")
+	f.BoolVar(&daemon, "daemon", false, "submit to a loop serve daemon and attach (the run outlives the terminal)")
 	return cmd
 }
