@@ -529,6 +529,10 @@ func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
 	for _, rs := range rooms {
 		out = append(out, s.roomJSON(rs))
 	}
+	// Hosted rooms live in a map: list them by name so clients polling
+	// (the dashboard re-renders every few seconds) see a stable order
+	// instead of map iteration shuffling.
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	writeJSON(w, http.StatusOK, map[string]any{"rooms": out})
 }
 

@@ -187,3 +187,43 @@ pipelines:
 		return false
 	}, "the completion line to reach the transcript")
 }
+
+// Rooms are listed alphabetically by name: the dashboard re-renders
+// the list every few seconds, and map iteration would shuffle it.
+func TestRoomsListedAlphabetically(t *testing.T) {
+	mock := mockAnthropic(t, "unused — no messages sent", 0)
+	pointProvidersAtMock(t, mock)
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	cl, _ := startTestServer(t, fakeLoop(t, dir), filepath.Join(dir, "runs"))
+
+	// Host in deliberately non-alphabetical order.
+	for _, name := range []string{"war-room", "alpha-room", "mid-room"} {
+		p := filepath.Join(dir, name+".yaml")
+		yaml := "name: " + name + "\nagents:\n  - name: scout\n    role: scout\n"
+		if err := os.WriteFile(p, []byte(yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cl.HostRoom(p); err != nil {
+			t.Fatalf("host %s: %v", name, err)
+		}
+	}
+
+	// The map shuffles per call; several listings must all be sorted.
+	for i := 0; i < 5; i++ {
+		rooms, err := cl.Rooms()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, r := range rooms {
+			got = append(got, r.Name)
+		}
+		want := []string{"alpha-room", "mid-room", "war-room"}
+		if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+			t.Fatalf("rooms = %v, want %v", got, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
