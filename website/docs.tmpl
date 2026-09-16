@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<meta name="description" content="The loop user manual: every command, the YAML schemas for pipelines and rooms, model resolution, executors, resume, the daemon and web UI.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%233fb950' stroke-width='5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{.Root}}site.css">
+</head>
+<body class="docs-body">
+<nav>
+  <a class="brand" href="{{.Root}}index.html"><span class="brand-mark"></span>loop</a>
+  <a href="{{.Root}}docs/"{{if eq .Active "docs"}} class="on"{{end}}>docs</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/shafi-/loop">github</a>
+</nav>
+
+<div class="docs">
+  <aside class="toc">
+    <p class="toc-title">user manual</p>
+    {{range .TOC}}
+    <a class="lvl{{.Level}}" href="{{.Href}}">{{.Text}}</a>
+    {{end}}
+  </aside>
+  <main class="manual">
+  {{.Body}}
+  </main>
+</div>
+
+<footer>
+  <span>loop — MIT licensed</span>
+  <span class="spacer"></span>
+  <a href="https://github.com/shafi-/loop">github</a>
+  <a href="{{.Root}}index.html">home</a>
+</footer>
+</body>
+</html>

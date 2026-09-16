@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<meta name="description" content="loop is a deterministic agentic harness in a single Go binary: YAML pipelines that run exactly as written, and chat rooms of persona agents that decide when to speak.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%233fb950' stroke-width='5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{.Root}}site.css">
+</head>
+<body>
+<nav>
+  <a class="brand" href="{{.Root}}index.html"><span class="brand-mark"></span>loop</a>
+  <a href="{{.Root}}docs/"{{if eq .Active "docs"}} class="on"{{end}}>docs</a>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/shafi-/loop">github</a>
+</nav>
+
+<div class="landing">
+  <header class="hero">
+    <h1>Determinism where work runs.<br><span class="accent">Judgment where models speak.</span></h1>
+    <p class="sub">loop is a deterministic agentic harness in a single Go binary.
+    Describe work as YAML pipelines that run <em>exactly</em> as written, and talk to
+    teams of persona agents in chat rooms that command those pipelines —
+    with you holding every approval.</p>
+    <div class="install">
+      <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/shafi-/loop/main/install.sh | sh</code>
+      <button id="copy-install" type="button" aria-label="copy install command">copy</button>
+    </div>
+    <p class="cta-row">
+      <a class="btn primary" href="{{.Root}}docs/">read the docs</a>
+      <a class="btn" href="https://github.com/shafi-/loop">source &amp; stars</a>
+    </p>
+  </header>
+
+  <section class="terminals">
+    <div class="term">
+      <div class="term-bar"><span></span><span></span><span></span><em>a pipeline run</em></div>
+      <pre>$ loop run feature-delivery.yaml
+▶ pipeline feature-delivery
+→ requirements (llm)
+→ architect (agent)
+  🔧 architect wrote plans/drone.md
+→ approval (human)
+── your input needed ──
+  Ship this plan? yes / no / describe changes
+✓ run complete (4 steps) — resume id kept</pre>
+    </div>
+    <div class="term">
+      <div class="term-bar"><span></span><span></span><span></span><em>a room, in the browser</em></div>
+      <pre class="chat-mock"><span class="u">You</span> — we need a mitigation plan for the EU payment timeouts
+<span class="a c1">@commander</span> On it — starting the respond pipeline now.
+<span class="evt">You started respond pipeline</span>
+<span class="evt live">respond · → approve (human)</span>
+<span class="a c2">@sre</span> Blast radius is unknown; I want post-fix numbers
+      before anyone says "resolved".
+<span class="a c3">@comms</span> Holding language ready — nothing public until
+      verification lands.
+<span class="gate">✋ respond needs your approval — [yes] [no]</span></pre>
+    </div>
+  </section>
+
+  <section class="features">
+    <div class="card">
+      <h3>Pipelines</h3>
+      <p>Ordered stages — <code>llm</code>, <code>agent</code>, <code>tool</code>,
+      <code>human</code>, <code>router</code> — with deterministic flow, a full
+      audit trail, and resume-after-failure. Gates understand
+      <strong>yes / no / your words</strong>, so free-form answers route
+      deterministically.</p>
+    </div>
+    <div class="card">
+      <h3>Rooms</h3>
+      <p>Teams of persona agents. Tag <code>@name</code> and it must reply;
+      untagged agents read along and judge for themselves whether to speak.
+      Rooms own pipelines: run them in-chat, several concurrently, and approve
+      gates without leaving the conversation.</p>
+    </div>
+    <div class="card">
+      <h3>One engine, three doors</h3>
+      <p><code>loop serve</code> owns every run — runs outlive your terminal, and
+      a gate asked anywhere is answerable everywhere: the browser dashboard, the
+      attached terminal, or a hosted room. Or skip the daemon entirely;
+      plain <code>loop run</code> stays zero-setup.</p>
+    </div>
+  </section>
+
+  <section class="quickstart">
+    <h2>Two minutes to first run</h2>
+    <ol>
+      <li>
+        <p><strong>Install and onboard</strong> — the onboarding command checks your
+        provider config and installs the agent executor (no Node.js needed afterward):</p>
+        <pre>loop setup</pre>
+      </li>
+      <li>
+        <p><strong>Set one key</strong> — provider, model, and endpoint all resolve from it:</p>
+        <pre>export ANTHROPIC_API_KEY=sk-...   # or OPENAI_API_KEY</pre>
+      </li>
+      <li>
+        <p><strong>Scaffold and run</strong>:</p>
+        <pre>loop init
+loop run pipelines/feature-delivery.yaml</pre>
+      </li>
+      <li>
+        <p><strong>Open a room</strong> — or run the whole thing as a service:</p>
+        <pre>loop chat rooms/leadership.yaml "We need a new drone shoot-out"
+# or: loop serve  +  loop ui   →  http://127.0.0.1:8787</pre>
+      </li>
+    </ol>
+  </section>
+
+  <section class="examples">
+    <h2>See it worked out end to end</h2>
+    <div class="card">
+      <h3><a href="https://github.com/shafi-/loop/tree/main/examples/agency-intake">agency-intake →</a></h3>
+      <p>A client request enters a chat room, an intake team interrogates it, and
+      the room's settled transcript becomes the input of a delivery pipeline —
+      judgment first, determinism after.</p>
+    </div>
+    <div class="card">
+      <h3><a href="https://github.com/shafi-/loop/tree/main/examples/incident-room">incident-room →</a></h3>
+      <p>An incident response team — commander, SRE, comms — debates around a gated
+      mitigation pipeline. The SRE reads the last run's artifacts before trusting
+      the fix. Five minutes, one key.</p>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <span>loop — MIT licensed</span>
+  <span class="spacer"></span>
+  <a href="https://github.com/shafi-/loop">github</a>
+  <a href="{{.Root}}docs/">docs</a>
+</footer>
+
+<script>
+document.getElementById("copy-install").addEventListener("click", function () {
+  var b = this;
+  navigator.clipboard.writeText(document.getElementById("install-cmd").textContent)
+    .then(function () { b.textContent = "copied ✓"; setTimeout(function () { b.textContent = "copy"; }, 1600); });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+# Site: builds the GitHub Pages site (landing + user manual) with the
+# tiny generator in website/ — no site builder, no Node toolchain.
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "USER MANUAL.md"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go run ./website -out _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

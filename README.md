@@ -104,9 +104,11 @@ rooms/       multi-agent chat rooms          (loop chat <file>)
 
 ## Documentation
 
-The full reference — every command, the YAML schemas for pipelines and
+The landing page and this manual also live at
+[shafi-.github.io/loop](https://shafi-.github.io/loop/). The full
+reference — every command, the YAML schemas for pipelines and
 rooms, model resolution, executors, resume, the daemon and web UI,
-troubleshooting — lives in [USER MANUAL.md](USER%20MANUAL.md).
+troubleshooting — is [USER MANUAL.md](USER%20MANUAL.md).
 
 ## License
 
