@@ -1,7 +1,7 @@
 {{define "dashboard"}}
 {{template "head" .}}
 
-<h1>runs</h1>
+<h1>runs &amp; rooms</h1>
 
 <section class="card">
   <h2>start a run</h2>
@@ -11,6 +11,15 @@
     <button type="submit">run</button>
   </form>
   <div id="submit-result"></div>
+</section>
+
+<section class="card">
+  <h2>open a room</h2>
+  <form method="post" action="/rooms/host">
+    <label>room file <input name="file" placeholder="rooms/leadership.yaml" required></label>
+    <button type="submit">open</button>
+  </form>
+  <p class="muted">hosts the room on the daemon (or attaches to it if it's already live).</p>
 </section>
 
 <div id="runs" hx-get="/frag/runs" hx-trigger="every 3s" hx-swap="innerHTML">

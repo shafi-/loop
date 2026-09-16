@@ -24,6 +24,7 @@ type pageData struct {
 	// page-specific payloads
 	Active  []daemon.RunInfo
 	History []daemon.RunInfo
+	Rooms   []daemon.RoomInfo
 	Info    daemon.RunInfo
 	Rows    []Row
 	Room    daemon.RoomInfo
@@ -71,6 +72,7 @@ func New(version, socket string) (http.Handler, error) {
 	mux.HandleFunc("POST /rooms/{name}/say", func(w http.ResponseWriter, r *http.Request) { roomSay(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/run", func(w http.ResponseWriter, r *http.Request) { roomRun(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/approve", func(w http.ResponseWriter, r *http.Request) { roomApprove(tmpl, cl, w, r) })
+	mux.HandleFunc("POST /rooms/host", func(w http.ResponseWriter, r *http.Request) { roomHost(tmpl, cl, w, r) })
 	return mux, nil
 }
 
@@ -83,14 +85,43 @@ func renderPage(tmpl *template.Template, w http.ResponseWriter, name string, dat
 
 func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	runs, _ := cl.Runs(true)
+	rooms, _ := cl.Rooms()
 	renderPage(tmpl, w, "dashboard", pageData{
-		Title: "runs", Version: versionOf(cl), Active: splitActive(runs), History: splitHistory(runs),
+		Title: "runs", Version: versionOf(cl), Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms,
 	})
+}
+
+// roomHost opens (or attaches to) a room from the dashboard. A plain
+// form (no htmx) so the 303 lands the browser straight on the room.
+func roomHost(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	file := strings.TrimSpace(r.FormValue("file"))
+	if file == "" {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	info, err := cl.HostRoom(file)
+	if err != nil {
+		// Back to the dashboard with the reason in the fragment.
+		if r.Header.Get("HX-Request") != "" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			fmt.Fprintf(w, `<p class="error">✗ %s</p>`, template.HTMLEscapeString(err.Error()))
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	if r.Header.Get("HX-Request") != "" {
+		w.Header().Set("HX-Redirect", "/rooms/"+info.Name)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/rooms/"+info.Name, http.StatusSeeOther)
 }
 
 func fragRuns(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	runs, _ := cl.Runs(true)
-	if err := tmpl.ExecuteTemplate(w, "frag_runs", pageData{Active: splitActive(runs), History: splitHistory(runs)}); err != nil {
+	rooms, _ := cl.Rooms()
+	if err := tmpl.ExecuteTemplate(w, "frag_runs", pageData{Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

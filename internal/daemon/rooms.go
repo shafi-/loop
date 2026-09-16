@@ -138,6 +138,21 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	return rs, nil
 }
 
+// transcriptPath is where this room's transcript.jsonl lives (the
+// daemon's working directory is the workspace).
+func (rs *roomSession) transcriptPath() string {
+	return filepath.Join(".loop", "rooms", rs.cfg.Name, "transcript.jsonl")
+}
+
+// agentNames renders the participants as an @-list for hint lines.
+func (rs *roomSession) agentNames() string {
+	names := make([]string, 0, len(rs.cfg.Agents))
+	for _, a := range rs.cfg.Agents {
+		names = append(names, a.Name)
+	}
+	return strings.Join(names, ", @")
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
@@ -164,8 +179,17 @@ func (rs *roomSession) say(ctx context.Context, text string) error {
 		}()
 		// Turn failures never kill the room, but they must be visible:
 		// the transcript is the room's record, so failures land there.
-		if err := rs.room.Say(ctx, text, daemonRoomUI{}); err != nil {
+		before := countLines(rs.transcriptPath())
+		err := rs.room.Say(ctx, text, daemonRoomUI{})
+		after := countLines(rs.transcriptPath())
+		if err != nil {
 			_ = rs.tr.Append("system", "turn failed: "+err.Error())
+			return
+		}
+		// A turn that produced nothing (mistyped @name, everyone chose
+		// silence) must not look like the room ignored the user.
+		if after-before <= 1 {
+			_ = rs.tr.Append("system", "no agent replied — address @"+rs.agentNames()+" to force an answer")
 		}
 	}()
 	return nil
