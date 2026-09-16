@@ -52,4 +52,26 @@
     var input = f.querySelector("input[name='text']");
     if (input) input.focus();
   });
+
+  // The sidecar polls and re-renders every few seconds; remember which
+  // pipeline entries the user expanded and keep them expanded.
+  document.body.addEventListener("htmx:beforeSwap", function (e) {
+    var t = e.detail.target;
+    if (t && t.id === "sidecar") {
+      window.__openRuns = Array.prototype.map.call(
+        t.querySelectorAll("details[open]"),
+        function (d) { return d.getAttribute("data-run-id"); }
+      );
+    }
+  });
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var t = e.detail.target;
+    if (t && t.id === "sidecar" && window.__openRuns) {
+      window.__openRuns.forEach(function (id) {
+        var d = t.querySelector('.sidecar-item[data-run-id="' + id + '"]');
+        if (d) d.open = true;
+      });
+      window.__openRuns = null;
+    }
+  });
 })();

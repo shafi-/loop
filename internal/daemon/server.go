@@ -53,9 +53,10 @@ func New(version, runsDir, bin string) *Server {
 // runJSON is the wire form of a supervised run.
 type runJSON struct {
 	RunID    string `json:"run_id"`
-	Pipeline string `json:"pipeline,omitempty"` // from the snapshot (historical) or the submit (active)
-	Phase    string `json:"phase"`              // running | waiting | done | failed | paused
-	File     string `json:"file,omitempty"`     // submit path, when this daemon started the run (enables resume)
+	Alias    string `json:"alias,omitempty"` // the room-side name (room runs)
+	Pipeline string `json:"pipeline,omitempty"`
+	Phase    string `json:"phase"`
+	File     string `json:"file,omitempty"`
 	Waiting  bool   `json:"waiting"`
 	Prompt   string `json:"prompt,omitempty"`
 	Alive    bool   `json:"alive"`
@@ -65,6 +66,7 @@ type runJSON struct {
 func (s *Server) toRunJSON(r runctl.RunInfo) runJSON {
 	out := runJSON{
 		RunID:    r.RunID,
+		Alias:    r.Alias,
 		Phase:    "running",
 		Waiting:  r.Waiting,
 		Prompt:   r.Prompt,
@@ -178,6 +180,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/rooms", s.handleRooms)
 	mux.HandleFunc("GET /api/rooms/{name}", s.handleRoom)
 	mux.HandleFunc("GET /api/rooms/{name}/transcript", s.handleRoomTranscript)
+	mux.HandleFunc("GET /api/rooms/{name}/runs", s.handleRoomRuns)
 	mux.HandleFunc("GET /api/rooms/{name}/stream", s.handleRoomStream)
 	mux.HandleFunc("POST /api/rooms/{name}/say", s.handleRoomSay)
 	mux.HandleFunc("POST /api/rooms/{name}/run", s.handleRoomRun)
@@ -512,6 +515,65 @@ func (s *Server) handleRoom(w http.ResponseWriter, r *http.Request) {
 	if rs := s.roomOf(w, r); rs != nil {
 		writeJSON(w, http.StatusOK, s.roomJSON(rs))
 	}
+}
+
+// handleRoomRuns lists every pipeline run associated with the room —
+// active runs first, then runs known from artifacts via transcript
+// mentions, newest first. This is the room sidecar's data source.
+func (s *Server) handleRoomRuns(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	out := []runJSON{}
+	seen := map[string]bool{}
+	for _, ru := range rs.sup.Runs() {
+		out = append(out, s.toRunJSON(ru))
+		seen[ru.RunID] = true
+	}
+	hist := []runJSON{}
+	for _, ref := range rs.mentionedRunIDs() {
+		if seen[ref.ID] {
+			continue
+		}
+		seen[ref.ID] = true
+		if rj, ok := s.artifactRun(ref.ID); ok {
+			if rj.Alias == "" {
+				rj.Alias = ref.Alias
+			}
+			hist = append(hist, rj)
+		}
+	}
+	sort.Slice(hist, func(i, j int) bool { return hist[i].RunID > hist[j].RunID })
+	writeJSON(w, http.StatusOK, map[string]any{"runs": append(out, hist...)})
+}
+
+// artifactRun builds a run entry from on-disk artifacts for a run that
+// is no longer (or never was) supervised here. Listable only when its
+// state recorded a stop point.
+func (s *Server) artifactRun(id string) (runJSON, bool) {
+	st, err := engine.LoadState(s.runsDir, id)
+	if err != nil || st == nil {
+		return runJSON{}, false
+	}
+	out := runJSON{RunID: id, Alive: false}
+	switch {
+	case st.Done:
+		out.Phase = "done"
+	case st.Failed != "":
+		out.Phase = "failed"
+	case st.Paused != "":
+		out.Phase = "paused"
+	default:
+		return runJSON{}, false
+	}
+	if name := snapshotName(filepath.Join(s.runsDir, id, "pipeline.yaml")); name != "" {
+		out.Pipeline = name
+	}
+	s.mu.Lock()
+	out.File = s.specs[id]
+	s.mu.Unlock()
+	return out, true
 }
 
 func (s *Server) handleRoomTranscript(w http.ResponseWriter, r *http.Request) {

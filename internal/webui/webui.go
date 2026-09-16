@@ -22,14 +22,46 @@ type pageData struct {
 	Title   string
 	Version string
 	// page-specific payloads
-	Active  []daemon.RunInfo
-	History []daemon.RunInfo
-	Rooms   []daemon.RoomInfo
-	Info    daemon.RunInfo
-	Rows    []Row
-	Room    daemon.RoomInfo
-	Chat    []ChatMsg
-	Waiting *daemon.RunInfo // the room run at a gate, if any
+	Active   []daemon.RunInfo
+	History  []daemon.RunInfo
+	Rooms    []daemon.RoomInfo
+	Info     daemon.RunInfo
+	Rows     []Row
+	Room     daemon.RoomInfo
+	Chat     []ChatMsg
+	Waiting  *daemon.RunInfo
+	Sidecar  []SidecarRun
+}
+
+// SidecarRun is one entry of the room sidecar: the run plus a compact
+// timeline rendered from its events.
+type SidecarRun struct {
+	Info daemon.RunInfo
+	Rows []Row
+}
+
+// sidecarRuns assembles the expandable per-run details: newest runs
+// first, each with the tail of its event timeline.
+func sidecarRuns(cl *daemon.Client, name string) []SidecarRun {
+	runs, err := cl.RoomRuns(name)
+	if err != nil {
+		return nil
+	}
+	if len(runs) > 12 {
+		runs = runs[:12]
+	}
+	out := make([]SidecarRun, 0, len(runs))
+	for _, r := range runs {
+		rows := []Row{}
+		if events, err := cl.Events(r.RunID, 0); err == nil {
+			rows = Timeline(events)
+			if len(rows) > 15 {
+				rows = rows[len(rows)-15:]
+			}
+		}
+		out = append(out, SidecarRun{Info: r, Rows: rows})
+	}
+	return out
 }
 
 // New builds the dashboard: pages and action endpoints rendered from the
@@ -72,6 +104,7 @@ func New(version, socket string) (http.Handler, error) {
 	mux.HandleFunc("POST /runs/{id}/resume", func(w http.ResponseWriter, r *http.Request) { resume(tmpl, cl, w, r) })
 	mux.HandleFunc("GET /rooms/{name}", func(w http.ResponseWriter, r *http.Request) { roomPage(tmpl, cl, w, r) })
 	mux.HandleFunc("GET /rooms/{name}/chat", func(w http.ResponseWriter, r *http.Request) { roomChat(tmpl, cl, w, r) })
+	mux.HandleFunc("GET /rooms/{name}/sidecar", func(w http.ResponseWriter, r *http.Request) { roomSidecar(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/say", func(w http.ResponseWriter, r *http.Request) { roomSay(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/run", func(w http.ResponseWriter, r *http.Request) { roomRun(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/approve", func(w http.ResponseWriter, r *http.Request) { roomApprove(tmpl, cl, w, r) })
@@ -254,7 +287,25 @@ func roomPage(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter,
 	if !ok {
 		return
 	}
+	data.Sidecar = sidecarRuns(cl, data.Room.Name)
 	renderPage(tmpl, w, "room", data)
+}
+
+// roomSidecar is the expandable pipeline-run panel; it polls on its own
+// schedule, independent of the chat stream.
+func roomSidecar(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	info, known, err := cl.Room(r.PathValue("name"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !known {
+		http.NotFound(w, r)
+		return
+	}
+	if err := tmpl.ExecuteTemplate(w, "sidecar_fragment", pageData{Room: info, Sidecar: sidecarRuns(cl, info.Name)}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // roomData assembles the chat view: messages, the room, and any run

@@ -131,3 +131,25 @@ button:hover { border-color: var(--accent); }
 .composer .runline { margin-top: .5rem; }
 .composer .runline label { color: var(--muted); }
 .chat-empty { text-align: center; margin: 2rem 0; }
+
+/* ─── room sidecar: pipelines ran or running ─────────────────────── */
+.room-body { display: flex; gap: 1rem; align-items: flex-start; }
+.chat-col { flex: 1; min-width: 0; }
+.sidecar { width: 21rem; flex-shrink: 0; position: sticky; top: .6rem; max-height: calc(100vh - 5rem); overflow-y: auto; }
+.sidecar-item { border: 1px solid var(--edge); border-radius: 8px; margin-bottom: .45rem; background: var(--bg); }
+.sidecar-item summary {
+  display: flex; gap: .5rem; align-items: center; justify-content: space-between;
+  padding: .4rem .6rem; cursor: pointer; list-style: none;
+}
+.sidecar-item summary::-webkit-details-marker { display: none; }
+.sidecar-item summary::after { content: "▸"; color: var(--muted); }
+.sidecar-item[open] summary::after { content: "▾"; }
+.sidecar-alias { font-weight: 600; }
+.sidecar-detail { border-top: 1px solid var(--edge); padding: .5rem .6rem; }
+.sidecar-detail p { margin: 0 0 .4rem; font-size: .78rem; }
+.sidecar-rows { border-left: 2px solid var(--edge); padding-left: .6rem; font-size: .78rem; }
+.sidecar-rows .row { padding: .06rem 0; }
+@media (max-width: 56rem) {
+  .room-body { flex-direction: column-reverse; }
+  .sidecar { width: 100%; position: static; max-height: 18rem; }
+}

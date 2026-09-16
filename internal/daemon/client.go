@@ -133,6 +133,7 @@ func (c *Client) Submit(file, resumeID string, vars []string) (SubmitResult, err
 // RunInfo mirrors the daemon's view of one run.
 type RunInfo struct {
 	RunID    string `json:"run_id"`
+	Alias    string `json:"alias"`  // the room-side name for room runs
 	Pipeline string `json:"pipeline"`
 	Phase    string `json:"phase"` // running | waiting | done | failed | paused
 	File     string `json:"file"`  // set when this daemon submitted the run
@@ -312,6 +313,17 @@ func (c *Client) RoomStream(ctx context.Context, name string, after int) (<-chan
 		}
 	}()
 	return ch, nil
+}
+
+// RoomRuns lists every pipeline run associated with a hosted room —
+// active runs first, then runs known from artifacts, newest first.
+// This feeds the room page's sidecar.
+func (c *Client) RoomRuns(name string) ([]RunInfo, error) {
+	var res struct {
+		Runs []RunInfo `json:"runs"`
+	}
+	err := c.do("GET", "/api/rooms/"+name+"/runs", nil, &res)
+	return res.Runs, err
 }
 
 // Say posts one user message to a hosted room; the turn is processed in

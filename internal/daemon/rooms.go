@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -136,6 +137,37 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	})
 	h.rooms[cfg.Name] = rs
 	return rs, nil
+}
+
+// runIDRe matches loop's generated run ids appearing in transcript text
+// (progress lines, completion lines, resume hints).
+var runIDRe = regexp.MustCompile(`\b\d{8}-\d{6}-[0-9a-f]{4}\b`)
+
+// mentionedRunIDs returns the distinct run ids this room's transcript
+// talks about (progress lines, completion lines), each with the room
+// alias that ran it, in order of first mention.
+func (rs *roomSession) mentionedRunIDs() []runRef {
+	lines, err := readTranscript(rs.transcriptPath(), 0)
+	if err != nil {
+		return nil
+	}
+	var out []runRef
+	seen := map[string]bool{}
+	for _, ln := range lines {
+		for _, id := range runIDRe.FindAllString(ln.Text, -1) {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, runRef{ID: id, Alias: ln.From})
+			}
+		}
+	}
+	return out
+}
+
+// runRef pairs a mentioned run id with the room alias that ran it.
+type runRef struct {
+	ID    string
+	Alias string
 }
 
 // transcriptPath is where this room's transcript.jsonl lives (the

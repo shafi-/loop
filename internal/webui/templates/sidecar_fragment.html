@@ -1,0 +1,21 @@
+{{define "sidecar_fragment"}}
+<h2>pipelines</h2>
+{{if not .Sidecar}}<p class="muted">no runs from this room yet — run one below the chat.</p>{{else}}
+{{range .Sidecar}}
+<details class="sidecar-item" data-run-id="{{.Info.RunID}}">
+  <summary>
+    <span class="sidecar-alias">{{$alias := .Info.Alias}}{{if $alias}}{{$alias}}{{else}}{{.Info.Pipeline}}{{end}}</span>
+    {{template "badge" .Info}}
+  </summary>
+  <div class="sidecar-detail">
+    <p class="muted"><a href="/runs/{{.Info.RunID}}">{{.Info.RunID}}</a>{{if .Info.LastLine}} — {{.Info.LastLine}}{{end}}</p>
+    {{if .Rows}}
+    <div class="sidecar-rows">
+      {{range .Rows}}<div class="row {{.Class}}"><span class="head">{{.Head}}</span></div>{{end}}
+    </div>
+    {{end}}
+  </div>
+</details>
+{{end}}
+{{end}}
+{{end}}
