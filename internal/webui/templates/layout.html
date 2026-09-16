@@ -1,0 +1,27 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>loop — {{.Title}}</title>
+<link rel="stylesheet" href="/assets/ui.css">
+<script src="/assets/htmx.min.js" defer></script>
+<script src="/assets/ui.js" defer></script>
+</head>
+<body>
+<nav>
+  <span class="brand">loop</span>
+  <a href="/">runs</a>
+  <span class="spacer"></span>
+  <span class="muted">daemon {{.Version}}</span>
+</nav>
+<main>
+{{end}}
+
+{{define "foot"}}
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "badge"}}<span class="badge b-{{.Phase}}">{{phaseLabel .Phase}}</span>{{end}}

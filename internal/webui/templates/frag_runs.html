@@ -1,0 +1,36 @@
+{{define "frag_runs"}}
+{{$active := .Active}}
+<section class="card">
+  <h2>active</h2>
+  {{if not $active}}<p class="muted">no active runs — submit one above.</p>{{else}}
+  <table>
+    <tr><th>run</th><th>pipeline</th><th>state</th><th>last event</th></tr>
+    {{range $active}}
+    <tr>
+      <td><a href="/runs/{{.RunID}}">{{.RunID}}</a></td>
+      <td>{{.Pipeline}}</td>
+      <td>{{template "badge" .}}</td>
+      <td class="muted">{{.LastLine}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+</section>
+
+{{$hist := .History}}
+{{if $hist}}
+<section class="card">
+  <h2>history</h2>
+  <table>
+    <tr><th>run</th><th>pipeline</th><th>state</th></tr>
+    {{range $hist}}
+    <tr>
+      <td><a href="/runs/{{.RunID}}">{{.RunID}}</a></td>
+      <td>{{.Pipeline}}</td>
+      <td>{{template "badge" .}}</td>
+    </tr>
+    {{end}}
+  </table>
+</section>
+{{end}}
+{{end}}

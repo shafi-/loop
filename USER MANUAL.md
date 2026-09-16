@@ -199,6 +199,19 @@ Flags: `--socket` (default `~/.loop/daemon.sock`, override with
 `LOOP_DAEMON_SOCK`), `--runs-dir`. Starting a second daemon on a live
 socket reports instead of stealing it.
 
+### `loop ui` — the web dashboard
+
+Serve loop's web UI on the loopback interface and open it in your
+browser. The dashboard is a client of the daemon: it lists active and
+past runs, starts runs, renders each run's event timeline live, and
+answers gate questions — yes, no, or your words — straight from the
+browser, for any run the daemon owns. The UI binds `127.0.0.1:8787`
+by default (`--addr` to change) and has no authentication: keep it on
+your machine, like the daemon itself.
+
+Requires a running daemon (`loop serve`); `loop run --daemon` and the
+dashboard are two windows onto the same runs.
+
 `loop run --daemon <pipeline.yaml>` submits and attaches: progress
 renders locally in the same shapes as a direct run, gate questions
 appear inline and your typed line is delivered to the run, and

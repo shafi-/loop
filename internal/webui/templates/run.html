@@ -1,0 +1,8 @@
+{{define "run"}}
+{{template "head" .}}
+<p><a href="/">← all runs</a></p>
+<div id="runbody" data-sse-connect="/api/runs/{{.Info.RunID}}/stream?after=0" data-refresh="/runs/{{.Info.RunID}}/timeline">
+  {{template "frag_timeline" .}}
+</div>
+{{template "foot" .}}
+{{end}}

@@ -133,10 +133,27 @@ func (c *Client) Submit(file, resumeID string, vars []string) (SubmitResult, err
 // RunInfo mirrors the daemon's view of one run.
 type RunInfo struct {
 	RunID    string `json:"run_id"`
+	Pipeline string `json:"pipeline"`
+	Phase    string `json:"phase"` // running | waiting | done | failed | paused
+	File     string `json:"file"`  // set when this daemon submitted the run
 	Waiting  bool   `json:"waiting"`
 	Prompt   string `json:"prompt"`
 	Alive    bool   `json:"alive"`
 	LastLine string `json:"last_line"`
+}
+
+// Runs lists active runs; with history, also runs known from artifacts
+// (finished elsewhere or in past daemon lives), newest first.
+func (c *Client) Runs(history bool) ([]RunInfo, error) {
+	path := "/api/runs"
+	if history {
+		path += "?history=1"
+	}
+	var res struct {
+		Runs []RunInfo `json:"runs"`
+	}
+	err := c.do("GET", path, nil, &res)
+	return res.Runs, err
 }
 
 // Run fetches one run's state. The second return is false for unknown ids.

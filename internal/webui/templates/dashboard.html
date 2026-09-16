@@ -1,0 +1,21 @@
+{{define "dashboard"}}
+{{template "head" .}}
+
+<h1>runs</h1>
+
+<section class="card">
+  <h2>start a run</h2>
+  <form hx-post="/runs" hx-target="#submit-result" hx-swap="innerHTML">
+    <label>pipeline file <input name="file" placeholder="pipelines/feature-delivery.yaml" required></label>
+    <label>vars <input name="vars" placeholder="--var key=value …"></label>
+    <button type="submit">run</button>
+  </form>
+  <div id="submit-result"></div>
+</section>
+
+<div id="runs" hx-get="/frag/runs" hx-trigger="every 3s" hx-swap="innerHTML">
+  {{template "frag_runs" .}}
+</div>
+
+{{template "foot" .}}
+{{end}}

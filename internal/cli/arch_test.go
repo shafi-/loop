@@ -12,6 +12,10 @@ import (
 // ui) to the core — so no core package may import it. If this test fails,
 // a surface concern leaked into the core and the dependency arrow points
 // the wrong way.
+//
+// TestWebUIIsPureClient (same walk) additionally pins webui to its API
+// boundary: it may talk to the daemon client only, never to the engine
+// or the supervisor directly.
 func TestCoreNeverImportsCLI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("shells out to go list")
@@ -27,19 +31,25 @@ func TestCoreNeverImportsCLI(t *testing.T) {
 		t.Fatalf("go list: %v: %s", err, out)
 	}
 	const cliPkg = "github.com/shafi-/loop/internal/cli"
+	webuiPkg := "github.com/shafi-/loop/internal/webui"
+	forbiddenInWebUI := map[string]bool{
+		"github.com/shafi-/loop/internal/engine": true,
+		"github.com/shafi-/loop/internal/runctl": true,
+		"github.com/shafi-/loop/internal/cli":    true,
+	}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.SplitN(line, "|", 3)
 		if len(parts) != 3 {
 			continue
 		}
 		pkg := parts[0]
-		if pkg == cliPkg {
-			continue
-		}
 		for _, imports := range []string{parts[1], parts[2]} {
 			for _, imp := range strings.Fields(imports) {
-				if imp == cliPkg {
+				if pkg != cliPkg && imp == cliPkg {
 					t.Errorf("%s imports internal/cli — the core must never import the CLI", pkg)
+				}
+				if pkg == webuiPkg && forbiddenInWebUI[imp] {
+					t.Errorf("webui imports %s — the UI is a pure daemon-API client", imp)
 				}
 			}
 		}

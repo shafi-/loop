@@ -241,8 +241,29 @@ stages:
 	}
 	waitFor(t, 15*time.Second, func() bool {
 		info, _, _ := cl.Run(sub.RunID)
-		return !info.Alive && info.LastLine == "phase: done"
+		return !info.Alive && info.Phase == "done"
 	}, "the run to complete (rejection terminal)")
+
+	// The submitter's file path comes back on the run: the resume
+	// affordance depends on it.
+	if info, _, _ := cl.Run(sub.RunID); info.Pipeline != "demo" || info.File == "" {
+		t.Errorf("run = %+v, want pipeline demo and the submit path", info)
+	}
+
+	// History lists the finished run with its recorded phase.
+	hist, err := cl.Runs(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, ru := range hist {
+		if ru.RunID == sub.RunID {
+			found = ru.Phase == "done" && ru.Pipeline == "demo"
+		}
+	}
+	if !found {
+		t.Errorf("history missing %s as done: %+v", sub.RunID, hist)
+	}
 
 	// The polling endpoint serves the whole audit trail, typed.
 	events, err := cl.Events(sub.RunID, 0)

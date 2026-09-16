@@ -8,8 +8,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shafi-/loop/internal/engine"
@@ -24,6 +27,9 @@ type Server struct {
 	version string
 	started time.Time
 	runsDir string
+
+	mu    sync.Mutex
+	specs map[string]string // run id -> submitted pipeline file (this daemon's lifetime)
 }
 
 // New builds the server. bin is the loop binary children are spawned
@@ -34,20 +40,100 @@ func New(version, runsDir, bin string) *Server {
 		version: version,
 		started: time.Now(),
 		runsDir: runsDir,
+		specs:   map[string]string{},
 	}
 }
 
 // runJSON is the wire form of a supervised run.
 type runJSON struct {
 	RunID    string `json:"run_id"`
+	Pipeline string `json:"pipeline,omitempty"` // from the snapshot (historical) or the submit (active)
+	Phase    string `json:"phase"`              // running | waiting | done | failed | paused
+	File     string `json:"file,omitempty"`     // submit path, when this daemon started the run (enables resume)
 	Waiting  bool   `json:"waiting"`
 	Prompt   string `json:"prompt,omitempty"`
 	Alive    bool   `json:"alive"`
 	LastLine string `json:"last_line,omitempty"`
 }
 
-func toRunJSON(r runctl.RunInfo) runJSON {
-	return runJSON{RunID: r.RunID, Waiting: r.Waiting, Prompt: r.Prompt, Alive: r.Alive, LastLine: r.LastLine}
+func (s *Server) toRunJSON(r runctl.RunInfo) runJSON {
+	out := runJSON{
+		RunID:    r.RunID,
+		Phase:    "running",
+		Waiting:  r.Waiting,
+		Prompt:   r.Prompt,
+		Alive:    r.Alive,
+		LastLine: r.LastLine,
+	}
+	if r.Waiting {
+		out.Phase = "waiting"
+	}
+	s.mu.Lock()
+	out.File = s.specs[r.RunID]
+	s.mu.Unlock()
+	if name := snapshotName(filepath.Join(s.runsDir, r.RunID, "pipeline.yaml")); name != "" {
+		out.Pipeline = name
+	}
+	return out
+}
+
+// snapshotName pulls the pipeline name from a snapshot without paying
+// for a full schema parse — the id and phase are the load-bearing data.
+func snapshotName(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	m := nameLineRe.FindSubmatch(data)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+var nameLineRe = regexp.MustCompile(`(?m)^name:\s*([^\s#]+)`)
+
+// historyRuns lists runs known only from artifacts (finished elsewhere,
+// from past daemon lives): id, recorded phase, snapshot name.
+func (s *Server) historyRuns() []runJSON {
+	entries, err := os.ReadDir(s.runsDir)
+	if err != nil {
+		return nil
+	}
+	var out []runJSON
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		id := e.Name()
+		if s.supHas(id) {
+			continue
+		}
+		st, err := engine.LoadState(s.runsDir, id)
+		if err != nil || st == nil {
+			continue
+		}
+		rj := runJSON{RunID: id, Alive: false}
+		switch {
+		case st.Done:
+			rj.Phase = "done"
+		case st.Failed != "":
+			rj.Phase = "failed"
+		case st.Paused != "":
+			rj.Phase = "paused"
+		default:
+			continue // no recorded stop point: not listable as history
+		}
+		if name := snapshotName(filepath.Join(s.runsDir, id, "pipeline.yaml")); name != "" {
+			rj.Pipeline = name
+		}
+		out = append(out, rj)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].RunID > out[j].RunID }) // ids sort by time
+	if len(out) > 50 {
+		out = out[:50]
+	}
+	return out
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -96,7 +182,10 @@ func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 	runs := s.sup.Runs()
 	out := make([]runJSON, 0, len(runs))
 	for _, ru := range runs {
-		out = append(out, toRunJSON(ru))
+		out = append(out, s.toRunJSON(ru))
+	}
+	if r.URL.Query().Get("history") == "1" {
+		out = append(out, s.historyRuns()...)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"runs": out})
 }
@@ -141,6 +230,9 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "%v", err)
 		return
 	}
+	s.mu.Lock()
+	s.specs[id] = req.File
+	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"run_id":        id,
 		"events_so_far": countEvents(eventsPath(s.runsDir, id)),
@@ -168,7 +260,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, ru := range s.sup.Runs() {
 		if ru.RunID == id {
-			writeJSON(w, http.StatusOK, toRunJSON(ru))
+			writeJSON(w, http.StatusOK, s.toRunJSON(ru))
 			return
 		}
 	}
@@ -178,18 +270,24 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "reading state: %v", err)
 		return
 	}
-	phase := "running"
+	out := runJSON{RunID: id, Alive: false, Phase: "running"}
+	s.mu.Lock()
+	out.File = s.specs[id]
+	s.mu.Unlock()
 	if st != nil {
 		switch {
 		case st.Done:
-			phase = "done"
+			out.Phase = "done"
 		case st.Failed != "":
-			phase = "failed"
+			out.Phase = "failed"
 		case st.Paused != "":
-			phase = "paused"
+			out.Phase = "paused"
 		}
 	}
-	writeJSON(w, http.StatusOK, runJSON{RunID: id, Alive: false, LastLine: "phase: " + phase})
+	if name := snapshotName(filepath.Join(s.runsDir, id, "pipeline.yaml")); name != "" {
+		out.Pipeline = name
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {

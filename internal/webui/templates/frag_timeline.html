@@ -1,0 +1,41 @@
+{{define "frag_timeline"}}
+{{$info := .Info}}
+
+<section class="card runhead">
+  <h1>{{if $info.Pipeline}}{{$info.Pipeline}}{{else}}run{{end}} <code>{{$info.RunID}}</code> {{template "badge" $info}}</h1>
+  {{if $info.LastLine}}<p class="muted">{{$info.LastLine}}</p>{{end}}
+
+  {{if and $info.Alive}}
+    <button hx-post="/runs/{{$info.RunID}}/halt" hx-target="#runbody" hx-swap="innerHTML">pause (resumable)</button>
+  {{else if and (or (eq $info.Phase "paused") (eq $info.Phase "failed")) $info.File}}
+    <button hx-post="/runs/{{$info.RunID}}/resume" hx-target="#runbody" hx-swap="innerHTML">resume</button>
+  {{end}}
+</section>
+
+{{if $info.Waiting}}
+<section class="card gatecard">
+  <h2>your input needed</h2>
+  <pre class="question">{{$info.Prompt}}</pre>
+  <form hx-post="/runs/{{$info.RunID}}/answer" hx-target="#runbody" hx-swap="innerHTML">
+    <input name="text" placeholder="your words — or press a button" autocomplete="off">
+    <button type="submit" name="quick" value="yes" class="b-done">yes</button>
+    <button type="submit" name="quick" value="no" class="b-failed">no</button>
+    <button type="submit">send words</button>
+  </form>
+</section>
+{{end}}
+
+<section class="card">
+  <h2>timeline</h2>
+  {{if not .Rows}}<p class="muted">no events yet…</p>{{else}}
+  <div class="timeline">
+    {{range .Rows}}
+    <div class="row {{.Class}}">
+      <span class="head">{{.Head}}</span>
+      {{if .Detail}}{{if .LongBlk}}<details><summary>detail</summary><pre>{{.Detail}}</pre></details>{{else}}<span class="detail">{{.Detail}}</span>{{end}}{{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}
