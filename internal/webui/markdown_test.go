@@ -74,11 +74,18 @@ func TestChatViewCollapsesPipelineChatter(t *testing.T) {
 		t.Fatalf("run lines = %d, want two pairs (start + final per run): %+v", len(runs), runs)
 	}
 	// Starts read as the room's sentence; finals stay as recorded.
-	if runs[0].Text != "you started respond" || runs[2].Text != "you started respond" {
+	if runs[0].Text != "You started respond pipeline" || runs[2].Text != "You started respond pipeline" {
 		t.Errorf("start lines not rephrased: %+v", runs)
 	}
 	if !runs[0].Start || runs[0].Live || runs[1].Live {
 		t.Errorf("start/final flags wrong: %+v", runs)
+	}
+	// A name that already says "pipeline" must not get it doubled.
+	doubled := ChatView([]daemon.RoomLine{
+		{Seq: 1, From: "respond", Text: "▸ run 79 starting: deploy-pipeline (2 stages)"},
+	}, nil, nil)
+	if got := doubled[0].Text; got != "You started deploy-pipeline" {
+		t.Errorf("rephrase doubled the word pipeline: %q", got)
 	}
 	if !strings.Contains(runs[1].Text, "completed — run 77") || !strings.Contains(runs[3].Text, "failed — run 78") {
 		t.Errorf("kept the wrong final lines: %+v", runs)

@@ -28,8 +28,8 @@ type ChatMsg struct {
 	// template gives it a pulsing dot.
 	Live bool
 	// Start marks the run's start line: the text is the rephrased
-	// sentence ("you started respond"), so the template skips the
-	// pipeline chip the sentence already names.
+	// sentence ("You started respond pipeline"), so the template skips
+	// the pipeline chip the sentence already names.
 	Start bool
 	// Count collapses consecutive same-author notices (a flailing
 	// agent's repeated tool failures become one bubble, newest text).
@@ -156,9 +156,10 @@ func collapseRuns(in []ChatMsg, runs []daemon.RunInfo) []ChatMsg {
 }
 
 // rephraseRunStarts turns each run's machine banner into the room's
-// sentence: "run <id> starting: respond (5 stages)" reads as "you
-// started respond" — runs are only ever started by the human, and the
-// sentence names the pipeline, so the alias chip goes too.
+// sentence: "run <id> starting: respond (5 stages)" reads as "You
+// started respond pipeline" — runs are only ever started by the human,
+// and the sentence names the pipeline, so the alias chip goes too.
+// Names that already say "pipeline" don't get it doubled.
 func rephraseRunStarts(msgs []ChatMsg) {
 	for i := range msgs {
 		m := &msgs[i]
@@ -166,7 +167,10 @@ func rephraseRunStarts(msgs []ChatMsg) {
 			continue
 		}
 		if parts := runStartRe.FindStringSubmatch(m.Text); parts != nil {
-			m.Text = "you started " + parts[1]
+			m.Text = "You started " + parts[1]
+			if !strings.Contains(strings.ToLower(parts[1]), "pipeline") {
+				m.Text += " pipeline"
+			}
 			m.Start = true
 		}
 	}
