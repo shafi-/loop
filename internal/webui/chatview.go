@@ -34,6 +34,13 @@ type ChatMsg struct {
 	// Count collapses consecutive same-author notices (a flailing
 	// agent's repeated tool failures become one bubble, newest text).
 	Count int
+	// Line is the message's last transcript line number — what a "fork
+	// here" keeps through. Zero for event lines.
+	Line int
+	// Fork marks the one message of a user/agent group that carries the
+	// fork affordance (the group's tail, so forking keeps the whole
+	// message).
+	Fork bool
 }
 
 // runStartRe matches the child's machine banner ("run <id> starting:
@@ -58,6 +65,7 @@ func ChatView(lines []daemon.RoomLine, agents []string, runs []daemon.RunInfo) [
 				Kind: "user", From: "you", Text: ln.Text, At: ln.At,
 				HTML: template.HTML(renderMarkdown(ln.Text)),
 				Cont: continues(out, "user", "you"),
+				Line: ln.Seq,
 			})
 		case ln.From == "system":
 			out = append(out, ChatMsg{Kind: "system", Text: ln.Text, At: ln.At})
@@ -76,6 +84,7 @@ func ChatView(lines []daemon.RoomLine, agents []string, runs []daemon.RunInfo) [
 					Kind: "agent", From: ln.From, Text: ln.Text, At: ln.At,
 					HTML: template.HTML(renderMarkdown(ln.Text)),
 					Cont: continues(out, "agent", ln.From),
+					Line: ln.Seq,
 				})
 			}
 		default:
@@ -92,7 +101,25 @@ func ChatView(lines []daemon.RoomLine, agents []string, runs []daemon.RunInfo) [
 			out = append(out, ChatMsg{Kind: kind, From: ln.From, Text: text, At: ln.At})
 		}
 	}
-	return collapseRuns(out, runs)
+	return markForkPoints(collapseRuns(out, runs))
+}
+
+// markForkPoints hangs the fork affordance on the last message of each
+// user/agent group, carrying the group's last transcript line — "fork
+// here" keeps the whole message, not just its first bubble.
+func markForkPoints(out []ChatMsg) []ChatMsg {
+	for i := range out {
+		m := &out[i]
+		if m.Kind != "user" && m.Kind != "agent" {
+			continue
+		}
+		j := i
+		for j+1 < len(out) && out[j+1].Cont && out[j+1].Kind == m.Kind && out[j+1].From == m.From {
+			j++
+		}
+		out[j].Fork = true
+	}
+	return out
 }
 
 // collapseRuns keeps, per run, two lines: the start and the latest one

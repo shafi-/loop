@@ -20,6 +20,9 @@
           </li>
           {{end}}
         </ul>
+        <button class="ghost room-reset" title="archive this conversation and start a fresh one"
+                hx-post="/rooms/{{.Room.Name}}/reset" hx-target="#chat-log" hx-swap="innerHTML"
+                hx-confirm="Reset the room? The current conversation is archived and a fresh one starts.">↻ start a fresh conversation</button>
       </div>
     </details>
   </header>

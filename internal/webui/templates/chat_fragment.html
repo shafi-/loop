@@ -8,6 +8,7 @@
       <div class="msg-meta"><span class="author">you</span><span class="time">{{hms .At}}</span></div>
       <div class="bubble">{{.HTML}}</div>
     </div>
+    {{if .Fork}}<button class="fork" title="continue the room from this message — everything after is archived" hx-post="/rooms/{{$.Room.Name}}/fork" hx-vals='{"through":{{.Line}}}' hx-confirm="Fork the room here? The discussion continues from this message; everything after it is archived." hx-target="#chat-log" hx-swap="innerHTML">fork</button>{{end}}
   </div>
   {{else if eq .Kind "agent"}}
   <div class="msg agent{{if .Cont}} cont{{end}}" style="--hue: {{hue .From}}">
@@ -16,6 +17,7 @@
       <div class="msg-meta"><span class="author">@{{.From}}</span><span class="time">{{hms .At}}</span></div>
       <div class="bubble">{{.HTML}}</div>
     </div>
+    {{if .Fork}}<button class="fork" title="continue the room from this message — everything after is archived" hx-post="/rooms/{{$.Room.Name}}/fork" hx-vals='{"through":{{.Line}}}' hx-confirm="Fork the room here? The discussion continues from this message; everything after it is archived." hx-target="#chat-log" hx-swap="innerHTML">fork</button>{{end}}
   </div>
   {{else if eq .Kind "tool"}}
   <div class="evt tool"><span class="evt-icon">🔧</span><span class="evt-from">@{{.From}}</span><span class="evt-text">{{.Text}}</span>{{if gt .Count 1}}<span class="evt-count">×{{.Count}}</span>{{end}}</div>

@@ -93,6 +93,42 @@ func (t *Transcript) Window(n int) []Message {
 	return out
 }
 
+// Rotate archives the current transcript as <dir>/<archive> and
+// restarts from the first keep messages, recording note as the new
+// transcript's last line (the fork point marker, or a reset's opening
+// announcement). The in-memory slice is replaced to match, and the
+// same *Transcript stays valid — the room's memory is replaced in
+// place, the room itself never notices.
+func (t *Transcript) Rotate(archive string, keep int, note string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if keep < 0 {
+		keep = 0
+	}
+	if keep > len(t.Messages) {
+		keep = len(t.Messages)
+	}
+	kept := make([]Message, keep)
+	copy(kept, t.Messages[:keep])
+	t.Messages = append(kept, Message{TS: time.Now().UTC(), From: "system", Text: note})
+	if t.path == "" {
+		return nil // in-memory only (tests)
+	}
+	if err := os.Rename(t.path, filepath.Join(filepath.Dir(t.path), archive)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var b strings.Builder
+	for _, m := range t.Messages {
+		line, err := json.Marshal(m)
+		if err != nil {
+			return err
+		}
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return os.WriteFile(t.path, []byte(b.String()), 0o644)
+}
+
 // Render formats messages with explicit attribution — the form every
 // agent prompt sees ([user] …, [ceo] …).
 func Render(msgs []Message) string {

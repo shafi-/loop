@@ -44,6 +44,19 @@ a { color: var(--accent); }
 .card-head h2 { margin: 0; }
 button.ghost { border-color: transparent; color: var(--muted); padding: .15rem .45rem; }
 button.ghost:hover { color: var(--accent); border-color: var(--edge); }
+.room-reset { margin-top: .6rem; width: 100%; }
+
+/* fork affordance: quiet until the row is under the cursor; lives at
+   the row's edge because cont rows hide their meta line */
+.msg { position: relative; }
+.msg .fork {
+  position: absolute; top: .1rem; right: 0;
+  border: none; background: none; color: var(--muted);
+  font: inherit; font-size: .72rem; padding: 0 .3rem; cursor: pointer;
+  opacity: 0; transition: opacity .12s;
+}
+.msg:hover .fork, .msg .fork:focus-visible { opacity: 1; }
+.msg .fork:hover { color: var(--accent); }
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; color: var(--muted); font-weight: 400; font-size: .8rem; }
 td, th { padding: .3rem .5rem; border-bottom: 1px solid var(--edge); }

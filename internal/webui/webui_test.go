@@ -1,8 +1,10 @@
 package webui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -320,4 +322,77 @@ func between(s, start, end string) string {
 		return ""
 	}
 	return rest[:j]
+}
+
+// The fork affordance hangs on the last message of each user/agent
+// group, carrying the group's last transcript line — forking through it
+// keeps the whole message.
+func TestChatViewForkPoints(t *testing.T) {
+	lines := []daemon.RoomLine{
+		{Seq: 1, From: "user", Text: "hello"},
+		{Seq: 2, From: "scout", Text: "first reply"},
+		{Seq: 3, From: "scout", Text: "second reply"},
+		{Seq: 4, From: "run-x", Text: "run 1 starting: demo (2 stages)"},
+		{Seq: 5, From: "user", Text: "and now this"},
+	}
+	msgs := ChatView(lines, []string{"scout"}, nil)
+	var forks []int
+	for i, m := range msgs {
+		if m.Fork {
+			forks = append(forks, i)
+		}
+	}
+	if len(forks) != 3 {
+		t.Fatalf("fork points at %v, want one per user/agent group (3)", forks)
+	}
+	// The user bubble keeps through line 1; the agent group's tail keeps
+	// through line 3; the final user message keeps through line 5.
+	if msgs[forks[0]].Line != 1 || msgs[forks[1]].Line != 3 || msgs[forks[2]].Line != 5 {
+		t.Errorf("fork lines = %d,%d,%d, want 1,3,5", msgs[forks[0]].Line, msgs[forks[1]].Line, msgs[forks[2]].Line)
+	}
+	if msgs[forks[1]].Text != "second reply" {
+		t.Errorf("the agent fork carrier = %q, want the group's last message", msgs[forks[1]].Text)
+	}
+}
+
+// The room's markup wires the fork and reset actions to the daemon.
+func TestChatFragmentRotateMarkup(t *testing.T) {
+	tmpl, err := template.New("").Funcs(template.FuncMap{
+		"phaseLabel": phaseLabel,
+		"hms":        func(t time.Time) string { return t.Local().Format("15:04") },
+		"hue":        hue,
+		"initial":    initial,
+		"md":         func(s string) template.HTML { return template.HTML(s) },
+	}).ParseFS(files, "templates/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := pageData{
+		Room: daemon.RoomInfo{Name: "demo"},
+		Chat: []ChatMsg{{Kind: "user", From: "you", HTML: "<p>hi</p>", Line: 7, Fork: true}},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, "chat_fragment", data); err != nil {
+		t.Fatal(err)
+	}
+	page := buf.String()
+	for _, want := range []string{
+		`hx-post="/rooms/demo/fork"`,
+		`{"through":7}`,
+		`hx-confirm="Fork the room here?`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("chat fragment missing %q", want)
+		}
+	}
+
+	buf.Reset()
+	if err := tmpl.ExecuteTemplate(&buf, "room", pageData{
+		Room: daemon.RoomInfo{Name: "demo"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `hx-post="/rooms/demo/reset"`) {
+		t.Errorf("room page missing the reset button")
+	}
 }

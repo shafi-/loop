@@ -58,9 +58,6 @@ func readTranscript(path string, after int) ([]TranscriptLine, error) {
 	seq := 0
 	for sc.Scan() {
 		seq++
-		if seq <= after {
-			continue
-		}
 		var m struct {
 			From string    `json:"from"`
 			Text string    `json:"text"`
@@ -71,7 +68,23 @@ func readTranscript(path string, after int) ([]TranscriptLine, error) {
 		}
 		out = append(out, TranscriptLine{Seq: seq, From: m.From, Text: m.Text, At: m.TS})
 	}
-	return out, sc.Err()
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	// Rotation resync: a caller that has seen more lines than the file
+	// now holds is looking at a rotated (reset or forked) transcript —
+	// replay from the start so clients land on the fresh conversation
+	// instead of skipping everything forever.
+	if after > seq {
+		return out, nil
+	}
+	kept := out[:0]
+	for _, ln := range out {
+		if ln.Seq > after {
+			kept = append(kept, ln)
+		}
+	}
+	return kept, nil
 }
 
 // countLines counts the lines of any JSONL file (0 when missing).

@@ -3,6 +3,7 @@ package webui
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -126,6 +127,8 @@ func New(version, socket string) (http.Handler, error) {
 	mux.HandleFunc("POST /rooms/{name}/say", func(w http.ResponseWriter, r *http.Request) { roomSay(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/run", func(w http.ResponseWriter, r *http.Request) { roomRun(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/approve", func(w http.ResponseWriter, r *http.Request) { roomApprove(tmpl, cl, w, r) })
+	mux.HandleFunc("POST /rooms/{name}/reset", func(w http.ResponseWriter, r *http.Request) { roomRotate(tmpl, cl, w, r, "reset") })
+	mux.HandleFunc("POST /rooms/{name}/fork", func(w http.ResponseWriter, r *http.Request) { roomRotate(tmpl, cl, w, r, "fork") })
 	mux.HandleFunc("POST /rooms/host", func(w http.ResponseWriter, r *http.Request) { roomHost(tmpl, cl, w, r) })
 	return mux, nil
 }
@@ -431,6 +434,34 @@ func roomApprove(tmpl *template.Template, cl *daemon.Client, w http.ResponseWrit
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+	roomChat(tmpl, cl, w, r)
+}
+
+// roomRotate handles the room's reset and fork buttons: the transcript
+// is rotated (archived, then restarted fresh or from a message), and
+// the refreshed chat renders the new state. Refusals — mid-turn, active
+// pipeline runs — surface as 409 toasts.
+func roomRotate(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request, kind string) {
+	name := r.PathValue("name")
+	var archive string
+	var err error
+	if kind == "fork" {
+		var req struct {
+			Through int `json:"through"`
+		}
+		if derr := json.NewDecoder(r.Body).Decode(&req); derr != nil || req.Through < 0 {
+			http.Error(w, "bad fork point", http.StatusBadRequest)
+			return
+		}
+		archive, err = cl.RoomFork(name, req.Through)
+	} else {
+		archive, err = cl.RoomReset(name)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	_ = archive // the fresh transcript's own system line names it
 	roomChat(tmpl, cl, w, r)
 }
 

@@ -393,6 +393,26 @@ func (c *Client) RoomHalt(name, alias string) error {
 	return c.do("POST", "/api/rooms/"+name+"/halt", map[string]string{"alias": alias}, nil)
 }
 
+// RoomReset archives a room's whole conversation and starts a fresh
+// one; the archive file's name comes back.
+func (c *Client) RoomReset(name string) (string, error) {
+	var res struct {
+		Archived string `json:"archived"`
+	}
+	err := c.do("POST", "/api/rooms/"+name+"/reset", nil, &res)
+	return res.Archived, err
+}
+
+// RoomFork keeps the room's first through transcript lines, inclusive,
+// and archives everything after them.
+func (c *Client) RoomFork(name string, through int) (string, error) {
+	var res struct {
+		Archived string `json:"archived"`
+	}
+	err := c.do("POST", "/api/rooms/"+name+"/fork", map[string]int{"through": through}, &res)
+	return res.Archived, err
+}
+
 // Stream subscribes to a run's events from after the given sequence
 // number (SSE). The channel closes when the daemon ends the stream (the
 // run reached a terminal state and the log went quiet) or ctx is done.

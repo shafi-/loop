@@ -199,6 +199,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/rooms/{name}/run", s.handleRoomRun)
 	mux.HandleFunc("POST /api/rooms/{name}/approve", s.handleRoomApprove)
 	mux.HandleFunc("POST /api/rooms/{name}/halt", s.handleRoomHalt)
+	mux.HandleFunc("POST /api/rooms/{name}/reset", s.handleRoomReset)
+	mux.HandleFunc("POST /api/rooms/{name}/fork", s.handleRoomFork)
 	return mux
 }
 
@@ -754,4 +756,41 @@ func (s *Server) handleRoomHalt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleRoomReset archives a room's whole conversation and starts a
+// fresh one. The archive name comes back so clients can point at it.
+func (s *Server) handleRoomReset(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	archive, err := rs.resetRoom()
+	if err != nil {
+		writeError(w, http.StatusConflict, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"archived": archive})
+}
+
+// handleRoomFork keeps the first `through` transcript lines, inclusive,
+// and archives the rest — the room continues from that point.
+func (s *Server) handleRoomFork(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	var req struct {
+		Through int `json:"through"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Through < 0 {
+		writeError(w, http.StatusBadRequest, "body must be JSON with a non-negative \"through\" line number")
+		return
+	}
+	archive, err := rs.forkRoom(req.Through)
+	if err != nil {
+		writeError(w, http.StatusConflict, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"archived": archive})
 }

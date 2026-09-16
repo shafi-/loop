@@ -354,7 +354,7 @@ Open a multi-agent room. The optional opening message is delivered as if
 you typed it, then the session stays interactive. Commands: `/agents`
 (participants with their resolved provider/model and tools), `/help`,
 `/quit` — and, when the room owns pipelines (§6), `/pipelines`,
-`/run`, `/approve`, `/status`, `/halt`.
+`/run`, `/approve`, `/status`, `/halt`, `/reset`, `/fork <n>`.
 
 With `--daemon`, the room is hosted by the loop daemon and your
 terminal is just a window onto it: messages are sent to the server,
@@ -602,6 +602,17 @@ A room with a `pipelines:` section is a cockpit. In the session:
 | `/approve <yes\|no\|words>` | answer a pipeline asking for approval (free words understood — the gate contract) |
 | `/status` | active runs: alias, run id, state, last event |
 | `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
+| `/reset` | archive the conversation and start a fresh one |
+| `/fork <n>` | keep the first `n` transcript lines and continue from there — everything after is archived |
+
+A reset or fork **rotates the transcript**: the current one is renamed
+(`transcript-<timestamp>.jsonl` in the same room directory) and never
+destroyed, and the fresh transcript opens with a system line naming the
+archive. In the web room, hovering a message shows a **fork** action —
+the discussion continues from that message — and the participants
+panel has a **start a fresh conversation** button. Both refuse while an
+agent turn is in flight or a pipeline run is active; halt or wait
+first.
 
 The run pushes **status one-liners** into the room as they happen
 (`▸ → brief (llm)`, attributed to the alias); its **output stays in

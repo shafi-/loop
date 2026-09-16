@@ -233,6 +233,43 @@ func (rs *roomSession) busyNow() bool {
 	return rs.busy
 }
 
+// resetRoom archives the whole conversation and starts a fresh one;
+// the transcript file is rotated, nothing is destroyed.
+func (rs *roomSession) resetRoom() (string, error) {
+	if err := rs.rotateGuard(); err != nil {
+		return "", err
+	}
+	return rs.room.Rotate(0, "reset")
+}
+
+// forkRoom keeps the first through transcript lines, inclusive, and
+// archives everything after them.
+func (rs *roomSession) forkRoom(through int) (string, error) {
+	if err := rs.rotateGuard(); err != nil {
+		return "", err
+	}
+	return rs.room.Rotate(through, "fork")
+}
+
+// rotateGuard: the conversation can only be rewritten when nothing is
+// reading or extending it — no agent turn in flight, no pipeline run
+// alive or waiting at a gate.
+func (rs *roomSession) rotateGuard() error {
+	if rs.busyNow() {
+		return errors.New("the room is mid-turn — wait for the reply, then reset or fork")
+	}
+	for _, r := range rs.sup.Runs() {
+		alias := r.Alias
+		if alias == "" {
+			alias = r.RunID
+		}
+		if r.Alive || r.Waiting {
+			return fmt.Errorf("pipeline %s is still active — halt it before resetting or forking", alias)
+		}
+	}
+	return nil
+}
+
 // run starts one of the room's owned pipelines in the room's own
 // supervisor — the same aliasing the chat surface uses. Files resolve
 // relative to the room file's directory, so the room travels with its

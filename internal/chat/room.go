@@ -3,9 +3,12 @@ package chat
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
@@ -68,6 +71,29 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 		r.Settings.HistoryWindow = DefaultHistoryWindow
 	}
 	return r
+}
+
+// Rotate restarts the room's conversation: the current transcript is
+// archived, the first keep messages survive (0 = a fresh start), and a
+// system line marks the point. kind is "reset" or "fork"; it only
+// shapes the note text. Returns the archive file's name.
+func (r *Room) Rotate(keep int, kind string) (string, error) {
+	stamp := time.Now().UTC().Format("20060102-150405")
+	archive := fmt.Sprintf("transcript-%s.jsonl", stamp)
+	if r.Transcript.path != "" {
+		dir := filepath.Dir(r.Transcript.path)
+		for i := 2; ; i++ {
+			if _, err := os.Stat(filepath.Join(dir, archive)); os.IsNotExist(err) {
+				break
+			}
+			archive = fmt.Sprintf("transcript-%s-%d.jsonl", stamp, i)
+		}
+	}
+	note := fmt.Sprintf("↻ forked here — the discussion continues from this point; everything after is archived as %s", archive)
+	if kind == "reset" {
+		note = fmt.Sprintf("↻ room reset — the previous discussion is archived as %s", archive)
+	}
+	return archive, r.Transcript.Rotate(archive, keep, note)
 }
 
 // tagged parses @mentions and returns the mentioned agent names in first
