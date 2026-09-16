@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // EventLine is one events.jsonl entry with its 1-based line number.
@@ -30,11 +31,13 @@ func eventsPath(runsDir, runID string) string {
 }
 
 // TranscriptLine is one transcript.jsonl entry with its 1-based line
-// number — the room-side counterpart of EventLine.
+// number — the room-side counterpart of EventLine. At is the message's
+// recorded timestamp (zero for legacy lines without one).
 type TranscriptLine struct {
-	Seq  int    `json:"seq"`
-	From string `json:"from"`
-	Text string `json:"text"`
+	Seq  int       `json:"seq"`
+	From string    `json:"from"`
+	Text string    `json:"text"`
+	At   time.Time `json:"at,omitempty"`
 }
 
 // readTranscript returns room transcript lines after the given sequence
@@ -59,13 +62,14 @@ func readTranscript(path string, after int) ([]TranscriptLine, error) {
 			continue
 		}
 		var m struct {
-			From string `json:"from"`
-			Text string `json:"text"`
+			From string    `json:"from"`
+			Text string    `json:"text"`
+			TS   time.Time `json:"ts"`
 		}
 		if json.Unmarshal(sc.Bytes(), &m) != nil || m.From == "" {
 			continue // torn line
 		}
-		out = append(out, TranscriptLine{Seq: seq, From: m.From, Text: m.Text})
+		out = append(out, TranscriptLine{Seq: seq, From: m.From, Text: m.Text, At: m.TS})
 	}
 	return out, sc.Err()
 }

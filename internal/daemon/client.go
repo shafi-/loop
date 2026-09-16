@@ -263,11 +263,13 @@ func (c *Client) Room(name string) (RoomInfo, bool, error) {
 	return res, true, nil
 }
 
-// RoomLine is one transcript line from a room stream or poll.
+// RoomLine is one transcript line from a room stream or poll. At is the
+// message's recorded timestamp (zero for legacy lines without one).
 type RoomLine struct {
-	Seq  int    `json:"seq"`
-	From string `json:"from"`
-	Text string `json:"text"`
+	Seq  int       `json:"seq"`
+	From string    `json:"from"`
+	Text string    `json:"text"`
+	At   time.Time `json:"at,omitempty"`
 }
 
 // RoomTranscript polls a room's transcript after the given line number.

@@ -27,7 +27,13 @@
         return;
       }
       deferred = 0;
-      window.htmx.ajax("GET", refreshURL, el);
+      window.htmx.ajax("GET", refreshURL, el).then(function () {
+        // htmx.ajax swaps don't auto-process the new content (unlike
+        // attribute-triggered requests): without this, a form swapped
+        // into the log — the gate card's answer form — submits natively
+        // and navigates away. Idempotent on already-processed nodes.
+        window.htmx.process(el);
+      });
     }
     var es = new EventSource(url);
     es.onmessage = function () {

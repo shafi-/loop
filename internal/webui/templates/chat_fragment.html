@@ -1,29 +1,41 @@
 {{define "chat_fragment"}}
-{{if not .Chat}}<p class="muted chat-empty">the room hasn't spoken yet — say hello.</p>{{end}}
+{{if not .Chat}}<div class="chat-empty"><div class="empty-mark">#</div>the room hasn't spoken yet — say hello.</div>{{end}}
 {{range .Chat}}
   {{if eq .Kind "user"}}
-  <div class="bubble msg-user">{{.Text}}</div>
+  <div class="msg user{{if .Cont}} cont{{end}}" style="--hue: 214">
+    <div class="avatar">Y</div>
+    <div class="msg-body">
+      <div class="msg-meta"><span class="author">you</span><span class="time">{{hms .At}}</span></div>
+      <div class="bubble">{{.HTML}}</div>
+    </div>
+  </div>
   {{else if eq .Kind "agent"}}
-  <div class="bubble msg-agent"><div class="who">@{{.From}}</div>{{.Text}}</div>
+  <div class="msg agent{{if .Cont}} cont{{end}}" style="--hue: {{hue .From}}">
+    <div class="avatar">{{initial .From}}</div>
+    <div class="msg-body">
+      <div class="msg-meta"><span class="author">@{{.From}}</span><span class="time">{{hms .At}}</span></div>
+      <div class="bubble">{{.HTML}}</div>
+    </div>
+  </div>
   {{else if eq .Kind "tool"}}
-  <div class="bubble msg-tool">🔧 @{{.From}} {{.Text}}{{if gt .Count 1}} <span class="muted">— {{.Count}} attempts</span>{{end}}</div>
+  <div class="evt tool"><span class="evt-icon">🔧</span><span class="evt-from">@{{.From}}</span><span class="evt-text">{{.Text}}</span>{{if gt .Count 1}}<span class="evt-count">×{{.Count}}</span>{{end}}</div>
   {{else if eq .Kind "gate"}}
-  <div class="msg-run gate">✋ {{.From}}: {{.Text}}</div>
+  <div class="evt gate"><span class="evt-icon">✋</span><span class="evt-from">{{.From}}</span><span class="evt-text gate-q">{{.Text}}</span></div>
   {{else if eq .Kind "system"}}
-  <div class="msg-system">⚠ {{.Text}}</div>
+  <div class="evt system">{{.Text}}</div>
   {{else}}
-  <div class="msg-run">{{.From}} — {{.Text}}</div>
+  <div class="evt run"><span class="evt-run">{{.From}}</span><span class="evt-text">{{.Text}}</span></div>
   {{end}}
 {{end}}
 {{if .Waiting}}
-<div class="bubble msg-gatecard">
-  <div class="who">✋ {{.Waiting.RunID}} is asking</div>
-  <pre class="question">{{.Waiting.Prompt}}</pre>
-  <form hx-post="/rooms/{{.Room.Name}}/approve" hx-target="#chat-log" hx-swap="innerHTML">
+<div class="gatecard" id="gatecard">
+  <div class="gate-head"><span class="evt-icon">✋</span> pipeline <span class="gate-run">{{.Waiting.Alias}}</span> needs your approval</div>
+  <div class="gate-question">{{md .Waiting.Prompt}}</div>
+  <form class="gate-form" hx-post="/rooms/{{.Room.Name}}/approve" hx-target="#chat-log" hx-swap="innerHTML">
     <input name="text" placeholder="your words — or press a button" autocomplete="off">
-    <button type="submit" name="quick" value="yes" class="b-done">yes</button>
-    <button type="submit" name="quick" value="no" class="b-failed">no</button>
-    <button type="submit">send words</button>
+    <button type="submit" name="quick" value="yes" class="b-yes">yes</button>
+    <button type="submit" name="quick" value="no" class="b-no">no</button>
+    <button type="submit">send</button>
   </form>
 </div>
 {{end}}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strings"
+	"time"
 
 	"github.com/shafi-/loop/internal/daemon"
 )
@@ -21,16 +22,19 @@ var files embed.FS
 type pageData struct {
 	Title   string
 	Version string
+	// FullBleed lets a page own the whole viewport (the room's chat-app
+	// frame) instead of the centered document column.
+	FullBleed bool
 	// page-specific payloads
-	Active   []daemon.RunInfo
-	History  []daemon.RunInfo
-	Rooms    []daemon.RoomInfo
-	Info     daemon.RunInfo
-	Rows     []Row
-	Room     daemon.RoomInfo
-	Chat     []ChatMsg
-	Waiting  *daemon.RunInfo
-	Sidecar  []SidecarRun
+	Active  []daemon.RunInfo
+	History []daemon.RunInfo
+	Rooms   []daemon.RoomInfo
+	Info    daemon.RunInfo
+	Rows    []Row
+	Room    daemon.RoomInfo
+	Chat    []ChatMsg
+	Waiting *daemon.RunInfo
+	Sidecar []SidecarRun
 }
 
 // SidecarRun is one entry of the room sidecar: the run plus a compact
@@ -69,6 +73,10 @@ func sidecarRuns(cl *daemon.Client, name string) []SidecarRun {
 func New(version, socket string) (http.Handler, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"phaseLabel": phaseLabel,
+		"hms":        func(t time.Time) string { return t.Local().Format("15:04") },
+		"hue":        hue,
+		"initial":    initial,
+		"md": func(s string) template.HTML { return template.HTML(renderMarkdown(s)) },
 	}).ParseFS(files, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -321,7 +329,7 @@ func roomData(cl *daemon.Client, w http.ResponseWriter, r *http.Request) (pageDa
 		return pageData{}, false
 	}
 	lines, _ := cl.RoomTranscript(info.Name, 0)
-	data := pageData{Title: info.Name, Version: versionOf(cl), Room: info, Chat: ChatView(lines, info.Agents)}
+	data := pageData{Title: info.Name, Version: versionOf(cl), FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents)}
 	if waiting, ok := anyWaiting(info.Runs); ok {
 		data.Waiting = &waiting
 	}

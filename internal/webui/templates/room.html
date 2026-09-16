@@ -1,49 +1,59 @@
 {{define "room"}}
 {{template "head" .}}
-<p><a href="/">← runs &amp; rooms</a></p>
-
-<div class="room-body">
-  <div class="chat-col">
-    <details class="card room-head">
+<div class="room-shell">
+  <header class="room-top">
+    <a class="back" href="/" title="runs &amp; rooms">←</a>
+    <details class="room-head">
       <summary>
-        <h1>room <code>{{.Room.Name}}</code>{{if .Room.Busy}} <span class="badge b-running">thinking…</span>{{end}}</h1>
-        <span class="muted head-count">{{len .Room.Agents}} participant{{if ne (len .Room.Agents) 1}}s{{end}} ▾</span>
+        <span class="room-title">#{{.Room.Name}}</span>
+        {{if .Room.Busy}}<span class="badge b-running pulse">thinking…</span>{{end}}
+        <span class="head-count">{{len .Room.Agents}} participants</span>
       </summary>
-      <ul class="participants">
-        {{range .Room.Agents}}
-        <li><span class="who">@{{.}}</span>{{if index $.Room.Roles .}} <span class="muted">{{index $.Room.Roles .}}</span>{{end}}</li>
-        {{end}}
-      </ul>
+      <div class="participants-panel">
+        <div class="panel-title">participants</div>
+        <ul class="participants">
+          {{range .Room.Agents}}
+          <li>
+            <span class="avatar sm" style="--hue: {{hue .}}">{{initial .}}</span>
+            <span class="p-name">@{{.}}</span>
+            {{if index $.Room.Roles .}}<span class="p-role">{{index $.Room.Roles .}}</span>{{end}}
+          </li>
+          {{end}}
+        </ul>
+      </div>
     </details>
+  </header>
 
-    <div id="chat-log" class="chat-log" data-sse-connect="/api/rooms/{{.Room.Name}}/stream?after={{.Room.Lines}}" data-refresh="/rooms/{{.Room.Name}}/chat">
-      {{template "chat_fragment" .}}
-    </div>
+  <div class="room-main">
+    <section class="chat-pane">
+      <div id="chat-log" class="chat-log" data-sse-connect="/api/rooms/{{.Room.Name}}/stream?after={{.Room.Lines}}" data-refresh="/rooms/{{.Room.Name}}/chat">
+        {{template "chat_fragment" .}}
+      </div>
 
-    <section class="card composer">
-      <form class="say-form" hx-post="/rooms/{{.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML"
-            data-agents="{{range .Room.Agents}}{{.}} {{end}}">
-        <div class="mention-menu" hidden></div>
-        <input name="text" placeholder="@name your message — or just talk to the room" autocomplete="off" autofocus>
-        <button type="submit">send</button>
-      </form>
-      {{if .Room.Pipelines}}
-      <form class="runline" hx-post="/rooms/{{.Room.Name}}/run" hx-target="#chat-log" hx-swap="innerHTML">
-        <label>run
+      <section class="composer">
+        <form class="say-form" hx-post="/rooms/{{.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML"
+              data-agents="{{range .Room.Agents}}{{.}} {{end}}">
+          <div class="mention-menu" hidden></div>
+          <input name="text" placeholder="@name your message — or just talk to the room" autocomplete="off" autofocus>
+          <button type="submit" class="primary">send</button>
+        </form>
+        {{if .Room.Pipelines}}
+        <form class="runline" hx-post="/rooms/{{.Room.Name}}/run" hx-target="#chat-log" hx-swap="innerHTML">
+          <span class="runline-label">run pipeline</span>
           <select name="alias">
             {{range .Room.Pipelines}}<option value="{{.}}">{{.}}</option>{{end}}
           </select>
-        </label>
-        <label>vars <input name="vars" placeholder="--var key=value …"></label>
-        <button type="submit">run</button>
-      </form>
-      {{end}}
+          <input name="vars" placeholder="--var key=value …">
+          <button type="submit">run</button>
+        </form>
+        {{end}}
+      </section>
     </section>
-  </div>
 
-  <aside class="sidecar card" id="sidecar" hx-get="/rooms/{{.Room.Name}}/sidecar" hx-trigger="every 5s" hx-swap="innerHTML">
-    {{template "sidecar_fragment" .}}
-  </aside>
+    <aside class="sidecar" id="sidecar" hx-get="/rooms/{{.Room.Name}}/sidecar" hx-trigger="every 5s" hx-swap="innerHTML">
+      {{template "sidecar_fragment" .}}
+    </aside>
+  </div>
 </div>
 
 {{template "foot" .}}
