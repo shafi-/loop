@@ -12,7 +12,21 @@
     if (!url || !refreshURL || !window.EventSource || !window.htmx) return;
 
     var timer = null;
+    var deferred = 0;
     function refresh() {
+      // A composer send is in flight: never supersede it with a
+      // background refresh (htmx aborts superseded same-target
+      // requests). Retry shortly — but cap the deferral so a missed
+      // event can never stall the live region.
+      if (composerInFlight > 0 && deferred < 6) {
+        deferred++;
+        timer = setTimeout(function () {
+          timer = null;
+          refresh();
+        }, 300);
+        return;
+      }
+      deferred = 0;
       window.htmx.ajax("GET", refreshURL, el);
     }
     var es = new EventSource(url);
@@ -31,8 +45,10 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll("[data-sse-connect]").forEach(connect);
-    scrollChat();
     initMentions();
+    // Opening the page lands on the newest message.
+    var log = document.querySelector(".chat-log");
+    if (log) log.scrollTop = log.scrollHeight;
   });
 
   // ─── @-mention autocomplete (chat-app behavior) ────────────────────
@@ -114,13 +130,62 @@
     });
   }
 
-  // Chat views keep the newest message in view: after every swap into
-  // the live region, and once on open.
-  function scrollChat() {
-    var log = document.querySelector(".chat-log");
-    if (log) log.scrollTop = log.scrollHeight;
+  // Chat auto-scroll follows the reader: snap to the newest message
+  // only when the reader is already near the bottom — scrolling up to
+  // read history must never be yanked back by arriving events. The
+  // reader's own sends always snap (they typed at the bottom).
+  var CHAT_STICK_PX = 120;
+  var chatStick = true;
+  var forceStick = false; // the reader's own send: snap regardless of position
+  var composerInFlight = 0;
+
+  function nearBottom(log) {
+    return log.scrollHeight - log.scrollTop - log.clientHeight <= CHAT_STICK_PX;
   }
-  document.body.addEventListener("htmx:afterSwap", scrollChat);
+
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var f = e.detail.elt;
+    if (f && f.matches && f.matches(".composer form")) {
+      forceStick = true;
+      composerInFlight++;
+    }
+  });
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    var f = e.detail.elt;
+    if (f && f.matches && f.matches(".composer form")) {
+      composerInFlight = Math.max(0, composerInFlight - 1);
+      forceStick = false;
+    }
+  });
+  document.body.addEventListener("htmx:beforeSwap", function (e) {
+    var t = e.detail.target;
+    if (t && t.id === "chat-log") chatStick = forceStick || nearBottom(t);
+  });
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    var t = e.detail.target;
+    if (t && t.id === "chat-log" && chatStick) t.scrollTop = t.scrollHeight;
+  });
+
+  // Failed requests must never be invisible: surface the server's
+  // message as a toast (the room is busy, a gate closed, a halt
+  // refused — all actionable). Inputs stay untouched for a retry.
+  var toastTimer = null;
+  function toast(msg) {
+    var t = document.getElementById("toast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "toast";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, 4500);
+  }
+  document.body.addEventListener("htmx:responseError", function (e) {
+    var text = (e.detail.xhr.responseText || "").replace(/<[^>]*>/g, " ").trim();
+    toast("✗ " + (text || "HTTP " + e.detail.xhr.status));
+  });
 
   // The composer sits outside the swap region, so htmx never replaces
   // it — clear it after a successful send instead, and keep focus ready

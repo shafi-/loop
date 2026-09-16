@@ -90,6 +90,13 @@ button:hover { border-color: var(--accent); }
 .error { color: var(--bad); }
 .success { color: var(--ok); }
 
+#toast {
+  position: fixed; bottom: 5.4rem; left: 50%; transform: translateX(-50%);
+  max-width: 80vw; padding: .55rem .9rem; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--bad); color: var(--bad);
+  font-size: .85rem; z-index: 50; white-space: pre-wrap;
+}
+
 /* ─── room chat view ─────────────────────────────────────────────── */
 .chat-log {
   display: flex; flex-direction: column; gap: .45rem;
