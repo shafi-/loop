@@ -41,4 +41,15 @@
     if (log) log.scrollTop = log.scrollHeight;
   }
   document.body.addEventListener("htmx:afterSwap", scrollChat);
+
+  // The composer sits outside the swap region, so htmx never replaces
+  // it — clear it after a successful send instead, and keep focus ready
+  // for the next message.
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    var f = e.detail.elt;
+    if (!e.detail.successful || !f.matches || !f.matches(".composer form")) return;
+    f.reset();
+    var input = f.querySelector("input[name='text']");
+    if (input) input.focus();
+  });
 })();

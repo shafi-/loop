@@ -58,7 +58,10 @@ func New(version, socket string) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/", proxy)
-	mux.Handle("GET /assets/", http.FileServer(http.FS(files)))
+	// Assets must revalidate every load: browsers heuristically cache
+	// otherwise, and a loop upgrade would serve stale JS/CSS until a
+	// hard refresh. Revalidation is a cheap 304 in the steady state.
+	mux.Handle("GET /assets/", noCache(http.FileServer(http.FS(files))))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { dashboard(tmpl, cl, w) })
 	mux.HandleFunc("GET /frag/runs", func(w http.ResponseWriter, r *http.Request) { fragRuns(tmpl, cl, w) })
 	mux.HandleFunc("POST /runs", func(w http.ResponseWriter, r *http.Request) { submit(tmpl, cl, w, r) })
@@ -81,6 +84,15 @@ func renderPage(tmpl *template.Template, w http.ResponseWriter, name string, dat
 	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// noCache forces revalidation of embedded assets so UI updates land on
+// the next reload, not "whenever the browser feels like it".
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
