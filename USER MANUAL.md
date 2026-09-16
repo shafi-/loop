@@ -4,7 +4,9 @@
 pipelines (ordered stages, deterministic flow, full audit trail), and you
 talk to teams of persona agents in chat rooms (tag an agent and it must
 reply; untagged agents read along and decide for themselves whether to
-speak). A single Go binary, CLI-first.
+speak). A single Go binary: CLI-first, with an optional local daemon
+(`loop serve`) and a browser dashboard (`loop ui`) as two more windows
+onto the same runs and rooms.
 
 Two halves, one idea: **determinism where work runs, judgment where
 models speak.**
@@ -189,11 +191,11 @@ its own: runs live in `.loop/runs/` as always, so even a hard-killed
 daemon leaves resumable runs behind.
 
 The point of one owner: a gate asked by *any* run is answerable from
-*any* client, because the daemon holds every run's stdin. Today that
-client is the attached CLI; the web UI is the next one. Submitting a
-run while others are active is allowed (independent pipelines are
-fine) but the response warns you — concurrent runs share the
-daemon's workspace and can write the same files.
+*any* client, because the daemon holds every run's stdin — the attached
+CLI and the web UI are both such clients. Submitting a run while others
+are active is allowed (independent pipelines are fine) but the response
+warns you — concurrent runs share the daemon's workspace and can write
+the same files.
 
 Flags: `--socket` (default `~/.loop/daemon.sock`, override with
 `LOOP_DAEMON_SOCK`), `--runs-dir`. Starting a second daemon on a live
@@ -206,13 +208,21 @@ browser. The dashboard is a client of the daemon: it lists active and
 past runs, starts runs, renders each run's event timeline live, and
 answers gate questions — yes, no, or your words — straight from the
 browser, for any run the daemon owns. The UI binds `127.0.0.1:8787`
-by default (`--addr` to change) and has no authentication: keep it on
-your machine, like the daemon itself.
+by default (`--addr` to change; `--socket` points at a daemon on a
+non-default socket; `--no-open` skips opening the browser) and has no
+authentication: keep it on your machine, like the daemon itself.
 
 Requires a running daemon (`loop serve`); `loop run --daemon` and the
 dashboard are two windows onto the same runs. Rooms hosted with
-`loop chat --daemon` get a page too: the live transcript, a message
-box, and the room's pipelines — runnable and approvable in place.
+`loop chat --daemon` get a page too, built as a chat app: persona
+replies render as markdown bubbles with avatars and timestamps, type
+`@` for a participant menu, and the room reads calmly while work
+happens — each pipeline run keeps two lines in the conversation
+("You started respond pipeline", then its final status, with a live
+status pill in between), the full per-stage timeline lives in the
+room's pipeline sidecar, and a gate opens an approval card with quick
+yes/no buttons. Everything a run writes to the workspace is yours to
+open: gate answers can reference files an agent just wrote.
 
 `loop run --daemon <pipeline.yaml>` submits and attaches: progress
 renders locally in the same shapes as a direct run, gate questions
@@ -476,13 +486,16 @@ A room with a `pipelines:` section is a cockpit. In the session:
 | `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
 
 The run pushes **status one-liners** into the room as they happen
-(`▸ deliver: → brief (llm)`); its **output stays in files**
-(`.loop/runs/<id>/` and stage-written artifacts) — the room never gets
-a wall of stage output. Gates ask **in the room**; your `/approve`
-answer is fed to the run, where the same terminal semantics apply
-(vocabulary yes/no, one classification call for words, `/pause`
+(`▸ → brief (llm)`, attributed to the alias); its **output stays in
+files** (`.loop/runs/<id>/` and stage-written artifacts) — the room
+never gets a wall of stage output. Gates ask **in the room**; your
+`/approve` answer is fed to the run, where the same terminal semantics
+apply (vocabulary yes/no, one classification call for words, `/pause`
 equivalents via `/halt`). Only **you** start runs; agents can propose,
-nothing spends without your command.
+nothing spends without your command. In the web room the chatter
+collapses to two lines per run — the start and the last known status,
+with a live pill in between while it runs — and the full per-stage
+timeline lives in the room's sidecar.
 
 Rules of the road: one active run per pipeline alias, several aliases
 concurrently; when several gates wait at once, name the target
@@ -580,6 +593,8 @@ activity is auditable like everything else.
 
 | Symptom | Meaning / fix |
 |---|---|
+| `loop ui` shows no runs / "daemon unreachable" | The web UI is a client — start the daemon first: `loop serve` (in another window or the background). |
+| `bind: address already in use` (ui) or a "live daemon" report (serve) | A previous instance is still running. `loop serve` refuses to steal a live socket; kill the old process (`lsof -nP -t -iTCP:8787`) and start again. |
 | `env var X is not set (provider "..." requires it — set the key, or switch this model block...)` | A stage named a family you have no credentials for. Set the named key, add `PROVIDER`, or fix the stage's `provider:`. |
 | `HTTP 503 (model_not_found): No available channel for model ...` | Your endpoint serves a different model catalog. Point `*_MODEL` at a model the endpoint actually offers. |
 | `HTTP 403 (auth): credit limit insufficient` | The endpoint account is out of credit. Top up or switch endpoints. |
@@ -602,6 +617,7 @@ with file:line warnings.
 |---|---|
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
 | `.loop/rooms/<room>/` | chat transcripts |
+| `~/.loop/daemon.sock` | the daemon's control socket (`loop serve`; `LOOP_DAEMON_SOCK` to override) |
 | `~/.loop/executors/cline/` | installed cline host |
 | `~/.loop/counters.json` | opt-in usage counters (see below) |
 | `.env` | your credentials (gitignored — keep real keys here, never in YAML) |

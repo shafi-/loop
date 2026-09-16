@@ -7,7 +7,8 @@
   resume-after-failure.
 - **Rooms** — talk to teams of persona agents: tag `@name` and it must
   reply; untagged agents read along and decide for themselves whether to
-  speak.
+  speak. Rooms command real pipelines: `/run deliver`, gates ask in the
+  chat, you approve from wherever you are.
 
 Two halves, one idea: **determinism where work runs, judgment where
 models speak.**
@@ -57,12 +58,38 @@ Then open a room:
 loop chat rooms/leadership.yaml "We need to have a new drone shoot out"
 ```
 
+## One engine, three doors
+
+`loop serve` starts loop's core as a local daemon — every run becomes
+its child process, so **runs outlive your terminal**, and a gate asked
+by any run is answerable from any client, because the daemon holds each
+run's stdin:
+
+- **`loop ui`** — a browser dashboard on loopback: active and past runs,
+  live event timelines, gate answers, and your rooms as chat views with
+  a pipeline sidecar.
+- **`loop run --daemon`** — submit and attach from the terminal; ctrl-c
+  halts resumably, `--resume` reattaches.
+- **`loop chat --daemon`** — the room is hosted server-side; detach and
+  reattach from any terminal without losing it.
+
+The daemon is a mode, not a mandate — plain `loop run` and `loop chat`
+stay zero-setup, exactly as above.
+
+```bash
+loop serve          # window 1
+loop ui             # window 2 — opens http://127.0.0.1:8787
+```
+
 ## The full story
 
 [`examples/agency-intake/`](examples/agency-intake/) is the flagship
 demo: a client request enters a chat room, an intake team interrogates
 it, and the room's settled transcript becomes the input of a delivery
 pipeline — judgment first, determinism after.
+[`examples/incident-room/`](examples/incident-room/) is the shorter
+one: an incident response team whose commander, SRE, and comms lead
+debate around a gated mitigation pipeline.
 
 ## Workspace layout
 
@@ -78,8 +105,8 @@ rooms/       multi-agent chat rooms          (loop chat <file>)
 ## Documentation
 
 The full reference — every command, the YAML schemas for pipelines and
-rooms, model resolution, executors, resume, troubleshooting — lives in
-[USER MANUAL.md](USER%20MANUAL.md).
+rooms, model resolution, executors, resume, the daemon and web UI,
+troubleshooting — lives in [USER MANUAL.md](USER%20MANUAL.md).
 
 ## License
 
