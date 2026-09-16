@@ -73,14 +73,15 @@ func TestChatViewCollapsesPipelineChatter(t *testing.T) {
 	if len(runs) != 4 {
 		t.Fatalf("run lines = %d, want two pairs (start + final per run): %+v", len(runs), runs)
 	}
-	want := []struct{ start, final string }{
-		{"run 77 starting", "completed — run 77"},
-		{"run 78 starting", "failed — run 78"},
+	// Starts read as the room's sentence; finals stay as recorded.
+	if runs[0].Text != "you started respond" || runs[2].Text != "you started respond" {
+		t.Errorf("start lines not rephrased: %+v", runs)
 	}
-	for i, w := range want {
-		if !strings.Contains(runs[2*i].Text, w.start) || !strings.Contains(runs[2*i+1].Text, w.final) {
-			t.Errorf("pair %d = [%q, %q], want [%s, %s]", i, runs[2*i].Text, runs[2*i+1].Text, w.start, w.final)
-		}
+	if !runs[0].Start || runs[0].Live || runs[1].Live {
+		t.Errorf("start/final flags wrong: %+v", runs)
+	}
+	if !strings.Contains(runs[1].Text, "completed — run 77") || !strings.Contains(runs[3].Text, "failed — run 78") {
+		t.Errorf("kept the wrong final lines: %+v", runs)
 	}
 	if len(gates) != 1 {
 		t.Errorf("the gate ask must survive the collapse: %+v", gates)

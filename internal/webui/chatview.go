@@ -3,6 +3,7 @@ package webui
 import (
 	"fmt"
 	"html/template"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,10 +27,18 @@ type ChatMsg struct {
 	// Live marks the current-status pill of a run still in flight; the
 	// template gives it a pulsing dot.
 	Live bool
+	// Start marks the run's start line: the text is the rephrased
+	// sentence ("you started respond"), so the template skips the
+	// pipeline chip the sentence already names.
+	Start bool
 	// Count collapses consecutive same-author notices (a flailing
 	// agent's repeated tool failures become one bubble, newest text).
 	Count int
 }
+
+// runStartRe matches the child's machine banner ("run <id> starting:
+// <pipeline> (N stages)") — the view rephrases it as a sentence.
+var runStartRe = regexp.MustCompile(`^run \S+ starting: (.+?)(?: \(\d+ stages?\))?$`)
 
 // ChatView turns transcript lines into chat-view messages: the user's
 // lines as their own bubbles, persona lines as agent bubbles (markdown
@@ -142,7 +151,25 @@ func collapseRuns(in []ChatMsg, runs []daemon.RunInfo) []ChatMsg {
 		}
 		out = append(out, m)
 	}
+	rephraseRunStarts(out)
 	return out
+}
+
+// rephraseRunStarts turns each run's machine banner into the room's
+// sentence: "run <id> starting: respond (5 stages)" reads as "you
+// started respond" — runs are only ever started by the human, and the
+// sentence names the pipeline, so the alias chip goes too.
+func rephraseRunStarts(msgs []ChatMsg) {
+	for i := range msgs {
+		m := &msgs[i]
+		if m.Kind != "run" {
+			continue
+		}
+		if parts := runStartRe.FindStringSubmatch(m.Text); parts != nil {
+			m.Text = "you started " + parts[1]
+			m.Start = true
+		}
+	}
 }
 
 // continues reports whether msg extends the previous output message:

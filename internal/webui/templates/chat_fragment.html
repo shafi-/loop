@@ -24,7 +24,7 @@
   {{else if eq .Kind "system"}}
   <div class="evt system">{{.Text}}</div>
   {{else}}
-  <div class="evt run{{if .Live}} live{{end}}">{{if .Live}}<span class="dot running"></span> {{end}}<span class="evt-run">{{.From}}</span><span class="evt-text">{{.Text}}</span></div>
+  <div class="evt run{{if .Live}} live{{end}}">{{if .Live}}<span class="dot running"></span> {{end}}{{if .Start}}<span class="evt-text">{{.Text}}</span>{{else}}<span class="evt-run">{{.From}}</span><span class="evt-text">{{.Text}}</span>{{end}}</div>
   {{end}}
 {{end}}
 {{if .Waiting}}
