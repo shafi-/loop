@@ -126,7 +126,7 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 			resume := fmt.Sprintf("resume with /run %s --resume %s", d.Alias, d.RunID)
 			switch kind {
 			case "completed":
-				_ = tr.Append(d.Alias, fmt.Sprintf("completed — run %s; outputs in .loop/runs/%s/", d.RunID, d.RunID))
+				_ = tr.Append(d.Alias, fmt.Sprintf("completed — run %s; records in .loop/runs/%s/ (state.json = status, events.jsonl = log, context.json = stage outputs)", d.RunID, d.RunID))
 			case "paused":
 				_ = tr.Append(d.Alias, "paused — "+resume)
 			default:

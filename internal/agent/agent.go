@@ -110,13 +110,25 @@ prefix your reply with your own name.`)
 	return resp.Text, nil
 }
 
+// workspaceOrientation is appended to tool-using room agents: it names
+// the run-record conventions so an agent asked "what's the status?"
+// reads the real files instead of guessing filenames until it exhausts
+// its tool budget.
+const workspaceOrientation = `
+Workspace orientation: pipeline runs keep their records under
+.loop/runs/<run-id>/ — state.json (the run's status: done, failed, or
+paused), events.jsonl (everything that happened, in order), and
+context.json (every stage's output text). To report a run's status,
+read its state.json first, then the tail of events.jsonl. Do not
+guess other filenames.`
+
 // replyWithTools is the native tool loop for room agents: rounds of
 // completions with tools available, tool calls executed in-process
 // (path-guarded, output-capped), until the model answers in text or
 // the round budget is spent. Tool rounds use Complete — the final text
 // is delivered as one delta.
 func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conversation string, onDelta llm.StreamFunc) (string, error) {
-	system := strings.TrimSpace(a.Persona.System + "\n\n" + a.framing(room) + `
+	system := strings.TrimSpace(a.Persona.System+"\n\n"+a.framing(room)+`
 Reply to the user directly. Stay strictly in your role's perspective.
 Be concise. Do not repeat what other participants already said. Never
 prefix your reply with your own name.
@@ -124,7 +136,7 @@ prefix your reply with your own name.
 You have tools: read_file, write_file, run_command — confined to the
 workspace. When a deliverable is worth keeping (a plan, a brief, a
 report), write it to a file and say so in one line. Keep tool use
-purposeful; conversation is still your main job.`)
+purposeful; conversation is still your main job.`+workspaceOrientation)
 
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: conversation}}
 	for round := 0; round < MaxToolRounds; round++ {

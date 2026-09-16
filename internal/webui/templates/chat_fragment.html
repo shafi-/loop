@@ -6,7 +6,7 @@
   {{else if eq .Kind "agent"}}
   <div class="bubble msg-agent"><div class="who">@{{.From}}</div>{{.Text}}</div>
   {{else if eq .Kind "tool"}}
-  <div class="bubble msg-tool">🔧 @{{.From}} {{.Text}}</div>
+  <div class="bubble msg-tool">🔧 @{{.From}} {{.Text}}{{if gt .Count 1}} <span class="muted">— {{.Count}} attempts</span>{{end}}</div>
   {{else if eq .Kind "gate"}}
   <div class="msg-run gate">✋ {{.From}}: {{.Text}}</div>
   {{else if eq .Kind "system"}}

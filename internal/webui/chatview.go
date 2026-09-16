@@ -11,6 +11,9 @@ type ChatMsg struct {
 	Kind string // user | agent | tool | run | gate | system
 	From string // display author: persona, run alias, or ""
 	Text string
+	// Count collapses consecutive same-author notices (a flailing
+	// agent's repeated tool failures become one bubble, newest text).
+	Count int
 }
 
 // ChatView turns transcript lines into chat-view messages: the user's
@@ -32,7 +35,14 @@ func ChatView(lines []daemon.RoomLine, agents []string) []ChatMsg {
 			out = append(out, ChatMsg{Kind: "system", Text: ln.Text})
 		case isAgent[ln.From]:
 			if text, ok := strings.CutPrefix(ln.Text, "[tool] "); ok {
-				out = append(out, ChatMsg{Kind: "tool", From: ln.From, Text: text})
+				// Consecutive tool notices collapse into the newest one:
+				// a flailing agent must not flood the conversation.
+				if n := len(out); n > 0 && out[n-1].Kind == "tool" && out[n-1].From == ln.From {
+					out[n-1].Text = text
+					out[n-1].Count++
+				} else {
+					out = append(out, ChatMsg{Kind: "tool", From: ln.From, Text: text, Count: 1})
+				}
 			} else {
 				out = append(out, ChatMsg{Kind: "agent", From: ln.From, Text: ln.Text})
 			}

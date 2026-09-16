@@ -64,7 +64,7 @@ func (s *roomRunSession) onRunEnded(d *runctl.Driver, kind, headline string) {
 	switch kind {
 	case "completed":
 		s.ui.Notice("✓ %s completed (run %s) — outputs in .loop/runs/%s/ and stage-written files", d.Alias, d.RunID, d.RunID)
-		_ = s.transcript.Append(d.Alias, fmt.Sprintf("completed — run %s; outputs in .loop/runs/%s/", d.RunID, d.RunID))
+		_ = s.transcript.Append(d.Alias, fmt.Sprintf("completed — run %s; records in .loop/runs/%s/ (state.json = status, events.jsonl = log, context.json = stage outputs)", d.RunID, d.RunID))
 	case "paused":
 		s.ui.Notice("%s", headline)
 		s.ui.Notice("%s", resume)

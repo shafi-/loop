@@ -64,6 +64,36 @@ func TestTimelineClassification(t *testing.T) {
 	}
 }
 
+// Consecutive tool notices from one agent collapse into a single
+// bubble carrying the newest text and the attempt count — a flailing
+// agent must not flood the conversation.
+func TestChatViewCollapsesToolNoise(t *testing.T) {
+	lines := []daemon.RoomLine{
+		{Seq: 1, From: "user", Text: "status?"},
+		{Seq: 2, From: "scout", Text: "[tool] read run.json — failed: not found"},
+		{Seq: 3, From: "scout", Text: "[tool] read log.md — failed: not found"},
+		{Seq: 4, From: "scout", Text: "[tool] read README.md — failed: not found"},
+		{Seq: 5, From: "scout", Text: "[tool] read .loop/runs/2026/state.json"},
+		{Seq: 6, From: "scout", Text: "done — state: completed"},
+	}
+	chat := ChatView(lines, []string{"scout"})
+	var tools []ChatMsg
+	for _, m := range chat {
+		if m.Kind == "tool" {
+			tools = append(tools, m)
+		}
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tool bubbles = %d, want 1 collapsed: %+v", len(tools), tools)
+	}
+	if tools[0].Count != 4 {
+		t.Errorf("count = %d, want 4", tools[0].Count)
+	}
+	if !strings.Contains(tools[0].Text, "state.json") {
+		t.Errorf("collapsed bubble must carry the newest attempt: %q", tools[0].Text)
+	}
+}
+
 // ChatView sorts transcript lines into chat shapes: user bubbles, agent
 // bubbles, tool notices, run events, gate asks.
 func TestChatViewClassification(t *testing.T) {
