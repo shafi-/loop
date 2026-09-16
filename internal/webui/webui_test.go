@@ -76,7 +76,7 @@ func TestChatViewCollapsesToolNoise(t *testing.T) {
 		{Seq: 5, From: "scout", Text: "[tool] read .loop/runs/2026/state.json"},
 		{Seq: 6, From: "scout", Text: "done — state: completed"},
 	}
-	chat := ChatView(lines, []string{"scout"})
+	chat := ChatView(lines, []string{"scout"}, nil)
 	var tools []ChatMsg
 	for _, m := range chat {
 		if m.Kind == "tool" {
@@ -105,7 +105,7 @@ func TestChatViewClassification(t *testing.T) {
 		{Seq: 5, From: "deliver", Text: "[approval needed] Ship it? — reply yes, no, or your change requests"},
 		{Seq: 6, From: "system", Text: "turn failed: scout: context canceled"},
 	}
-	chat := ChatView(lines, []string{"scout"})
+	chat := ChatView(lines, []string{"scout"}, nil)
 	want := []struct{ kind, from string }{
 		{"user", "you"},
 		{"agent", "scout"},

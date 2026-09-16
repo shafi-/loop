@@ -43,6 +43,81 @@ func TestRenderMarkdownNeverInjectsHTML(t *testing.T) {
 	}
 }
 
+// Pipeline chatter collapses to two lines per run: the start and the
+// latest status (live while in flight, final once it ends). Repeated
+// runs of one pipeline keep their own pairs, and gate asks — decision
+// points — never collapse away.
+func TestChatViewCollapsesPipelineChatter(t *testing.T) {
+	lines := []daemon.RoomLine{
+		{Seq: 1, From: "respond", Text: "▸ run 77 starting: respond (5 stages)"},
+		{Seq: 2, From: "respond", Text: "▸ → triage (tool)"},
+		{Seq: 3, From: "respond", Text: "▸ → approve (human)"},
+		{Seq: 4, From: "respond", Text: "[approval needed] Approve the mitigation? — reply yes, no"},
+		{Seq: 5, From: "respond", Text: "▸ → route (router)"},
+		{Seq: 6, From: "respond", Text: "▸ → mitigate (tool)"},
+		{Seq: 7, From: "respond", Text: "▸ completed — run 77"},
+		{Seq: 8, From: "respond", Text: "▸ run 78 starting: respond (5 stages)"},
+		{Seq: 9, From: "respond", Text: "▸ → triage (tool)"},
+		{Seq: 10, From: "respond", Text: "▸ failed — run 78"},
+	}
+	chat := ChatView(lines, []string{"commander"}, nil)
+	var runs, gates []ChatMsg
+	for _, m := range chat {
+		if m.Kind == "run" {
+			runs = append(runs, m)
+		}
+		if m.Kind == "gate" {
+			gates = append(gates, m)
+		}
+	}
+	if len(runs) != 4 {
+		t.Fatalf("run lines = %d, want two pairs (start + final per run): %+v", len(runs), runs)
+	}
+	want := []struct{ start, final string }{
+		{"run 77 starting", "completed — run 77"},
+		{"run 78 starting", "failed — run 78"},
+	}
+	for i, w := range want {
+		if !strings.Contains(runs[2*i].Text, w.start) || !strings.Contains(runs[2*i+1].Text, w.final) {
+			t.Errorf("pair %d = [%q, %q], want [%s, %s]", i, runs[2*i].Text, runs[2*i+1].Text, w.start, w.final)
+		}
+	}
+	if len(gates) != 1 {
+		t.Errorf("the gate ask must survive the collapse: %+v", gates)
+	}
+	for _, m := range runs {
+		if m.Live {
+			t.Error("finished runs are not live")
+		}
+	}
+}
+
+// While a run is still going, its latest line is the live status pill.
+func TestChatViewMarksLiveRunStatus(t *testing.T) {
+	lines := []daemon.RoomLine{
+		{Seq: 1, From: "respond", Text: "▸ run 78 starting: respond (5 stages)"},
+		{Seq: 2, From: "respond", Text: "▸ → triage (tool)"},
+		{Seq: 3, From: "respond", Text: "▸ → mitigate (tool)"},
+	}
+	runs := []daemon.RunInfo{{RunID: "78", Alias: "respond", Pipeline: "respond", Alive: true, Phase: "running"}}
+	chat := ChatView(lines, []string{"commander"}, runs)
+	var runMsgs []ChatMsg
+	for _, m := range chat {
+		if m.Kind == "run" {
+			runMsgs = append(runMsgs, m)
+		}
+	}
+	if len(runMsgs) != 2 {
+		t.Fatalf("run lines = %d, want start + live: %+v", len(runMsgs), runMsgs)
+	}
+	if runMsgs[0].Live {
+		t.Error("the start line is not the live one")
+	}
+	if !runMsgs[1].Live {
+		t.Error("the newest line of an active run must be marked live")
+	}
+}
+
 // Avatars and accents key off a stable per-name hue.
 func TestHueAndInitial(t *testing.T) {
 	if hue("scout") != hue("scout") {
@@ -70,7 +145,7 @@ func TestChatViewMarkdownAndGrouping(t *testing.T) {
 		{Seq: 4, From: "deliver", Text: "▸ → ship (tool)", At: at},
 		{Seq: 5, From: "scout", Text: "third point", At: at},
 	}
-	chat := ChatView(lines, []string{"scout"})
+	chat := ChatView(lines, []string{"scout"}, nil)
 
 	if got := string(chat[0].HTML); !strings.Contains(got, "<strong>now</strong>") {
 		t.Errorf("user markdown not rendered: %q", got)

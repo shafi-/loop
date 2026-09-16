@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"fmt"
 	"html/template"
 	"strings"
 	"time"
@@ -22,6 +23,9 @@ type ChatMsg struct {
 	// Cont marks a message continuing the previous one from the same
 	// author (avatar and header render once per group).
 	Cont bool
+	// Live marks the current-status pill of a run still in flight; the
+	// template gives it a pulsing dot.
+	Live bool
 	// Count collapses consecutive same-author notices (a flailing
 	// agent's repeated tool failures become one bubble, newest text).
 	Count int
@@ -32,7 +36,7 @@ type ChatMsg struct {
 // rendered), tool activity as compact notices, and run status as
 // centered event lines. Classification lives here so templates stay dumb
 // and the shapes are unit-testable.
-func ChatView(lines []daemon.RoomLine, agents []string) []ChatMsg {
+func ChatView(lines []daemon.RoomLine, agents []string, runs []daemon.RunInfo) []ChatMsg {
 	isAgent := make(map[string]bool, len(agents))
 	for _, a := range agents {
 		isAgent[a] = true
@@ -78,6 +82,65 @@ func ChatView(lines []daemon.RoomLine, agents []string) []ChatMsg {
 			}
 			out = append(out, ChatMsg{Kind: kind, From: ln.From, Text: text, At: ln.At})
 		}
+	}
+	return collapseRuns(out, runs)
+}
+
+// collapseRuns keeps, per run, two lines: the start and the latest one
+// (the current or final status) — the room chat carries the bookends,
+// the sidecar timeline carries the rest. A "starting:" line opens a run
+// and everything after it belongs to that run until the next start, so
+// repeated runs of one pipeline each keep their own pair. Gate asks are
+// their own kind and always stay. The newest line of a run still in
+// flight is marked Live so the pill reads as a live status.
+func collapseRuns(in []ChatMsg, runs []daemon.RunInfo) []ChatMsg {
+	active := map[string]bool{}
+	for _, r := range runs {
+		key := r.Alias
+		if key == "" {
+			key = r.Pipeline
+		}
+		if r.Alive || r.Waiting {
+			active[key] = true
+		}
+	}
+	// Group the lines into runs: per alias, each start bumps the epoch.
+	epoch := map[string]int{}
+	group := map[int]string{} // message index -> "alias|epoch"
+	lastGroup := map[string]string{}
+	first, last := map[string]int{}, map[string]int{}
+	drop := map[int]bool{}
+	for i := range in {
+		if in[i].Kind != "run" {
+			continue
+		}
+		alias := in[i].From
+		if strings.Contains(in[i].Text, " starting:") {
+			epoch[alias]++
+		}
+		gk := fmt.Sprintf("%s|%d", alias, epoch[alias])
+		group[i] = gk
+		lastGroup[alias] = gk
+		if _, seen := first[gk]; !seen {
+			first[gk] = i
+			last[gk] = i
+			continue
+		}
+		if last[gk] != first[gk] {
+			drop[last[gk]] = true // a middle progress line
+		}
+		last[gk] = i
+	}
+	out := make([]ChatMsg, 0, len(in))
+	for i := range in {
+		if drop[i] {
+			continue
+		}
+		m := in[i]
+		if m.Kind == "run" && active[m.From] && lastGroup[m.From] == group[i] && last[group[i]] == i {
+			m.Live = true
+		}
+		out = append(out, m)
 	}
 	return out
 }

@@ -231,6 +231,9 @@ details.room-head > summary:hover { background: var(--edge); }
 .evt.run .evt-run {
   color: var(--accent); font-weight: 600;
 }
+.evt.run.live { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.evt.run.live .dot { width: 7px; height: 7px; align-self: center; }
+.evt.run.live .evt-text { color: var(--fg); }
 .evt.gate { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .evt.gate .evt-text.gate-q {
   color: var(--muted); white-space: pre-wrap;

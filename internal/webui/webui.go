@@ -329,7 +329,7 @@ func roomData(cl *daemon.Client, w http.ResponseWriter, r *http.Request) (pageDa
 		return pageData{}, false
 	}
 	lines, _ := cl.RoomTranscript(info.Name, 0)
-	data := pageData{Title: info.Name, Version: versionOf(cl), FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents)}
+	data := pageData{Title: info.Name, Version: versionOf(cl), FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents, info.Runs)}
 	if waiting, ok := anyWaiting(info.Runs); ok {
 		data.Waiting = &waiting
 	}
