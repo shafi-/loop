@@ -449,23 +449,28 @@ func (s *Server) handleHalt(w http.ResponseWriter, r *http.Request) {
 
 // roomJSON is the wire form of a hosted room.
 type roomJSON struct {
-	Name      string    `json:"name"`
-	Path      string    `json:"path"`
-	Agents    []string  `json:"agents"`
-	Pipelines []string  `json:"pipelines"`
-	Busy      bool      `json:"busy"`
-	Lines     int       `json:"transcript_lines"`
-	Runs      []runJSON `json:"runs"` // the room's own pipeline runs
+	Name      string            `json:"name"`
+	Path      string            `json:"path"`
+	Agents    []string          `json:"agents"`
+	Roles     map[string]string `json:"roles,omitempty"` // agent name -> role, when set
+	Pipelines []string          `json:"pipelines"`
+	Busy      bool              `json:"busy"`
+	Lines     int               `json:"transcript_lines"`
+	Runs      []runJSON         `json:"runs"` // the room's own pipeline runs
 }
 
 func (s *Server) roomJSON(rs *roomSession) roomJSON {
 	out := roomJSON{
-		Name: rs.cfg.Name,
-		Path: rs.roomPath,
-		Busy: rs.busyNow(),
+		Name:  rs.cfg.Name,
+		Path:  rs.roomPath,
+		Busy:  rs.busyNow(),
+		Roles: map[string]string{},
 	}
 	for _, a := range rs.cfg.Agents {
 		out.Agents = append(out.Agents, a.Name)
+		if a.Role != "" {
+			out.Roles[a.Name] = a.Role
+		}
 	}
 	for _, p := range rs.cfg.Pipelines {
 		out.Pipelines = append(out.Pipelines, p.Name)

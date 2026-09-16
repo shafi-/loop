@@ -213,13 +213,14 @@ func (c *Client) Events(id string, after int) ([]EventLine, error) {
 
 // RoomInfo describes a hosted room.
 type RoomInfo struct {
-	Name      string    `json:"name"`
-	Path      string    `json:"path"`
-	Agents    []string  `json:"agents"`
-	Pipelines []string  `json:"pipelines"`
-	Busy      bool      `json:"busy"`
-	Lines     int       `json:"transcript_lines"`
-	Runs      []RunInfo `json:"runs"` // the room's own pipeline runs
+	Name      string            `json:"name"`
+	Path      string            `json:"path"`
+	Agents    []string          `json:"agents"`
+	Roles     map[string]string `json:"roles"` // agent name -> role, when set
+	Pipelines []string          `json:"pipelines"`
+	Busy      bool              `json:"busy"`
+	Lines     int               `json:"transcript_lines"`
+	Runs      []RunInfo         `json:"runs"` // the room's own pipeline runs
 }
 
 // HostRoom hosts (or attaches to) a room session on the daemon.

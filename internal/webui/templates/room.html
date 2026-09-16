@@ -4,17 +4,26 @@
 
 <div class="room-body">
   <div class="chat-col">
-    <section class="card runhead">
-      <h1>room <code>{{.Room.Name}}</code>{{if .Room.Busy}} <span class="badge b-running">thinking…</span>{{end}}</h1>
-      <p class="muted">{{range $i, $a := .Room.Agents}}{{if $i}}, {{end}}@{{$a}}{{end}}</p>
-    </section>
+    <details class="card room-head">
+      <summary>
+        <h1>room <code>{{.Room.Name}}</code>{{if .Room.Busy}} <span class="badge b-running">thinking…</span>{{end}}</h1>
+        <span class="muted head-count">{{len .Room.Agents}} participant{{if ne (len .Room.Agents) 1}}s{{end}} ▾</span>
+      </summary>
+      <ul class="participants">
+        {{range .Room.Agents}}
+        <li><span class="who">@{{.}}</span>{{if index $.Room.Roles .}} <span class="muted">{{index $.Room.Roles .}}</span>{{end}}</li>
+        {{end}}
+      </ul>
+    </details>
 
     <div id="chat-log" class="chat-log" data-sse-connect="/api/rooms/{{.Room.Name}}/stream?after={{.Room.Lines}}" data-refresh="/rooms/{{.Room.Name}}/chat">
       {{template "chat_fragment" .}}
     </div>
 
     <section class="card composer">
-      <form hx-post="/rooms/{{.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML">
+      <form class="say-form" hx-post="/rooms/{{.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML"
+            data-agents="{{range .Room.Agents}}{{.}} {{end}}">
+        <div class="mention-menu" hidden></div>
         <input name="text" placeholder="@name your message — or just talk to the room" autocomplete="off" autofocus>
         <button type="submit">send</button>
       </form>

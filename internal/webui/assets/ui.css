@@ -132,6 +132,33 @@ button:hover { border-color: var(--accent); }
 .composer .runline label { color: var(--muted); }
 .chat-empty { text-align: center; margin: 2rem 0; }
 
+/* ─── room head: expandable participants ─────────────────────────── */
+details.room-head > summary {
+  cursor: pointer; list-style: none; display: flex;
+  align-items: baseline; justify-content: space-between; gap: .6rem;
+}
+details.room-head > summary::-webkit-details-marker { display: none; }
+details.room-head > summary h1 { display: inline; }
+details.room-head > summary::after { content: "▸"; color: var(--muted); }
+details.room-head[open] > summary::after { content: "▾"; }
+.head-count { font-size: .75rem; }
+.participants { list-style: none; margin: .5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .25rem; }
+.participants .who { color: var(--accent); font-weight: 600; }
+
+/* ─── @-mention menu ─────────────────────────────────────────────── */
+.composer .say-form { position: relative; }
+.mention-menu {
+  position: absolute; bottom: 100%; left: 0; right: 0; margin-bottom: .35rem;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 8px;
+  box-shadow: 0 -6px 16px rgba(0, 0, 0, .45); overflow: hidden; z-index: 20;
+}
+.mention-item {
+  display: block; width: 100%; text-align: left; padding: .4rem .7rem;
+  border: 0; border-radius: 0; background: transparent; color: var(--fg);
+  cursor: pointer; font: inherit;
+}
+.mention-item.sel, .mention-item:hover { background: var(--edge); color: var(--accent); }
+
 /* ─── room sidecar: pipelines ran or running ─────────────────────── */
 .room-body { display: flex; gap: 1rem; align-items: flex-start; }
 .chat-col { flex: 1; min-width: 0; }
