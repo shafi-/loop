@@ -259,9 +259,9 @@ func TestHeadIdentity(t *testing.T) {
 
 	_, body := get(t, ts.URL+"/")
 	for _, want := range []string{
-		`rel="icon" type="image/svg+xml" href="/assets/favicon.svg"`,
-		`rel="alternate icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png"`,
-		`rel="apple-touch-icon" href="/assets/apple-touch-icon.png"`,
+		`rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=2"`,
+		`rel="alternate icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=2"`,
+		`rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=2"`,
 		`<meta name="theme-color" content="#0d1117">`,
 		`<title>webui · loop — runs</title>`, // daemon CWD is this package's dir
 		`<svg class="mark" viewBox="0 0 64 64"`,
