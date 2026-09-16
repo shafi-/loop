@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0d1117">
 <title>{{if .Workspace}}{{.Workspace}} · {{end}}loop — {{.Title}}</title>
-<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=2">
-<link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=2">
-<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=2">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg?v=3">
+<link rel="alternate icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png?v=3">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=3">
 <link rel="stylesheet" href="/assets/ui.css">
 <script src="/assets/htmx.min.js" defer></script>
 <script src="/assets/ui.js" defer></script>
 </head>
 <body{{if .FullBleed}} class="fullbleed"{{end}}>
 <nav>
-  <span class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M32 12 A20 20 0 1 1 13.2 25.2" fill="none" stroke="currentColor" stroke-width="8"/><circle cx="13.2" cy="25.2" r="4" fill="currentColor"/><path d="M47 12 L31 5.5 L31 18.5 Z" fill="currentColor"/></svg>loop{{with .Workspace}} · {{.}}{{end}}</span>
+  <span class="brand"><span class="mark"></span>loop{{with .Workspace}} · {{.}}{{end}}</span>
   <a href="/">runs</a>
   <span class="spacer"></span>
   <a href="https://shafi-.github.io/loop/" target="_blank" rel="noreferrer">docs</a>

@@ -28,7 +28,8 @@ nav .brand {
 }
 nav .brand:hover { text-decoration: none; }
 .brand-mark {
-  width: 15px; height: 15px; display: inline-block; flex: none;
+  width: 13px; height: 13px; border: 3.5px solid var(--ok); border-radius: 50%;
+  display: inline-block; flex: none;
 }
 nav a { color: var(--muted); font-family: var(--mono); font-size: .92rem; }
 nav a:hover { color: var(--fg); text-decoration: none; }

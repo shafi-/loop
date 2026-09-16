@@ -16,8 +16,10 @@ nav {
 }
 nav .brand { color: var(--ok); font-weight: 700; }
 nav .brand .mark {
-  width: 1em; height: 1em; vertical-align: -.08em;
-  margin-right: .3em;
+  width: .74em; height: .74em;
+  border: .21em solid currentColor; border-radius: 50%;
+  display: inline-block; vertical-align: -.06em;
+  margin-right: .32em;
 }
 nav a { color: var(--accent); text-decoration: none; }
 nav a.gh { color: var(--muted); display: inline-flex; align-items: center; }
