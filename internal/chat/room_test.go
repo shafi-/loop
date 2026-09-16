@@ -184,12 +184,25 @@ func TestSpontaneousReplyAndSeenReceipts(t *testing.T) {
 	}
 }
 
+// The CEO-era default: a room hears several perspectives per turn, not
+// one. (The anti-pile-on cap is still testable via explicit settings.)
+func TestDefaultMaxSpontaneousReplies(t *testing.T) {
+	r, _ := newTestRoom(t, []config.Persona{testPersona("p1", "m")}, map[string]llm.Provider{"p1": llm.NewMock()})
+	if r.Settings.MaxSpontaneousReplies != DefaultMaxSpontaneousReplies {
+		t.Errorf("default cap = %d, want %d", r.Settings.MaxSpontaneousReplies, DefaultMaxSpontaneousReplies)
+	}
+	if DefaultMaxSpontaneousReplies < 4 {
+		t.Errorf("default cap %d starves the CEO of perspectives", DefaultMaxSpontaneousReplies)
+	}
+}
+
 func TestAntiPileOnCap(t *testing.T) {
 	a1 := llm.NewMock(decisionJSON(true, 5, "critical"), &llm.Response{Text: "p1 reply"})
 	a2 := llm.NewMock(decisionJSON(true, 5, "also critical"), &llm.Response{Text: "p2 reply"})
 	a3 := llm.NewMock(decisionJSON(true, 5, "me too"), &llm.Response{Text: "p3 reply"})
 	personas := []config.Persona{testPersona("p1", "m"), testPersona("p2", "m"), testPersona("p3", "m")}
 	r, tr := newTestRoom(t, personas, map[string]llm.Provider{"p1": a1, "p2": a2, "p3": a3})
+	r.Settings.MaxSpontaneousReplies = 2 // the cap under test; the shipped default is 4
 	ui := &recorderUI{}
 
 	if err := r.Say(context.Background(), "untagged message", ui); err != nil {

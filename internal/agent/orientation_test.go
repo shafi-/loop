@@ -35,3 +35,26 @@ func TestReplyWithToolsOrientsOnWorkspace(t *testing.T) {
 		t.Error("orientation must not leak to tool-less agents")
 	}
 }
+
+// The speak decision is framed CEO-first: the user's message is an
+// invitation to contribute, not noise to be silenced.
+func TestDecideSpeakFramesCEO(t *testing.T) {
+	m := llm.NewMock(&llm.Response{Text: `{"speak":true,"priority":5,"reason":"asked"}`})
+	a := &Agent{Persona: config.Persona{Name: "scout", Role: "scout"}, Provider: m}
+	d, err := a.DecideSpeak(context.Background(), []config.Persona{a.Persona}, "earlier talk", "should we pivot?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Speak {
+		t.Errorf("decision = %+v", d)
+	}
+	req := m.Requests()[0]
+	for _, want := range []string{"CEO", "best", "priority"} {
+		if !strings.Contains(req.Messages[0].Content, want) {
+			t.Errorf("decision prompt missing %q:\n%s", want, req.Messages[0].Content)
+		}
+	}
+	if strings.Contains(req.Messages[0].Content, "Silence is respectable") {
+		t.Error("the silence-biased framing must stay dead")
+	}
+}

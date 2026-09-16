@@ -208,31 +208,52 @@ func outOrError(out string, err error) string {
 	return out
 }
 
-// DecideSpeak asks whether this agent should respond to the new message.
-// It uses structured output: cheap (few hundred tokens), typed, and
-// identical across providers.
-func (a *Agent) DecideSpeak(ctx context.Context, room []config.Persona, conversation, newMessage string) (Decision, error) {
+// decideSpeakPrompt frames the decision. The user is the CEO: their
+// message is an invitation to contribute, and the default posture is
+// to answer with your role's best perspective — silence is the rare
+// case, not the polite one. (The old framing — "silence is
+// respectable" — made rooms dead: every untagged message ended in
+// silence.)
+func (a *Agent) decideSpeakPrompt(conversation, newMessage string) string {
 	role := a.Persona.Role
 	if role == "" {
 		role = "colleague"
 	}
-	system := fmt.Sprintf("You are %s, the %s. You decide whether to speak.", a.Persona.Name, role)
-	prompt := fmt.Sprintf(`%s
+	return fmt.Sprintf(`%s
 
-=== New message from the user ===
+=== New message from the CEO ===
 %s
 
-Should you (%s) respond to this new message? Judge from your role's
-perspective only: does the user genuinely need input from a %s right
-now? Responding without real value is noise. Silence is respectable.`,
+You are %s, the %s. The user is the CEO of the company: when the CEO
+speaks, everyone at this table is expected to bring their best
+perspective — your role's vantage point is exactly why you are in the
+room.
+
+speak: true when the CEO's message deserves an answer — a question, a
+proposal, a problem, a decision, news. Bring facts and judgment others
+may not have; a crisp, useful answer from your seat beats silence.
+speak: false only when you truly have nothing to add: pure
+acknowledgements ("thanks", "ok"), or your point was already made by
+another agent this turn.
+
+priority: how strongly you should answer. 5 — the CEO asked something
+your role is closest to. 4 — you can add real value from your seat.
+3 — marginal color only. 1-2 — the silent cases above.`,
 		conversation, newMessage, a.Persona.Name, role)
+}
+
+// DecideSpeak asks whether this agent should respond to the new message.
+// It uses structured output: cheap (few hundred tokens), typed, and
+// identical across providers.
+func (a *Agent) DecideSpeak(ctx context.Context, room []config.Persona, conversation, newMessage string) (Decision, error) {
+	system := fmt.Sprintf("You are %s, the %s. You decide whether you personally should answer the CEO's latest message, and how strongly.", a.Persona.Name, a.Persona.Role)
 
 	req := llm.Request{
 		Model:          a.model(),
 		System:         system,
-		Messages:       []llm.Message{{Role: llm.RoleUser, Content: prompt}},
+		Messages:       []llm.Message{{Role: llm.RoleUser, Content: a.decideSpeakPrompt(conversation, newMessage)}},
 		ResponseSchema: speakSchema,
-		MaxTokens:      200,
+		MaxTokens:      300,
 	}
 	resp, err := a.Provider.Complete(ctx, req)
 	if err != nil {

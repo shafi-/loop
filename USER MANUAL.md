@@ -432,14 +432,18 @@ agents:
 
 settings:
   speak_threshold: 0.6          # 0–1; observers above this speak
-  max_spontaneous_replies: 2    # anti-pile-on cap per message
+  max_spontaneous_replies: 4    # cap per message (default 4)
   history_window: 50            # transcript lines each observer sees
 ```
 
 **How a message flows:** tagged agents reply first (mandatory, streamed).
 Then every untagged agent independently runs a cheap structured
-self-check — *should I speak?* — returning `{speak, priority 1–5,
-reason}`. Priority maps to confidence; only decisions above
+self-check — *should I speak, and how strongly?* — returning
+`{speak, priority 1–5, reason}`. The framing is CEO-first: **you are
+the CEO of the company**, and your message is an invitation to
+contribute — agents answer with their best perspective from their own
+seat, and stay silent only for pure acknowledgements or points already
+made. Priority maps to confidence; only decisions above
 `speak_threshold` qualify, sorted by priority, capped by
 `max_spontaneous_replies`. Agents that read but decline show as
 `👁 @name saw the message` — silence with a receipt, never a verbose

@@ -13,8 +13,11 @@ import (
 
 // Defaults when the room YAML leaves settings unset.
 const (
-	DefaultSpeakThreshold        = 0.6
-	DefaultMaxSpontaneousReplies = 2
+	DefaultSpeakThreshold = 0.6
+	// The user is the CEO: the point of a room is several perspectives
+	// per turn, so the cap guards true pile-ons rather than rationing
+	// answers. Rooms can still tune it via max_spontaneous_replies.
+	DefaultMaxSpontaneousReplies = 4
 	DefaultHistoryWindow         = 50
 )
 
