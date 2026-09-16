@@ -133,9 +133,107 @@ Smoke-test your provider configuration:
 loop ask "In one sentence, introduce yourself."
 ```
 
+That scaffolded a demo workspace. To use loop inside a project you
+already have, read on.
+
 ---
 
-## 3. Command reference
+## 3. Loop in your project
+
+Two YAML files and one gitignore line. Pipeline and room files live in
+your repo like any other config, everything loop generates stays under
+`.loop/`, and API keys live in `.env` — none of the generated state is
+committed.
+
+### Start from your project's root
+
+Loop is directory-scoped: the directory you run it from *is* the
+workspace. In an existing repo, `loop init` is safe — it only adds
+example files under `pipelines/` and `rooms/`, skipping anything that
+exists. Delete them when you don't want them, or skip init and create
+`pipelines/` yourself.
+
+```bash
+cd ~/work/webapp
+loop init && rm pipelines/feature-delivery.yaml rooms/leadership.yaml README.md
+```
+
+Add `.loop/` and `.env` to `.gitignore`; commit `pipelines/` and
+`rooms/`.
+
+### A first pipeline against your real commands
+
+A `tool` stage runs shell in your project's root; `llm` and `agent`
+stages read and draft; a `human` stage pauses until you answer. A
+release check for a web app:
+
+```yaml
+name: release-check
+stages:
+  - id: log                     # your commands, your repo root
+    type: tool
+    run: git log --oneline -10
+
+  - id: notes                   # a draft from real input
+    type: llm
+    prompt: |
+      Draft release notes from this git log:
+      ${stages.log.output}
+
+  - id: approve                 # you decide
+    type: human
+    gate: true
+    prompt: |
+      Release notes draft:
+      ${stages.notes.output}
+
+      Ship it? Answer yes, no, or what to change.
+
+  - id: ship                    # only reached on yes
+    type: tool
+    run: ./scripts/release.sh
+```
+
+Run it with `loop run pipelines/release-check.yaml`. Ctrl-c pauses
+mid-run; `loop run --resume <id>` picks up where it stopped (§8).
+
+### What the agents can touch
+
+The working directory of the process you start is the fence. A direct
+`loop run` confines shell stages to where you ran it; a room's agents
+with file tools are confined to the daemon's directory. Keys stay in
+`.env` (gitignored) — pipeline and room YAML never contain secrets.
+
+### Graduate to the dashboard when a terminal stops being enough
+
+When you want runs in the background, gates answered from the browser,
+and a room at the center, add `--port` — daemon and web UI become one
+process, one per project:
+
+```bash
+cd ~/work/webapp   && loop serve --port 8787
+cd ~/work/shop-api && loop serve --port 8788
+```
+
+Each opens its own dashboard (`http://127.0.0.1:8787`, `:8788`), binds
+loopback only, and brands the page with the project's name so two tabs
+are tellable apart. Submit runs from another terminal with
+`loop run --daemon --socket <sock>` if you need to; the socket paths
+are derived from the ports and you never type them.
+
+### Working on more than one project
+
+One `serve --port` per project is the model: the directory serve runs
+in owns its runs, its rooms, and its dashboard. Switching projects is a
+new serve — or run them side by side as above; a port already taken by
+a loop dashboard reports cleanly. Plain `loop serve` (headless, no UI)
+plus `loop ui` remains for attaching a viewer to a daemon you started
+elsewhere. What does not exist yet: a single dashboard showing several
+projects at once.
+
+---
+
+## 4. Command reference
 
 ### `loop validate <file>...`
 
@@ -178,7 +276,9 @@ lines, failure summaries); stage text streams to stdout. On failure you
 get the stage, the parsed provider error with a hint, and a resume id.
 
 Flags: `--run-id` (choose your own id), `--resume <id>`, `--runs-dir`
-(default `.loop/runs`), `-q/--quiet` (failures still print).
+(default `.loop/runs`), `-q/--quiet` (failures still print),
+`--daemon` (submit to a serve daemon and attach; the run outlives the
+terminal), `--socket` (with `--daemon`, target a specific daemon).
 
 ### `loop serve` — the core as a daemon
 
@@ -190,21 +290,34 @@ pause, resumable exactly like a ctrl-c. The daemon keeps no state of
 its own: runs live in `.loop/runs/` as always, so even a hard-killed
 daemon leaves resumable runs behind.
 
+With `--port`, the daemon is also the dashboard: the web UI runs in
+the same process on `127.0.0.1:PORT`, the browser opens, and the
+socket is derived from the port (`~/.loop/daemon-<port>.sock` —
+plumbing you never type). One command per project:
+
+```bash
+cd ~/work/webapp   && loop serve --port 8787
+cd ~/work/shop-api && loop serve --port 8788
+```
+
 The point of one owner: a gate asked by *any* run is answerable from
-*any* client, because the daemon holds every run's stdin — the attached
-CLI and the web UI are both such clients. Submitting a run while others
-are active is allowed (independent pipelines are fine) but the response
-warns you — concurrent runs share the daemon's workspace and can write
-the same files.
+*any* client, because the daemon holds every run's stdin — the
+attached CLI and the web UI are both such clients. Submitting a run
+while others are active is allowed (independent pipelines are fine)
+but the response warns you — concurrent runs share the daemon's
+workspace and can write the same files.
 
-Flags: `--socket` (default `~/.loop/daemon.sock`, override with
-`LOOP_DAEMON_SOCK`), `--runs-dir`. Starting a second daemon on a live
-socket reports instead of stealing it.
+Flags: `--port N` (daemon + dashboard in one process, loopback only),
+`--no-open` (with `--port`, skip opening the browser), `--socket`
+(default `~/.loop/daemon.sock`, override with `LOOP_DAEMON_SOCK`),
+`--runs-dir`. Starting a second daemon on a live socket reports
+instead of stealing it; a port already in use reports cleanly.
 
-### `loop ui` — the web dashboard
+### `loop ui` — a window onto a running daemon
 
 Serve loop's web UI on the loopback interface and open it in your
-browser. The dashboard is a client of the daemon: it lists active and
+browser — the way to attach a viewer to a daemon started without
+`--port`. The dashboard is a client of the daemon: it lists active and
 past runs, starts runs, renders each run's event timeline live, and
 answers gate questions — yes, no, or your words — straight from the
 browser, for any run the daemon owns. The UI binds `127.0.0.1:8787`
@@ -236,7 +349,7 @@ supported (the daemon assigns ids).
 Open a multi-agent room. The optional opening message is delivered as if
 you typed it, then the session stays interactive. Commands: `/agents`
 (participants with their resolved provider/model and tools), `/help`,
-`/quit` — and, when the room owns pipelines (§5), `/pipelines`,
+`/quit` — and, when the room owns pipelines (§6), `/pipelines`,
 `/run`, `/approve`, `/status`, `/halt`.
 
 With `--daemon`, the room is hosted by the loop daemon and your
@@ -249,7 +362,8 @@ room run is answerable from any client: the terminal, or the web UI's
 room page. Replies arrive per message in attach mode (not
 token-streamed); direct mode keeps streaming.
 Transcripts persist under `.loop/rooms/<room>/transcript.jsonl`.
-`--rooms-dir` moves that location.
+`--rooms-dir` moves that location; `--socket` (with `--daemon`)
+targets a specific daemon.
 
 ### `loop executor install <name>` / `loop executor doctor` / `loop doctor`
 
@@ -259,7 +373,7 @@ reports node version, executor health, and counters state.
 
 ---
 
-## 4. Pipeline YAML reference
+## 5. Pipeline YAML reference
 
 ```yaml
 name: feature-delivery          # required, kebab-case
@@ -277,7 +391,7 @@ personas:                       # reusable agent identities
       provider: anthropic
 
 runtime:
-  narrator: {}                  # enable the narrator (see §6); {} = env-driven
+  narrator: {}                  # enable the narrator (see §7); {} = env-driven
 
 stages:
   - id: requirements            # required, kebab-case, unique
@@ -419,7 +533,7 @@ retried (you'd see duplicated output).
 
 ---
 
-## 5. Chat rooms YAML reference
+## 6. Chat rooms YAML reference
 
 ```yaml
 name: leadership
@@ -506,7 +620,7 @@ terminals.
 
 ---
 
-## 6. The narrator
+## 7. The narrator
 
 Enable with `runtime.narrator: {}` (a full model block also works).
 The narrator is loop's core-loop LLM: it emits one-line progress
@@ -516,7 +630,7 @@ continues and you simply see fewer `·`/`ℹ` lines.
 
 ---
 
-## 7. Run artifacts and resume
+## 8. Run artifacts and resume
 
 Every run writes `.loop/runs/<id>/`:
 
@@ -539,7 +653,7 @@ A run announces its id at start; keep it, or pass your own with
 
 ---
 
-## 8. Executors (agent stages)
+## 9. Executors (agent stages)
 
 Agent stages delegate to an executor. v1 ships **cline**: a sidecar
 hosting the cline agent SDK, speaking JSONL over stdio. The Go engine
@@ -589,7 +703,7 @@ activity is auditable like everything else.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Meaning / fix |
 |---|---|
@@ -611,13 +725,14 @@ with file:line warnings.
 
 ---
 
-## 10. Where things live
+## 11. Where things live
 
 | Path | Contents |
 |---|---|
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
 | `.loop/rooms/<room>/` | chat transcripts |
 | `~/.loop/daemon.sock` | the daemon's control socket (`loop serve`; `LOOP_DAEMON_SOCK` to override) |
+| `~/.loop/daemon-<port>.sock` | control socket of a `loop serve --port N` daemon (derived from the port) |
 | `~/.loop/executors/cline/` | installed cline host |
 | `~/.loop/counters.json` | opt-in usage counters (see below) |
 | `.env` | your credentials (gitignored — keep real keys here, never in YAML) |

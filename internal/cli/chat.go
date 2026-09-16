@@ -21,12 +21,16 @@ func newChatCmd() *cobra.Command {
 	var (
 		roomsDir  string
 		viaDaemon bool
+		socket    string
 	)
 	cmd := &cobra.Command{
 		Use:   "chat <room.yaml> [opening message]",
 		Short: "Open a multi-agent chat room (@name to address someone; others decide whether to speak)",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if socket != "" && !viaDaemon {
+				return fmt.Errorf("--socket only applies with --daemon")
+			}
 			if viaDaemon {
 				file, err := filepath.Abs(args[0])
 				if err != nil {
@@ -36,13 +40,14 @@ func newChatCmd() *cobra.Command {
 				if len(args) == 2 {
 					opening = args[1]
 				}
-				return chatViaDaemon(cmd, file, opening)
+				return chatViaDaemon(cmd, file, opening, socket)
 			}
 			return runLocalChat(cmd, args, roomsDir)
 		},
 	}
 	cmd.Flags().StringVar(&roomsDir, "rooms-dir", "", "where room transcripts are stored (default .loop/rooms)")
 	cmd.Flags().BoolVar(&viaDaemon, "daemon", false, "attach to a room hosted by a loop serve daemon (the room outlives the terminal)")
+	cmd.Flags().StringVar(&socket, "socket", "", "with --daemon: which daemon to attach to (default ~/.loop/daemon.sock, override with LOOP_DAEMON_SOCK)")
 	return cmd
 }
 

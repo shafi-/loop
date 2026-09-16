@@ -17,8 +17,9 @@ import (
 // POSTed, replies arrive as transcript appends over the room's SSE
 // stream. The room outlives this terminal — /detach leaves it thinking
 // on the server, and reattaching shows what happened in between.
-func chatViaDaemon(cmd *cobra.Command, file, opening string) error {
-	cl, err := daemon.Dial(daemon.SocketPath(""))
+// socket selects which daemon ("" = default, then $LOOP_DAEMON_SOCK).
+func chatViaDaemon(cmd *cobra.Command, file, opening, socket string) error {
+	cl, err := daemon.Dial(daemon.SocketPath(socket))
 	if err != nil {
 		return err
 	}

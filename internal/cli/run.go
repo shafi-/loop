@@ -96,6 +96,7 @@ func newRunCmd() *cobra.Command {
 		quiet   bool
 		runsDir string
 		daemon  bool
+		socket  string
 	)
 	cmd := &cobra.Command{
 		Use:   "run <pipeline.yaml>",
@@ -105,6 +106,9 @@ func newRunCmd() *cobra.Command {
 			if daemon && runID != "" {
 				return fmt.Errorf("--run-id is not supported with --daemon (the daemon assigns ids; use --resume to reattach)")
 			}
+			if socket != "" && !daemon {
+				return fmt.Errorf("--socket only applies with --daemon")
+			}
 			if daemon {
 				file, err := filepath.Abs(args[0])
 				if err != nil {
@@ -113,7 +117,7 @@ func newRunCmd() *cobra.Command {
 				logf := func(format string, a ...any) {
 					fmt.Fprintf(cmd.ErrOrStderr(), format+"\n", a...)
 				}
-				return runViaDaemon(cmd.Context(), logf, file, resume, vars)
+				return runViaDaemon(cmd.Context(), logf, file, resume, vars, socket)
 			}
 			source, err := os.ReadFile(args[0])
 			if err != nil {
@@ -221,5 +225,6 @@ func newRunCmd() *cobra.Command {
 	f.StringVar(&runsDir, "runs-dir", "", "where runs are stored (default .loop/runs)")
 	f.BoolVarP(&quiet, "quiet", "q", false, "suppress progress lines on stderr")
 	f.BoolVar(&daemon, "daemon", false, "submit to a loop serve daemon and attach (the run outlives the terminal)")
+	f.StringVar(&socket, "socket", "", "with --daemon: which daemon to submit to (default ~/.loop/daemon.sock, override with LOOP_DAEMON_SOCK)")
 	return cmd
 }

@@ -33,6 +33,18 @@ func DefaultSocket() (string, error) {
 	return filepath.Join(home, ".loop", "daemon.sock"), nil
 }
 
+// PortSocket is the daemon socket for a `serve --port N` daemon:
+// derived from the port so two project daemons coexist without anyone
+// typing a socket path. Plumbing — the port is the only user-facing
+// identity; this file is an implementation detail.
+func PortSocket(port int) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".loop", fmt.Sprintf("daemon-%d.sock", port)), nil
+}
+
 // SocketPath resolves the daemon socket: explicit value, then
 // $LOOP_DAEMON_SOCK, then the default.
 func SocketPath(explicit string) string {
@@ -54,6 +66,9 @@ type Ping struct {
 	Version       string `json:"version"`
 	UptimeSeconds int    `json:"uptime_seconds"`
 	Active        int    `json:"active"`
+	// Workspace names the directory the daemon was started from — the
+	// web UI's header shows it so two project tabs are tellable apart.
+	Workspace string `json:"workspace,omitempty"`
 }
 
 // Ping asks the daemon who it is.
@@ -133,7 +148,7 @@ func (c *Client) Submit(file, resumeID string, vars []string) (SubmitResult, err
 // RunInfo mirrors the daemon's view of one run.
 type RunInfo struct {
 	RunID    string `json:"run_id"`
-	Alias    string `json:"alias"`  // the room-side name for room runs
+	Alias    string `json:"alias"` // the room-side name for room runs
 	Pipeline string `json:"pipeline"`
 	Phase    string `json:"phase"` // running | waiting | done | failed | paused
 	File     string `json:"file"`  // set when this daemon submitted the run

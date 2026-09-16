@@ -60,6 +60,7 @@ type pageData struct {
 var blurbs = map[string]string{
 	"setup":                     "Install loop, set one key, check your installation.",
 	"quickstart":                "First pipeline and first room, in two minutes.",
+	"loop-in-your-project":      "Adopt loop inside an existing repo — and one dashboard per project.",
 	"command-reference":         "Every command and its flags.",
 	"pipeline-yaml-reference":   "Stages, gates, routers, model blocks, failure policy.",
 	"chat-rooms-yaml-reference": "Personas, tools, room-owned pipelines, the speak policy.",

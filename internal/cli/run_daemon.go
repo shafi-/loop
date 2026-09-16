@@ -14,9 +14,10 @@ import (
 // runViaDaemon is `loop run --daemon`: submit the run to a loop serve
 // daemon, then render its event stream locally. The child process and
 // its stdin belong to the daemon — the run outlives this terminal, and
-// gates are answered by POSTing what the user types.
-func runViaDaemon(ctx context.Context, logf func(string, ...any), file, resume string, vars []string) error {
-	cl, err := daemon.Dial(daemon.SocketPath(""))
+// gates are answered by POSTing what the user types. socket selects
+// which daemon ("" = the default, then $LOOP_DAEMON_SOCK).
+func runViaDaemon(ctx context.Context, logf func(string, ...any), file, resume string, vars []string, socket string) error {
+	cl, err := daemon.Dial(daemon.SocketPath(socket))
 	if err != nil {
 		return err
 	}

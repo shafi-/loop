@@ -10,7 +10,7 @@
 </head>
 <body{{if .FullBleed}} class="fullbleed"{{end}}>
 <nav>
-  <span class="brand">loop</span>
+  <span class="brand">loop{{with .Workspace}} · {{.}}{{end}}</span>
   <a href="/">runs</a>
   <span class="spacer"></span>
   <span class="muted">daemon {{.Version}}</span>

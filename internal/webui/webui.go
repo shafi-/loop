@@ -22,6 +22,9 @@ var files embed.FS
 type pageData struct {
 	Title   string
 	Version string
+	// Workspace names the daemon's directory, shown in the nav brand
+	// ("loop · webapp") so two project tabs are tellable apart.
+	Workspace string
 	// FullBleed lets a page own the whole viewport (the room's chat-app
 	// frame) instead of the centered document column.
 	FullBleed bool
@@ -76,7 +79,7 @@ func New(version, socket string) (http.Handler, error) {
 		"hms":        func(t time.Time) string { return t.Local().Format("15:04") },
 		"hue":        hue,
 		"initial":    initial,
-		"md": func(s string) template.HTML { return template.HTML(renderMarkdown(s)) },
+		"md":         func(s string) template.HTML { return template.HTML(renderMarkdown(s)) },
 	}).ParseFS(files, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -139,8 +142,10 @@ func noCache(next http.Handler) http.Handler {
 func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	runs, _ := cl.Runs(true)
 	rooms, _ := cl.Rooms()
+	version, workspace := daemonMeta(cl)
 	renderPage(tmpl, w, "dashboard", pageData{
-		Title: "runs", Version: versionOf(cl), Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms,
+		Title: "runs", Version: version, Workspace: workspace,
+		Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms,
 	})
 }
 
@@ -191,7 +196,8 @@ func runPage(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, 
 		return
 	}
 	events, _ := cl.Events(id, 0)
-	renderPage(tmpl, w, "run", pageData{Title: id, Version: versionOf(cl), Info: info, Rows: Timeline(events)})
+	version, workspace := daemonMeta(cl)
+	renderPage(tmpl, w, "run", pageData{Title: id, Version: version, Workspace: workspace, Info: info, Rows: Timeline(events)})
 }
 
 // timeline is the live fragment: htmx refetches it on every streamed
@@ -329,7 +335,8 @@ func roomData(cl *daemon.Client, w http.ResponseWriter, r *http.Request) (pageDa
 		return pageData{}, false
 	}
 	lines, _ := cl.RoomTranscript(info.Name, 0)
-	data := pageData{Title: info.Name, Version: versionOf(cl), FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents, info.Runs)}
+	version, workspace := daemonMeta(cl)
+	data := pageData{Title: info.Name, Version: version, Workspace: workspace, FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents, info.Runs)}
 	if waiting, ok := anyWaiting(info.Runs); ok {
 		data.Waiting = &waiting
 	}
@@ -398,11 +405,13 @@ func roomApprove(tmpl *template.Template, cl *daemon.Client, w http.ResponseWrit
 	roomChat(tmpl, cl, w, r)
 }
 
-func versionOf(cl *daemon.Client) string {
+// daemonMeta asks the daemon who it is, once per full page: the
+// version footer and the workspace name the nav brand shows.
+func daemonMeta(cl *daemon.Client) (version, workspace string) {
 	if p, err := cl.Ping(); err == nil {
-		return p.Version
+		return p.Version, p.Workspace
 	}
-	return "?"
+	return "?", ""
 }
 
 // splitActive/splitHistory divide the daemon's runs list (active first,

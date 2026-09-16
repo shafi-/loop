@@ -28,6 +28,11 @@ type Server struct {
 	version string
 	started time.Time
 	runsDir string
+	// workspace is the base name of the directory the daemon was
+	// started from. Children inherit that CWD, so it names the
+	// workspace the daemon owns — the web UI's header shows it to
+	// tell two project tabs apart.
+	workspace string
 	// serveCtx lives for the whole Serve call: background work (room
 	// turns) runs on it, never on a request context — a 202 must not
 	// kill the turn it started.
@@ -40,13 +45,15 @@ type Server struct {
 // New builds the server. bin is the loop binary children are spawned
 // with (production: os.Executable; tests: a fake child).
 func New(version, runsDir, bin string) *Server {
+	workspace, _ := os.Getwd()
 	return &Server{
-		sup:     runctl.NewSupervisor(bin, runctl.Handlers{}),
-		rooms:   newHostRooms(bin),
-		version: version,
-		started: time.Now(),
-		runsDir: runsDir,
-		specs:   map[string]string{},
+		sup:       runctl.NewSupervisor(bin, runctl.Handlers{}),
+		rooms:     newHostRooms(bin),
+		version:   version,
+		started:   time.Now(),
+		runsDir:   runsDir,
+		workspace: filepath.Base(workspace),
+		specs:     map[string]string{},
 	}
 }
 
@@ -189,16 +196,27 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// Serve accepts connections until ctx is done, then halts every child
-// (resumably) before returning.
+// Serve accepts connections until ctx is done — or the listener dies —
+// then halts every child (resumably) before returning.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	s.serveCtx = ctx
 	errCh := make(chan error, 1)
 	go func() { errCh <- http.Serve(ln, s.Handler()) }()
-	<-ctx.Done()
+
+	// Either the caller is done, or the listener broke (closed on us,
+	// a failed sidecar bind elsewhere). Either way children shut down
+	// resumably — never linger as a daemon that can no longer serve.
+	var serveErr error
+	select {
+	case <-ctx.Done():
+	case serveErr = <-errCh:
+	}
 	s.sup.Shutdown()
 	for _, rs := range s.rooms.all() {
 		rs.sup.Shutdown()
+	}
+	if serveErr != nil {
+		return serveErr
 	}
 	return ln.Close()
 }
@@ -208,6 +226,7 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
 		"version":        s.version,
 		"uptime_seconds": int(time.Since(s.started).Seconds()),
 		"active":         len(s.sup.Runs()),
+		"workspace":      s.workspace,
 	})
 }
 
