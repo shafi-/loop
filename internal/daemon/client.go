@@ -208,6 +208,145 @@ func (c *Client) Events(id string, after int) ([]EventLine, error) {
 	return res.Events, err
 }
 
+// ─── rooms ───────────────────────────────────────────────────────────
+
+// RoomInfo describes a hosted room.
+type RoomInfo struct {
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	Agents    []string  `json:"agents"`
+	Pipelines []string  `json:"pipelines"`
+	Busy      bool      `json:"busy"`
+	Lines     int       `json:"transcript_lines"`
+	Runs      []RunInfo `json:"runs"` // the room's own pipeline runs
+}
+
+// HostRoom hosts (or attaches to) a room session on the daemon.
+func (c *Client) HostRoom(file string) (RoomInfo, error) {
+	var res RoomInfo
+	err := c.do("POST", "/api/rooms", map[string]string{"file": file}, &res)
+	return res, err
+}
+
+// Rooms lists hosted rooms.
+func (c *Client) Rooms() ([]RoomInfo, error) {
+	var res struct {
+		Rooms []RoomInfo `json:"rooms"`
+	}
+	err := c.get("/api/rooms", &res)
+	return res.Rooms, err
+}
+
+// Room fetches one hosted room; false when the name is not hosted.
+func (c *Client) Room(name string) (RoomInfo, bool, error) {
+	var res RoomInfo
+	req, err := http.NewRequest("GET", c.base+"/api/rooms/"+name, nil)
+	if err != nil {
+		return res, false, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return res, false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return res, false, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return res, false, fmt.Errorf("HTTP %d from /api/rooms/%s", resp.StatusCode, name)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return res, false, err
+	}
+	return res, true, nil
+}
+
+// RoomLine is one transcript line from a room stream or poll.
+type RoomLine struct {
+	Seq  int    `json:"seq"`
+	From string `json:"from"`
+	Text string `json:"text"`
+}
+
+// RoomTranscript polls a room's transcript after the given line number.
+func (c *Client) RoomTranscript(name string, after int) ([]RoomLine, error) {
+	var res struct {
+		Lines []RoomLine `json:"lines"`
+	}
+	err := c.do("GET", fmt.Sprintf("/api/rooms/%s/transcript?after=%d", name, after), nil, &res)
+	return res.Lines, err
+}
+
+// RoomStream subscribes to a room's transcript appends (SSE). The
+// channel closes when the connection drops or ctx is done — rooms never
+// end, so there is no server-side "end" event.
+func (c *Client) RoomStream(ctx context.Context, name string, after int) (<-chan RoomLine, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/rooms/%s/stream?after=%d", c.base, name, after), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("HTTP %d from room stream", resp.StatusCode)
+	}
+	ch := make(chan RoomLine, 16)
+	go func() {
+		defer resp.Body.Close()
+		defer close(ch)
+		sc := bufio.NewScanner(resp.Body)
+		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+		for sc.Scan() {
+			line := sc.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var ln RoomLine
+			if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ln) == nil {
+				ch <- ln
+			}
+		}
+	}()
+	return ch, nil
+}
+
+// Say posts one user message to a hosted room; the turn is processed in
+// the background and shows up as transcript appends.
+func (c *Client) Say(name, text string) error {
+	return c.do("POST", "/api/rooms/"+name+"/say", map[string]string{"text": text}, nil)
+}
+
+// RoomRun starts one of the room's owned pipelines in the room context.
+func (c *Client) RoomRun(name, alias, resumeID string, vars []string) (string, error) {
+	var res struct {
+		RunID string `json:"run_id"`
+	}
+	body := map[string]any{"alias": alias}
+	if resumeID != "" {
+		body["resume_id"] = resumeID
+	}
+	if len(vars) > 0 {
+		body["vars"] = vars
+	}
+	err := c.do("POST", "/api/rooms/"+name+"/run", body, &res)
+	return res.RunID, err
+}
+
+// RoomApprove answers a waiting gate in the room (alias optional when
+// exactly one gate is asking).
+func (c *Client) RoomApprove(name, alias, text string) error {
+	return c.do("POST", "/api/rooms/"+name+"/approve", map[string]string{"alias": alias, "text": text}, nil)
+}
+
+// RoomHalt pauses a room run (alias optional when one run is active).
+func (c *Client) RoomHalt(name, alias string) error {
+	return c.do("POST", "/api/rooms/"+name+"/halt", map[string]string{"alias": alias}, nil)
+}
+
 // Stream subscribes to a run's events from after the given sequence
 // number (SSE). The channel closes when the daemon ends the stream (the
 // run reached a terminal state and the log went quiet) or ctx is done.

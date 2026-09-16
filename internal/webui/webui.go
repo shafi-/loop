@@ -26,6 +26,8 @@ type pageData struct {
 	History []daemon.RunInfo
 	Info    daemon.RunInfo
 	Rows    []Row
+	Room    daemon.RoomInfo
+	Lines   []daemon.RoomLine
 }
 
 // New builds the dashboard: pages and action endpoints rendered from the
@@ -63,6 +65,11 @@ func New(version, socket string) (http.Handler, error) {
 	mux.HandleFunc("POST /runs/{id}/answer", func(w http.ResponseWriter, r *http.Request) { answer(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /runs/{id}/halt", func(w http.ResponseWriter, r *http.Request) { halt(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /runs/{id}/resume", func(w http.ResponseWriter, r *http.Request) { resume(tmpl, cl, w, r) })
+	mux.HandleFunc("GET /rooms/{name}", func(w http.ResponseWriter, r *http.Request) { roomPage(tmpl, cl, w, r) })
+	mux.HandleFunc("GET /rooms/{name}/fragment", func(w http.ResponseWriter, r *http.Request) { roomFragment(tmpl, cl, w, r) })
+	mux.HandleFunc("POST /rooms/{name}/say", func(w http.ResponseWriter, r *http.Request) { roomSay(tmpl, cl, w, r) })
+	mux.HandleFunc("POST /rooms/{name}/run", func(w http.ResponseWriter, r *http.Request) { roomRun(tmpl, cl, w, r) })
+	mux.HandleFunc("POST /rooms/{name}/approve", func(w http.ResponseWriter, r *http.Request) { roomApprove(tmpl, cl, w, r) })
 	return mux, nil
 }
 
@@ -194,6 +201,92 @@ func parseVars(s string) []string {
 		out = append(out, "--var", f)
 	}
 	return out
+}
+
+// ─── rooms ───────────────────────────────────────────────────────────
+
+func roomPage(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	info, known, err := cl.Room(r.PathValue("name"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !known {
+		http.NotFound(w, r)
+		return
+	}
+	lines, _ := cl.RoomTranscript(info.Name, 0)
+	renderPage(tmpl, w, "room", pageData{
+		Title: info.Name, Version: versionOf(cl), Room: info, Lines: lines,
+	})
+}
+
+// roomFragment is the room's live body: transcript, say box, run
+// controls — refetched on every streamed transcript append.
+func roomFragment(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	info, known, err := cl.Room(r.PathValue("name"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !known {
+		http.NotFound(w, r)
+		return
+	}
+	lines, _ := cl.RoomTranscript(info.Name, 0)
+	if err := tmpl.ExecuteTemplate(w, "frag_room", pageData{Room: info, Lines: lines}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func roomSay(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	text := strings.TrimSpace(r.FormValue("text"))
+	if text == "" {
+		http.Error(w, "empty message", http.StatusBadRequest)
+		return
+	}
+	if err := cl.Say(name, text); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	roomFragment(tmpl, cl, w, r)
+}
+
+func roomRun(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	alias := strings.TrimSpace(r.FormValue("alias"))
+	if alias == "" {
+		http.Error(w, "no pipeline chosen", http.StatusBadRequest)
+		return
+	}
+	var resume string
+	if v := strings.TrimSpace(r.FormValue("resume")); v != "" {
+		resume = v
+	}
+	if _, err := cl.RoomRun(name, alias, resume, parseVars(r.FormValue("vars"))); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	roomFragment(tmpl, cl, w, r)
+}
+
+// roomApprove answers a waiting gate of one of the room's runs.
+func roomApprove(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	text := strings.TrimSpace(r.FormValue("text"))
+	if quick := r.FormValue("quick"); quick != "" {
+		text = quick
+	}
+	if text == "" {
+		http.Error(w, "empty answer", http.StatusBadRequest)
+		return
+	}
+	if err := cl.RoomApprove(name, r.FormValue("alias"), text); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	roomFragment(tmpl, cl, w, r)
 }
 
 func versionOf(cl *daemon.Client) string {

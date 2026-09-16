@@ -210,7 +210,9 @@ by default (`--addr` to change) and has no authentication: keep it on
 your machine, like the daemon itself.
 
 Requires a running daemon (`loop serve`); `loop run --daemon` and the
-dashboard are two windows onto the same runs.
+dashboard are two windows onto the same runs. Rooms hosted with
+`loop chat --daemon` get a page too: the live transcript, a message
+box, and the room's pipelines — runnable and approvable in place.
 
 `loop run --daemon <pipeline.yaml>` submits and attaches: progress
 renders locally in the same shapes as a direct run, gate questions
@@ -226,6 +228,16 @@ you typed it, then the session stays interactive. Commands: `/agents`
 (participants with their resolved provider/model and tools), `/help`,
 `/quit` — and, when the room owns pipelines (§5), `/pipelines`,
 `/run`, `/approve`, `/status`, `/halt`.
+
+With `--daemon`, the room is hosted by the loop daemon and your
+terminal is just a window onto it: messages are sent to the server,
+replies arrive as they land, `/detach` (or a closed terminal) leaves
+the room living on the daemon, and reattaching replays what you missed.
+The room's pipeline runs belong to the room session — every attached
+client sees their status in the conversation, and a gate asked by a
+room run is answerable from any client: the terminal, or the web UI's
+room page. Replies arrive per message in attach mode (not
+token-streamed); direct mode keeps streaming.
 Transcripts persist under `.loop/rooms/<room>/transcript.jsonl`.
 `--rooms-dir` moves that location.
 

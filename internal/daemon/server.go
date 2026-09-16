@@ -24,9 +24,14 @@ import (
 // supervisor's alias IS the run id here — one naming across the API).
 type Server struct {
 	sup     *runctl.Supervisor
+	rooms   *hostRooms
 	version string
 	started time.Time
 	runsDir string
+	// serveCtx lives for the whole Serve call: background work (room
+	// turns) runs on it, never on a request context — a 202 must not
+	// kill the turn it started.
+	serveCtx context.Context
 
 	mu    sync.Mutex
 	specs map[string]string // run id -> submitted pipeline file (this daemon's lifetime)
@@ -37,6 +42,7 @@ type Server struct {
 func New(version, runsDir, bin string) *Server {
 	return &Server{
 		sup:     runctl.NewSupervisor(bin, runctl.Handlers{}),
+		rooms:   newHostRooms(bin),
 		version: version,
 		started: time.Now(),
 		runsDir: runsDir,
@@ -146,6 +152,17 @@ func writeError(w http.ResponseWriter, status int, format string, args ...any) {
 	writeJSON(w, status, map[string]string{"error": fmt.Sprintf(format, args...)})
 }
 
+// queryInt reads a non-negative int query parameter, 0 when absent or
+// malformed.
+func queryInt(r *http.Request, name string) int {
+	if v := r.URL.Query().Get(name); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return 0
+}
+
 // Handler builds the API routes.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -157,16 +174,29 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/runs/{id}/stream", s.handleStream)
 	mux.HandleFunc("POST /api/runs/{id}/answer", s.handleAnswer)
 	mux.HandleFunc("POST /api/runs/{id}/halt", s.handleHalt)
+	mux.HandleFunc("POST /api/rooms", s.handleRoomHost)
+	mux.HandleFunc("GET /api/rooms", s.handleRooms)
+	mux.HandleFunc("GET /api/rooms/{name}", s.handleRoom)
+	mux.HandleFunc("GET /api/rooms/{name}/transcript", s.handleRoomTranscript)
+	mux.HandleFunc("GET /api/rooms/{name}/stream", s.handleRoomStream)
+	mux.HandleFunc("POST /api/rooms/{name}/say", s.handleRoomSay)
+	mux.HandleFunc("POST /api/rooms/{name}/run", s.handleRoomRun)
+	mux.HandleFunc("POST /api/rooms/{name}/approve", s.handleRoomApprove)
+	mux.HandleFunc("POST /api/rooms/{name}/halt", s.handleRoomHalt)
 	return mux
 }
 
 // Serve accepts connections until ctx is done, then halts every child
 // (resumably) before returning.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	s.serveCtx = ctx
 	errCh := make(chan error, 1)
 	go func() { errCh <- http.Serve(ln, s.Handler()) }()
 	<-ctx.Done()
 	s.sup.Shutdown()
+	for _, rs := range s.rooms.all() {
+		rs.sup.Shutdown()
+	}
 	return ln.Close()
 }
 
@@ -410,4 +440,222 @@ func (s *Server) handleHalt(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusInternalServerError, "%v", err)
 	}
+}
+
+// ─── rooms ───────────────────────────────────────────────────────────
+
+// roomJSON is the wire form of a hosted room.
+type roomJSON struct {
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	Agents    []string  `json:"agents"`
+	Pipelines []string  `json:"pipelines"`
+	Busy      bool      `json:"busy"`
+	Lines     int       `json:"transcript_lines"`
+	Runs      []runJSON `json:"runs"` // the room's own pipeline runs
+}
+
+func (s *Server) roomJSON(rs *roomSession) roomJSON {
+	out := roomJSON{
+		Name: rs.cfg.Name,
+		Path: rs.roomPath,
+		Busy: rs.busyNow(),
+	}
+	for _, a := range rs.cfg.Agents {
+		out.Agents = append(out.Agents, a.Name)
+	}
+	for _, p := range rs.cfg.Pipelines {
+		out.Pipelines = append(out.Pipelines, p.Name)
+	}
+	out.Lines = countLines(filepath.Join(".loop", "rooms", rs.cfg.Name, "transcript.jsonl"))
+	for _, ru := range rs.sup.Runs() {
+		out.Runs = append(out.Runs, s.toRunJSON(ru))
+	}
+	return out
+}
+
+func (s *Server) handleRoomHost(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		File string `json:"file"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.File == "" {
+		writeError(w, http.StatusBadRequest, "body must be JSON with a room \"file\" path")
+		return
+	}
+	rs, err := s.rooms.host(r.Context(), req.File)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.roomJSON(rs))
+}
+
+func (s *Server) handleRooms(w http.ResponseWriter, r *http.Request) {
+	rooms := s.rooms.all()
+	out := make([]roomJSON, 0, len(rooms))
+	for _, rs := range rooms {
+		out = append(out, s.roomJSON(rs))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rooms": out})
+}
+
+func (s *Server) roomOf(w http.ResponseWriter, r *http.Request) *roomSession {
+	rs, ok := s.rooms.get(r.PathValue("name"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "no hosted room %q", r.PathValue("name"))
+		return nil
+	}
+	return rs
+}
+
+func (s *Server) handleRoom(w http.ResponseWriter, r *http.Request) {
+	if rs := s.roomOf(w, r); rs != nil {
+		writeJSON(w, http.StatusOK, s.roomJSON(rs))
+	}
+}
+
+func (s *Server) handleRoomTranscript(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	after := queryInt(r, "after")
+	lines, err := readTranscript(filepath.Join(".loop", "rooms", rs.cfg.Name, "transcript.jsonl"), after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "reading transcript: %v", err)
+		return
+	}
+	if lines == nil {
+		lines = []TranscriptLine{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"lines": lines})
+}
+
+// handleRoomStream pushes transcript appends (SSE) — the room's live
+// feed for every attached client. Rooms never end; the stream closes
+// when the client goes away.
+func (s *Server) handleRoomStream(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	fl.Flush()
+
+	path := filepath.Join(".loop", "rooms", rs.cfg.Name, "transcript.jsonl")
+	after := queryInt(r, "after")
+	tick := time.NewTicker(300 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-tick.C:
+			lines, err := readTranscript(path, after)
+			if err != nil {
+				return
+			}
+			for _, ln := range lines {
+				fmt.Fprintf(w, "data: {\"seq\":%d,\"from\":%q,\"text\":%s}\n\n", ln.Seq, ln.From, mustJSON(ln.Text))
+				after = ln.Seq
+			}
+			if len(lines) > 0 {
+				fl.Flush()
+			}
+		}
+	}
+}
+
+// mustJSON renders v as a compact JSON value for embedding in an SSE
+// data line; text is the only payload and never fails to encode.
+func mustJSON(v string) string {
+	raw, _ := json.Marshal(v)
+	return string(raw)
+}
+
+func (s *Server) handleRoomSay(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Text) == "" {
+		writeError(w, http.StatusBadRequest, "body must be JSON with a \"text\" message")
+		return
+	}
+	if err := rs.say(s.serveCtx, req.Text); err != nil {
+		writeError(w, http.StatusConflict, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]bool{"accepted": true})
+}
+
+func (s *Server) handleRoomRun(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	var req struct {
+		Alias    string   `json:"alias"`
+		ResumeID string   `json:"resume_id,omitempty"`
+		Vars     []string `json:"vars,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Alias == "" {
+		writeError(w, http.StatusBadRequest, "body must be JSON with a pipeline \"alias\"")
+		return
+	}
+	id, err := rs.run(req.Alias, req.ResumeID, req.Vars)
+	if err != nil {
+		writeError(w, http.StatusConflict, "%v", err)
+		return
+	}
+	s.mu.Lock()
+	s.specs[id] = req.Alias // room runs keep their alias as the room-side name
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"run_id": id, "alias": req.Alias})
+}
+
+func (s *Server) handleRoomApprove(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	var req struct {
+		Alias string `json:"alias,omitempty"`
+		Text  string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Text == "" {
+		writeError(w, http.StatusBadRequest, "body must be JSON with a \"text\" answer")
+		return
+	}
+	if err := rs.sup.Approve(req.Alias, req.Text); err != nil {
+		writeError(w, http.StatusConflict, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleRoomHalt(w http.ResponseWriter, r *http.Request) {
+	rs := s.roomOf(w, r)
+	if rs == nil {
+		return
+	}
+	var req struct {
+		Alias string `json:"alias,omitempty"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := rs.sup.Halt(req.Alias); err != nil {
+		writeError(w, http.StatusConflict, "%v", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

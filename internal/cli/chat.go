@@ -18,102 +18,122 @@ import (
 )
 
 func newChatCmd() *cobra.Command {
-	var roomsDir string
+	var (
+		roomsDir  string
+		viaDaemon bool
+	)
 	cmd := &cobra.Command{
 		Use:   "chat <room.yaml> [opening message]",
 		Short: "Open a multi-agent chat room (@name to address someone; others decide whether to speak)",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			room, err := config.LoadRoom(args[0])
-			if err != nil {
-				return err
-			}
-			agents, err := buildRoomAgents(room)
-			if err != nil {
-				return err
-			}
-			if roomsDir == "" {
-				roomsDir = filepath.Join(".loop", "rooms")
-			}
-			transcript, err := chat.OpenTranscript(filepath.Join(roomsDir, room.Name))
-			if err != nil {
-				return err
-			}
-			// Opt-in, anonymous, local (internal/counters): one count
-			// per opened session, keyed by room name.
-			counters.BumpKey("room_sessions", room.Name)
-			r := chat.NewRoom(*room, agents, transcript)
-
-			out := cmd.OutOrStdout()
-			names := make([]string, 0, len(room.Agents))
-			for _, a := range room.Agents {
-				names = append(names, a.Name)
-			}
-			fmt.Fprintf(out, "room %q — participants: %s\n", room.Name, strings.Join(names, ", "))
-			fmt.Fprintln(out, "type @name to address someone; untagged agents decide for themselves whether to speak.")
-			fmt.Fprintln(out, "/agents list · /help · /quit")
-
-			ui := &terminalChatUI{out: out, err: cmd.ErrOrStderr()}
-			// Pipelines this room owns: /run commands real `loop run`
-			// subprocesses from inside the conversation.
-			bin, err := executablePath()
-			if err != nil {
-				bin = "loop"
-			}
-			sess := newRoomRunSession(bin, args[0], room.Pipelines, ui, out, transcript)
-			// An optional opening message is delivered exactly as if the
-			// user had typed it; the session stays interactive afterwards.
-			// Like typed input, a failed delivery never ends the session.
-			if len(args) == 2 {
-				if err := r.Say(cmd.Context(), args[1], ui); err != nil {
-					fmt.Fprintf(ui.err, "✗ %v\n", err)
-				}
-			}
-			in := bufio.NewReader(os.Stdin)
-			for {
-				fmt.Fprint(out, "\n> ")
-				line, err := in.ReadString('\n')
+			if viaDaemon {
+				file, err := filepath.Abs(args[0])
 				if err != nil {
-					fmt.Fprintln(out)
-					return nil // stdin closed (ctrl-d) ends the session
+					return err
 				}
-				text := strings.TrimSpace(line)
-				if text == "" {
-					continue
+				opening := ""
+				if len(args) == 2 {
+					opening = args[1]
 				}
-				switch text {
-				case "/quit", "/exit":
-					sess.Shutdown()
-					fmt.Fprintln(out, "session ended — transcript kept in", filepath.Join(roomsDir, room.Name))
-					return nil
-				case "/help":
-					printChatHelp(out)
-					continue
-				case "/agents":
-					for _, a := range room.Agents {
-						// Show what would actually run (env/defaults applied).
-						rm := a.Model.Resolve()
-						tools := "no tools"
-						if len(a.Tools) > 0 {
-							tools = strings.Join(a.Tools, ", ")
-						}
-						fmt.Fprintf(out, "  @%s — %s (%s/%s; %s)\n", a.Name, a.Role, rm.Provider, rm.Model, tools)
-					}
-					continue
-				}
-				if handleRoomRunCommand(text, sess, out) {
-					continue
-				}
-				if err := r.Say(cmd.Context(), text, ui); err != nil {
-					// Reply failures are real errors (with provider hints
-					// already attached) but never end the session.
-					fmt.Fprintf(ui.err, "✗ %v\n", err)
-				}
+				return chatViaDaemon(cmd, file, opening)
 			}
+			return runLocalChat(cmd, args, roomsDir)
 		},
 	}
 	cmd.Flags().StringVar(&roomsDir, "rooms-dir", "", "where room transcripts are stored (default .loop/rooms)")
+	cmd.Flags().BoolVar(&viaDaemon, "daemon", false, "attach to a room hosted by a loop serve daemon (the room outlives the terminal)")
 	return cmd
+}
+
+// runLocalChat is the classic in-process room session.
+func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
+	room, err := config.LoadRoom(args[0])
+	if err != nil {
+		return err
+	}
+	agents, err := buildRoomAgents(room)
+	if err != nil {
+		return err
+	}
+	if roomsDir == "" {
+		roomsDir = filepath.Join(".loop", "rooms")
+	}
+	transcript, err := chat.OpenTranscript(filepath.Join(roomsDir, room.Name))
+	if err != nil {
+		return err
+	}
+	// Opt-in, anonymous, local (internal/counters): one count
+	// per opened session, keyed by room name.
+	counters.BumpKey("room_sessions", room.Name)
+	r := chat.NewRoom(*room, agents, transcript)
+
+	out := cmd.OutOrStdout()
+	names := make([]string, 0, len(room.Agents))
+	for _, a := range room.Agents {
+		names = append(names, a.Name)
+	}
+	fmt.Fprintf(out, "room %q — participants: %s\n", room.Name, strings.Join(names, ", "))
+	fmt.Fprintln(out, "type @name to address someone; untagged agents decide for themselves whether to speak.")
+	fmt.Fprintln(out, "/agents list · /help · /quit")
+
+	ui := &terminalChatUI{out: out, err: cmd.ErrOrStderr()}
+	// Pipelines this room owns: /run commands real `loop run`
+	// subprocesses from inside the conversation.
+	bin, err := executablePath()
+	if err != nil {
+		bin = "loop"
+	}
+	sess := newRoomRunSession(bin, args[0], room.Pipelines, ui, out, transcript)
+	// An optional opening message is delivered exactly as if the
+	// user had typed it; the session stays interactive afterwards.
+	// Like typed input, a failed delivery never ends the session.
+	if len(args) == 2 {
+		if err := r.Say(cmd.Context(), args[1], ui); err != nil {
+			fmt.Fprintf(ui.err, "✗ %v\n", err)
+		}
+	}
+	in := bufio.NewReader(os.Stdin)
+	for {
+		fmt.Fprint(out, "\n> ")
+		line, err := in.ReadString('\n')
+		if err != nil {
+			fmt.Fprintln(out)
+			return nil // stdin closed (ctrl-d) ends the session
+		}
+		text := strings.TrimSpace(line)
+		if text == "" {
+			continue
+		}
+		switch text {
+		case "/quit", "/exit":
+			sess.Shutdown()
+			fmt.Fprintln(out, "session ended — transcript kept in", filepath.Join(roomsDir, room.Name))
+			return nil
+		case "/help":
+			printChatHelp(out)
+			continue
+		case "/agents":
+			for _, a := range room.Agents {
+				// Show what would actually run (env/defaults applied).
+				rm := a.Model.Resolve()
+				tools := "no tools"
+				if len(a.Tools) > 0 {
+					tools = strings.Join(a.Tools, ", ")
+				}
+				fmt.Fprintf(out, "  @%s — %s (%s/%s; %s)\n", a.Name, a.Role, rm.Provider, rm.Model, tools)
+			}
+			continue
+		}
+		if handleRoomRunCommand(text, sess, out) {
+			continue
+		}
+		if err := r.Say(cmd.Context(), text, ui); err != nil {
+			// Reply failures are real errors (with provider hints
+			// already attached) but never end the session.
+			fmt.Fprintf(ui.err, "✗ %v\n", err)
+		}
+	}
 }
 
 // executablePath resolves the loop binary for room-commanded runs

@@ -1,0 +1,8 @@
+{{define "room"}}
+{{template "head" .}}
+<p><a href="/">← all runs</a></p>
+<div id="runbody" data-sse-connect="/api/rooms/{{.Room.Name}}/stream?after={{.Room.Lines}}" data-refresh="/rooms/{{.Room.Name}}/fragment">
+  {{template "frag_room" .}}
+</div>
+{{template "foot" .}}
+{{end}}
