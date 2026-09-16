@@ -219,7 +219,7 @@ func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 
 	// Answering through the form reaches the child's stdin.
 	if resp, _ := postForm(t, ts.URL+"/runs/"+runID+"/answer", "quick=yes"); resp.StatusCode != 200 {
-		t.Fatalf("answer = %d", resp.StatusCode)
+		t.Fatalf("answer = %d (runID %q)", resp.StatusCode, runID)
 	}
 	waitFor(t, func() bool {
 		data, err := os.ReadFile(filepath.Join(dir, "answer.txt"))

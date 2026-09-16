@@ -38,6 +38,10 @@ type pageData struct {
 	Chat    []ChatMsg
 	Waiting *daemon.RunInfo
 	Sidecar []SidecarRun
+	// workspace candidates feeding the dashboard's pickers (nil = the
+	// workspace offered none; the forms fall back to typed paths)
+	Pipelines []daemon.WorkspaceFile
+	WSRooms   []daemon.WorkspaceFile
 }
 
 // SidecarRun is one entry of the room sidecar: the run plus a compact
@@ -143,9 +147,11 @@ func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter
 	runs, _ := cl.Runs(true)
 	rooms, _ := cl.Rooms()
 	version, workspace := daemonMeta(cl)
+	wk, _ := cl.Workspace()
 	renderPage(tmpl, w, "dashboard", pageData{
 		Title: "runs", Version: version, Workspace: workspace,
 		Active: splitActive(runs), History: splitHistory(runs), Rooms: rooms,
+		Pipelines: wk.Pipelines, WSRooms: wk.Rooms,
 	})
 }
 

@@ -99,6 +99,11 @@ func snapshotName(path string) string {
 	if err != nil {
 		return ""
 	}
+	return nameOf(data)
+}
+
+// nameOf extracts the `name:` line's value from YAML bytes.
+func nameOf(data []byte) string {
 	m := nameLineRe.FindSubmatch(data)
 	if m == nil {
 		return ""
@@ -176,6 +181,7 @@ func queryInt(r *http.Request, name string) int {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/ping", s.handlePing)
+	mux.HandleFunc("GET /api/workspace", s.handleWorkspace)
 	mux.HandleFunc("GET /api/runs", s.handleRuns)
 	mux.HandleFunc("POST /api/runs", s.handleSubmit)
 	mux.HandleFunc("GET /api/runs/{id}", s.handleRun)

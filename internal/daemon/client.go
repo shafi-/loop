@@ -78,6 +78,22 @@ func (c *Client) Ping() (Ping, error) {
 	return p, err
 }
 
+// Workspace is the daemon's answer for pickers: candidate files from
+// the workspace's conventional directories (see WorkspaceFile).
+type Workspace struct {
+	Workspace string          `json:"workspace"`
+	Pipelines []WorkspaceFile `json:"pipelines"`
+	Rooms     []WorkspaceFile `json:"rooms"`
+}
+
+// Workspace asks the daemon which pipeline and room files its
+// workspace offers.
+func (c *Client) Workspace() (Workspace, error) {
+	var wk Workspace
+	err := c.get("/api/workspace", &wk)
+	return wk, err
+}
+
 // Dial connects to the daemon at socket and verifies it answers.
 func Dial(socket string) (*Client, error) {
 	tr := &http.Transport{

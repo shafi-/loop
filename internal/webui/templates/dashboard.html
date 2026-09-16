@@ -3,10 +3,19 @@
 
 <h1>runs &amp; rooms</h1>
 
+{{$first := ""}}{{if .Pipelines}}{{$first = (index .Pipelines 0).Path}}{{end}}
+{{$firstRoom := ""}}{{if .WSRooms}}{{$firstRoom = (index .WSRooms 0).Path}}{{end}}
+
 <section class="card">
   <h2>start a run</h2>
   <form hx-post="/runs" hx-target="#submit-result" hx-swap="innerHTML">
-    <label>pipeline file <input name="file" placeholder="pipelines/feature-delivery.yaml" required></label>
+    {{if .Pipelines}}
+    <select class="picker" data-fills="run-file" aria-label="pick a pipeline">
+      {{range .Pipelines}}<option value="{{.Path}}">{{if .Name}}{{.Name}} · {{.Path}}{{else}}{{.Path}}{{end}}</option>{{end}}
+      <option value="__custom__">custom path…</option>
+    </select>
+    {{end}}
+    <label>pipeline file <input name="file" id="run-file" placeholder="pipelines/feature-delivery.yaml" required{{if $first}} value="{{$first}}"{{end}}></label>
     <label>vars <input name="vars" placeholder="--var key=value …"></label>
     <button type="submit">run</button>
   </form>
@@ -16,10 +25,16 @@
 <section class="card">
   <h2>open a room</h2>
   <form method="post" action="/rooms/host">
-    <label>room file <input name="file" placeholder="rooms/leadership.yaml" required></label>
+    {{if .WSRooms}}
+    <select class="picker" data-fills="host-file" aria-label="pick a room">
+      {{range .WSRooms}}<option value="{{.Path}}">{{if .Name}}{{.Name}} · {{.Path}}{{else}}{{.Path}}{{end}}</option>{{end}}
+      <option value="__custom__">custom path…</option>
+    </select>
+    {{end}}
+    <label>room file <input name="file" id="host-file" placeholder="rooms/leadership.yaml" required{{if $firstRoom}} value="{{$firstRoom}}"{{end}}></label>
     <button type="submit">open</button>
   </form>
-  <p class="muted">hosts the room on the daemon (or attaches to it if it's already live).</p>
+  <p class="muted">hosts the room on the daemon (or attaches to it if it's already live). pickers list pipelines/ and rooms/ in the workspace; typed paths still work anywhere.</p>
 </section>
 
 <div id="runs" hx-get="/frag/runs" hx-trigger="every 3s" hx-swap="innerHTML">

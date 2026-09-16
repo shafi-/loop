@@ -136,6 +136,22 @@
     });
   }
 
+  // ─── pickers: a select fills its target path input ──────────────────
+  // Delegated so selects swapped in later (fragments) work too.
+  // "custom path…" hands the input back to the user, empty.
+  document.addEventListener("change", function (e) {
+    var sel = e.target.closest("select[data-fills]");
+    if (!sel) return;
+    var input = document.getElementById(sel.getAttribute("data-fills"));
+    if (!input) return;
+    if (sel.value === "__custom__") {
+      input.value = "";
+      input.focus();
+    } else {
+      input.value = sel.value;
+    }
+  });
+
   // Chat auto-scroll follows the reader: snap to the newest message
   // only when the reader is already near the bottom — scrolling up to
   // read history must never be yanked back by arriving events. The

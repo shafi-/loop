@@ -53,6 +53,7 @@ form { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 form label { display: flex; gap: .4rem; align-items: center; color: var(--muted); }
 form input[name="file"] { flex: 2; min-width: 16rem; }
 form input[name="text"] { flex: 1; min-width: 12rem; }
+form .picker { flex: 1 1 100%; }
 button {
   background: var(--bg); color: var(--accent); border: 1px solid var(--edge);
   border-radius: 6px; padding: .4rem .8rem; font: inherit; cursor: pointer;

@@ -320,7 +320,11 @@ browser — the way to attach a viewer to a daemon started without
 `--port`. The dashboard is a client of the daemon: it lists active and
 past runs, starts runs, renders each run's event timeline live, and
 answers gate questions — yes, no, or your words — straight from the
-browser, for any run the daemon owns. The UI binds `127.0.0.1:8787`
+browser, for any run the daemon owns. Its run and room forms offer
+pickers of what the workspace holds: the `pipelines/` and `rooms/`
+directories, plus root-level files recognized by their schema (typed
+paths still work for anything else). The UI binds
+`127.0.0.1:8787`
 by default (`--addr` to change; `--socket` points at a daemon on a
 non-default socket; `--no-open` skips opening the browser) and has no
 authentication: keep it on your machine, like the daemon itself.
