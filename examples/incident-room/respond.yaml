@@ -1,0 +1,45 @@
+name: respond
+description: >
+  Incident response: triage, then a human gate — execute the mitigation
+  or drop to monitoring. Both endings are terminals, so no guard router
+  is needed after either branch.
+
+vars:
+  incident: "checkout error rate spiking"
+
+stages:
+  - id: triage
+    type: tool
+    run: |
+      echo "TRIAGE — incident: ${vars.incident}"
+      echo "blast radius: unknown; gather symptoms and timeline first."
+
+  - id: approve
+    type: human
+    gate: true
+    prompt: |
+      Mitigation proposed for: ${vars.incident}
+      ${stages.triage.output}
+
+      Approve the mitigation plan? Answer yes, no, or describe changes.
+
+  - id: route
+    type: router
+    when:
+      - if: "${stages.approve.intent} == 'yes'"
+        next: mitigate
+      - next: monitor
+
+  - id: mitigate
+    type: tool
+    terminal: true
+    run: |
+      echo "MITIGATION EXECUTED for: ${vars.incident}"
+      echo "timeline and owners: recorded in the run log."
+
+  - id: monitor
+    type: tool
+    terminal: true
+    run: |
+      echo "MONITORING MODE for: ${vars.incident}"
+      echo "mitigation deferred; the room keeps watching."
