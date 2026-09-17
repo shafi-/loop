@@ -47,7 +47,9 @@ button.ghost:hover { color: var(--accent); border-color: var(--edge); }
 .room-reset { margin-top: .6rem; width: 100%; }
 
 /* fork affordance: quiet until the row is under the cursor; lives at
-   the row's edge because cont rows hide their meta line */
+   the row's edge because cont rows hide their meta line — mirrored to
+   the left on the user's own (right-aligned) rows so it never sits on
+   the avatar */
 .msg { position: relative; }
 .msg .fork {
   position: absolute; top: .1rem; right: 0;
@@ -55,6 +57,7 @@ button.ghost:hover { color: var(--accent); border-color: var(--edge); }
   font: inherit; font-size: .72rem; padding: 0 .3rem; cursor: pointer;
   opacity: 0; transition: opacity .12s;
 }
+.msg.user .fork { right: auto; left: 0; }
 .msg:hover .fork, .msg .fork:focus-visible { opacity: 1; }
 .msg .fork:hover { color: var(--accent); }
 table { width: 100%; border-collapse: collapse; }

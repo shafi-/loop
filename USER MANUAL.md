@@ -610,7 +610,8 @@ A reset or fork **rotates the transcript**: the current one is renamed
 destroyed, and the fresh transcript opens with a system line naming the
 archive. In the web room, hovering a message shows a **fork** action —
 the discussion continues from that message — and the participants
-panel has a **start a fresh conversation** button. Both refuse while an
+panel has a **start a fresh conversation** button; the composer
+understands `/reset` and `/fork <n>` as well. Both refuse while an
 agent turn is in flight or a pipeline run is active; halt or wait
 first.
 

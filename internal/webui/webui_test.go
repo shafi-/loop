@@ -396,3 +396,55 @@ func TestChatFragmentRotateMarkup(t *testing.T) {
 		t.Errorf("room page missing the reset button")
 	}
 }
+
+// Typing /reset in the room's composer must rotate the conversation —
+// never become a message the agents puzzle over (the bug report that
+// inspired this: agents "still referred to the old transcription"
+// because the composer swallowed the command as chat text).
+func TestComposerResetCommand(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:1") // hosting never calls it
+	dir := t.TempDir()
+	cl, handler := newUI(t, dir)
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	roomYAML := filepath.Join(dir, "room.yaml")
+	if err := os.WriteFile(roomYAML, []byte("name: demo\nagents:\n  - name: scout\n    role: scout\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.HostRoom(roomYAML); err != nil {
+		t.Fatalf("host: %v", err)
+	}
+
+	// An ordinary message first, so the reset has something to clear.
+	if resp, _ := postForm(t, ts.URL+"/rooms/demo/say", "text=hello there"); resp.StatusCode != 200 {
+		t.Fatalf("say = %d", resp.StatusCode)
+	}
+	waitFor(t, func() bool {
+		info, ok, _ := cl.Room("demo")
+		return ok && !info.Busy
+	}, "the turn to settle")
+
+	if resp, _ := postForm(t, ts.URL+"/rooms/demo/say", "text=/reset"); resp.StatusCode != 200 {
+		t.Fatalf("composer /reset = %d", resp.StatusCode)
+	}
+	lines, _ := cl.RoomTranscript("demo", 0)
+	if len(lines) != 1 || lines[0].From != "system" || !strings.Contains(lines[0].Text, "room reset") {
+		t.Fatalf("transcript after composer /reset = %+v", lines)
+	}
+	for _, ln := range lines {
+		if ln.Text == "/reset" {
+			t.Errorf("the command leaked into the transcript as a message")
+		}
+	}
+
+	// /fork <n> through the composer too.
+	if resp, _ := postForm(t, ts.URL+"/rooms/demo/say", "text=/fork+1"); resp.StatusCode != 200 {
+		t.Fatalf("composer /fork = %d", resp.StatusCode)
+	}
+	lines, _ = cl.RoomTranscript("demo", 0)
+	if len(lines) != 2 || lines[0].From != "system" {
+		t.Fatalf("transcript after composer /fork = %+v", lines)
+	}
+}

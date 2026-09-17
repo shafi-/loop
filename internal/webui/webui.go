@@ -3,12 +3,12 @@ package webui
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"strings"
 	"time"
 
@@ -394,6 +394,21 @@ func roomSay(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, 
 		http.Error(w, "empty message", http.StatusBadRequest)
 		return
 	}
+	// The composer speaks the CLI's rotation commands — typing /reset
+	// must reset, never become a message the agents puzzle over.
+	if text == "/reset" {
+		roomRotate(tmpl, cl, w, r, "reset")
+		return
+	}
+	if text == "/fork" {
+		http.Error(w, "usage: /fork <n> — keep the first n transcript lines", http.StatusBadRequest)
+		return
+	}
+	if rest, ok := strings.CutPrefix(text, "/fork "); ok {
+		r.Form.Set("through", strings.TrimSpace(rest))
+		roomRotate(tmpl, cl, w, r, "fork")
+		return
+	}
 	if err := cl.Say(name, text); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -437,23 +452,22 @@ func roomApprove(tmpl *template.Template, cl *daemon.Client, w http.ResponseWrit
 	roomChat(tmpl, cl, w, r)
 }
 
-// roomRotate handles the room's reset and fork buttons: the transcript
+// roomRotate handles the room's reset and fork actions: the transcript
 // is rotated (archived, then restarted fresh or from a message), and
 // the refreshed chat renders the new state. Refusals — mid-turn, active
-// pipeline runs — surface as 409 toasts.
+// pipeline runs — surface as 409 toasts. The fork point arrives in the
+// "through" form value (htmx hx-vals posts form-encoded).
 func roomRotate(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request, kind string) {
 	name := r.PathValue("name")
 	var archive string
 	var err error
 	if kind == "fork" {
-		var req struct {
-			Through int `json:"through"`
-		}
-		if derr := json.NewDecoder(r.Body).Decode(&req); derr != nil || req.Through < 0 {
-			http.Error(w, "bad fork point", http.StatusBadRequest)
+		n, perr := strconv.Atoi(strings.TrimSpace(r.FormValue("through")))
+		if perr != nil || n < 0 {
+			http.Error(w, "bad fork point — usage: /fork <n>", http.StatusBadRequest)
 			return
 		}
-		archive, err = cl.RoomFork(name, req.Through)
+		archive, err = cl.RoomFork(name, n)
 	} else {
 		archive, err = cl.RoomReset(name)
 	}
