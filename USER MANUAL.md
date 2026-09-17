@@ -336,10 +336,11 @@ replies render as markdown bubbles with avatars and timestamps, type
 `@` for a participant menu, and the room reads calmly while work
 happens — each pipeline run keeps two lines in the conversation
 ("You started respond pipeline", then its final status, with a live
-status pill in between), the full per-stage timeline lives in the
-room's pipeline sidecar, and a gate opens an approval card with quick
-yes/no buttons. Everything a run writes to the workspace is yours to
-open: gate answers can reference files an agent just wrote.
+status pill in between), the pipeline runner and the full per-stage
+timeline live in the room's pipeline sidecar, and a gate opens an
+approval card with quick yes/no buttons. Everything a run writes to
+the workspace is yours to open: gate answers can reference files an
+agent just wrote.
 
 `loop run --daemon <pipeline.yaml>` submits and attaches: progress
 renders locally in the same shapes as a direct run, gate questions
@@ -613,7 +614,9 @@ the discussion continues from that message — and the participants
 panel has a **start a fresh conversation** button; the composer
 understands `/reset` and `/fork <n>` as well. Both refuse while an
 agent turn is in flight or a pipeline run is active; halt or wait
-first.
+first. These are **room commands, not client features**: they parse in
+the room engine, so the terminal and the web room can never disagree
+about what they mean.
 
 The run pushes **status one-liners** into the room as they happen
 (`▸ → brief (llm)`, attributed to the alias); its **output stays in
