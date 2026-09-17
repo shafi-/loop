@@ -15,6 +15,7 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/engine"
+	"github.com/shafi-/loop/internal/workspace"
 )
 
 func newChatCmd() *cobra.Command {
@@ -149,10 +150,13 @@ var executablePath = os.Executable
 // buildRoomAgents resolves a provider per agent. An agent without a
 // model block is env-driven: whatever family the environment configures
 // (ModelConfig.Resolve fills in provider, model id, and key var).
-// Agents with tools get the workspace as their working directory.
+// Agents with tools get the workspace as their working directory, and
+// every agent carries the workspace brief so replies are about THIS
+// project, not a generic one.
 func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 	factory := engine.DefaultProviderFactory()
 	cwd, _ := os.Getwd()
+	brief := workspace.Brief(cwd)
 	agents := make([]*agent.Agent, 0, len(room.Agents))
 	for i := range room.Agents {
 		p := room.Agents[i]
@@ -164,7 +168,7 @@ func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
 		}
-		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd})
+		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
 	}
 	return agents, nil
 }

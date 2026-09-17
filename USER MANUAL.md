@@ -592,6 +592,16 @@ made. Priority maps to confidence; only decisions above
 excuse. Failed self-checks are silent (an observer that errs stays
 quiet).
 
+**The room knows your project.** When a room is opened, loop assembles
+a small **workspace brief** from the directory it runs in — detected
+stack (`go.mod`, `package.json`, …), the README's opening, and a capped
+top-level layout — and grounds every agent's system prompt with it, so
+replies are about *this* project, not a generic one. The brief is
+deterministic file reading (no model calls, no git), capped at a few
+kilobytes, and identical across the CLI and the daemon. Agents with
+file tools can of course read beyond it — the brief orients, the tools
+verify.
+
 ### Agents with tools
 
 `tools:` on a room agent enables a bounded native tool loop inside its

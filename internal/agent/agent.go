@@ -19,6 +19,10 @@ type Agent struct {
 	Provider llm.Provider
 	// CWD confines the persona's file tools (empty = process cwd).
 	CWD string
+	// Workspace is the project brief grounding the persona in the
+	// workspace the room was opened in (workspace.Brief). Empty = no
+	// brief; prompts are then identical to a brief-less agent.
+	Workspace string
 	// ToolHook, when set, is called once per executed tool with a
 	// compact human-readable line ("wrote plans/x.md (120 bytes)") —
 	// the room wires it to a UI notice and a transcript line.
@@ -82,6 +86,22 @@ func (a *Agent) framing(room []config.Persona) string {
 		a.Persona.Name, role, others(room, a.Persona.Name))
 }
 
+// base composes the persona's identity preface: its own system prompt,
+// the workspace brief (when the host supplied one), and the room
+// framing. Both reply paths build on it so the brief can never reach
+// one and miss the other.
+func (a *Agent) base(room []config.Persona) string {
+	parts := make([]string, 0, 3)
+	if s := strings.TrimSpace(a.Persona.System); s != "" {
+		parts = append(parts, s)
+	}
+	if s := strings.TrimSpace(a.Workspace); s != "" {
+		parts = append(parts, s)
+	}
+	parts = append(parts, a.framing(room))
+	return strings.Join(parts, "\n\n")
+}
+
 // Reply produces this agent's answer to the conversation. The transcript
 // is explicitly attributed ([name] lines) because provider role arrays
 // cannot represent multi-party conversations cleanly. When onDelta is
@@ -94,7 +114,7 @@ func (a *Agent) Reply(ctx context.Context, room []config.Persona, conversation s
 	if len(a.Persona.Tools) > 0 {
 		return a.replyWithTools(ctx, room, conversation, onDelta)
 	}
-	system := strings.TrimSpace(a.Persona.System + "\n\n" + a.framing(room) + `
+	system := strings.TrimSpace(a.base(room) + `
 Reply to the user directly. Stay strictly in your role's perspective.
 Be concise. Do not repeat what other participants already said. Never
 prefix your reply with your own name.`)
@@ -128,7 +148,7 @@ guess other filenames.`
 // the round budget is spent. Tool rounds use Complete — the final text
 // is delivered as one delta.
 func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conversation string, onDelta llm.StreamFunc) (string, error) {
-	system := strings.TrimSpace(a.Persona.System+"\n\n"+a.framing(room)+`
+	system := strings.TrimSpace(a.base(room)+`
 Reply to the user directly. Stay strictly in your role's perspective.
 Be concise. Do not repeat what other participants already said. Never
 prefix your reply with your own name.

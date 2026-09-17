@@ -24,6 +24,7 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/runctl"
+	"github.com/shafi-/loop/internal/workspace"
 )
 
 // errRoomBusy is returned when a turn is already in flight: a room
@@ -308,6 +309,7 @@ func resolveRoomPipeline(roomPath string, cfg *config.Room, alias string) (strin
 func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 	factory := engine.DefaultProviderFactory()
 	cwd, _ := os.Getwd()
+	brief := workspace.Brief(cwd)
 	agents := make([]*agent.Agent, 0, len(room.Agents))
 	for i := range room.Agents {
 		p := room.Agents[i]
@@ -319,7 +321,7 @@ func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
 		}
-		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd})
+		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
 	}
 	return agents, nil
 }
