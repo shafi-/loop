@@ -429,10 +429,12 @@ func TestComposerResetCommand(t *testing.T) {
 	if resp, _ := postForm(t, ts.URL+"/rooms/demo/say", "text=/reset"); resp.StatusCode != 200 {
 		t.Fatalf("composer /reset = %d", resp.StatusCode)
 	}
-	lines, _ := cl.RoomTranscript("demo", 0)
-	if len(lines) != 1 || lines[0].From != "system" || !strings.Contains(lines[0].Text, "room reset") {
-		t.Fatalf("transcript after composer /reset = %+v", lines)
-	}
+	// The rotation runs in the daemon's turn goroutine — poll for it.
+	var lines []daemon.RoomLine
+	waitFor(t, func() bool {
+		lines, _ = cl.RoomTranscript("demo", 0)
+		return len(lines) == 1 && lines[0].From == "system" && strings.Contains(lines[0].Text, "room reset")
+	}, "the composer /reset to rotate the transcript")
 	for _, ln := range lines {
 		if ln.Text == "/reset" {
 			t.Errorf("the command leaked into the transcript as a message")
@@ -443,8 +445,8 @@ func TestComposerResetCommand(t *testing.T) {
 	if resp, _ := postForm(t, ts.URL+"/rooms/demo/say", "text=/fork+1"); resp.StatusCode != 200 {
 		t.Fatalf("composer /fork = %d", resp.StatusCode)
 	}
-	lines, _ = cl.RoomTranscript("demo", 0)
-	if len(lines) != 2 || lines[0].From != "system" {
-		t.Fatalf("transcript after composer /fork = %+v", lines)
-	}
+	waitFor(t, func() bool {
+		lines, _ = cl.RoomTranscript("demo", 0)
+		return len(lines) == 2 && lines[1].From == "system"
+	}, "the composer /fork to rotate the transcript")
 }

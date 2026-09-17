@@ -394,21 +394,9 @@ func roomSay(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, 
 		http.Error(w, "empty message", http.StatusBadRequest)
 		return
 	}
-	// The composer speaks the CLI's rotation commands — typing /reset
-	// must reset, never become a message the agents puzzle over.
-	if text == "/reset" {
-		roomRotate(tmpl, cl, w, r, "reset")
-		return
-	}
-	if text == "/fork" {
-		http.Error(w, "usage: /fork <n> — keep the first n transcript lines", http.StatusBadRequest)
-		return
-	}
-	if rest, ok := strings.CutPrefix(text, "/fork "); ok {
-		r.Form.Set("through", strings.TrimSpace(rest))
-		roomRotate(tmpl, cl, w, r, "fork")
-		return
-	}
+	// No command handling here on purpose: /reset and /fork are parsed
+	// by the room engine (chat.Room.Say) via the daemon, so the CLI and
+	// this composer can never diverge on what they mean.
 	if err := cl.Say(name, text); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -128,30 +127,6 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 					tools = strings.Join(a.Tools, ", ")
 				}
 				fmt.Fprintf(out, "  @%s — %s (%s/%s; %s)\n", a.Name, a.Role, rm.Provider, rm.Model, tools)
-			}
-			continue
-		case "/reset":
-			if archive, err := r.Rotate(0, "reset"); err != nil {
-				fmt.Fprintf(out, "✗ %v\n", err)
-			} else {
-				fmt.Fprintf(out, "↻ room reset — previous discussion archived as %s\n", archive)
-			}
-			continue
-		case "/fork":
-			fields := strings.Fields(text)
-			if len(fields) < 2 {
-				fmt.Fprintln(out, "usage: /fork <n> — keep the first n transcript lines, archive the rest")
-				continue
-			}
-			through, perr := strconv.Atoi(fields[1])
-			if perr != nil || through < 0 {
-				fmt.Fprintln(out, "✗ /fork expects a line number (line 1 is the first message)")
-				continue
-			}
-			if archive, err := r.Rotate(through, "fork"); err != nil {
-				fmt.Fprintf(out, "✗ %v\n", err)
-			} else {
-				fmt.Fprintf(out, "↻ forked at line %d — later lines archived as %s\n", through, archive)
 			}
 			continue
 		}

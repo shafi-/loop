@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +53,9 @@ type Room struct {
 		HistoryWindow         int
 	}
 	Transcript *Transcript
+	// RotateGuard, when set, can veto /reset and /fork (the daemon
+	// refuses while its pipeline runs are alive or waiting).
+	RotateGuard func() error
 }
 
 // NewRoom wires agents against their personas and applies settings
@@ -122,6 +126,13 @@ func tagged(text string, known map[string]bool) []string {
 // is still in motion, and the tagged replies often settle the question.
 // With no tags, decisions run immediately.
 func (r *Room) Say(ctx context.Context, text string, ui UI) error {
+	// The rotation verbs parse once here, in the room engine — the one
+	// interface every client drives (local CLI, attached CLI, web
+	// composer via the daemon) — so /reset and /fork behave identically
+	// everywhere and never become messages the agents puzzle over.
+	if text == "/reset" || strings.HasPrefix(text, "/fork") {
+		return r.rotateCommand(text, ui)
+	}
 	known := map[string]bool{}
 	byName := map[string]*agent.Agent{}
 	for _, a := range r.Agents {
@@ -131,6 +142,7 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	if err := r.Transcript.Append("user", text); err != nil {
 		return fmt.Errorf("transcript: %w", err)
 	}
+	base := len(r.Transcript.Messages) // for the produced-nothing check
 
 	// Phase 1: tagged agents reply, in mention order.
 	mentions := tagged(text, known)
@@ -177,7 +189,26 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	if len(seen) > 0 {
 		ui.AgentsSeen(seen)
 	}
+
+	// A turn that produced nothing (mistyped @name, everyone chose
+	// silence) must not read as the room ignoring the user. The engine
+	// knows exactly whether any agent authored a line this turn, so the
+	// hint lives here — transcript line, plus a local echo.
+	if len(r.Transcript.Messages) == base {
+		hint := "no agent replied — address @" + r.agentNames() + " to force an answer"
+		_ = r.Transcript.Append("system", hint)
+		ui.Notice("%s", hint)
+	}
 	return nil
+}
+
+// agentNames renders the participants as an @-list for hint lines.
+func (r *Room) agentNames() string {
+	names := make([]string, 0, len(r.Agents))
+	for _, a := range r.Agents {
+		names = append(names, a.Name())
+	}
+	return strings.Join(names, ", @")
 }
 
 // observers returns agents not mentioned in the message.
@@ -245,9 +276,36 @@ func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 	return nil
 }
 
+// rotateCommand handles the conversation-rotation verbs (/reset,
+// /fork <n>). Feedback is a system line in the transcript — the one
+// surface every client shares — plus ui.Notice for an immediate local
+// echo. Usage mistakes and vetoes are system lines too, never errors:
+// a mistyped command must not read as a failed turn.
+func (r *Room) rotateCommand(text string, ui UI) error {
+	kind, keep := "reset", 0
+	if text != "/reset" {
+		kind = "fork"
+		n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(text, "/fork")))
+		if err != nil || n < 0 {
+			return r.Transcript.Append("system", "↻ usage: /fork <n> — keep the first n transcript lines")
+		}
+		keep = n
+	}
+	if r.RotateGuard != nil {
+		if err := r.RotateGuard(); err != nil {
+			return r.Transcript.Append("system", "↻ "+err.Error())
+		}
+	}
+	archive, err := r.Rotate(keep, kind)
+	if err != nil {
+		return err
+	}
+	ui.Notice("↻ %s — archived as %s", kind, archive)
+	return nil
+}
+
 // lastUser returns the most recent user message text.
-func lastUser(t *Transcript) string {
-	for i := len(t.Messages) - 1; i >= 0; i-- {
+func lastUser(t *Transcript) string {	for i := len(t.Messages) - 1; i >= 0; i-- {
 		if t.Messages[i].From == "user" {
 			return t.Messages[i].Text
 		}

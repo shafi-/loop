@@ -114,6 +114,9 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 		room:     chat.NewRoom(*cfg, agents, tr),
 		tr:       tr,
 	}
+	// Typed /reset and /fork meet the same veto as the endpoints: no
+	// rotating under a live pipeline run.
+	rs.room.RotateGuard = rs.runsGuard
 	rs.sup = runctl.NewSupervisor(h.bin, runctl.Handlers{
 		// Run status lands in the room transcript: every attached
 		// client watches the room's pipelines through the same stream.
@@ -211,17 +214,11 @@ func (rs *roomSession) say(ctx context.Context, text string) error {
 		}()
 		// Turn failures never kill the room, but they must be visible:
 		// the transcript is the room's record, so failures land there.
-		before := countLines(rs.transcriptPath())
-		err := rs.room.Say(ctx, text, daemonRoomUI{})
-		after := countLines(rs.transcriptPath())
-		if err != nil {
+		// (The produced-nothing hint is the room engine's call — it
+		// knows whether any agent authored a line — not a line-count
+		// guess here.)
+		if err := rs.room.Say(ctx, text, daemonRoomUI{}); err != nil {
 			_ = rs.tr.Append("system", "turn failed: "+err.Error())
-			return
-		}
-		// A turn that produced nothing (mistyped @name, everyone chose
-		// silence) must not look like the room ignored the user.
-		if after-before <= 1 {
-			_ = rs.tr.Append("system", "no agent replied — address @"+rs.agentNames()+" to force an answer")
 		}
 	}()
 	return nil
@@ -258,6 +255,13 @@ func (rs *roomSession) rotateGuard() error {
 	if rs.busyNow() {
 		return errors.New("the room is mid-turn — wait for the reply, then reset or fork")
 	}
+	return rs.runsGuard()
+}
+
+// runsGuard vetoes conversation rotation while a pipeline run is alive
+// or waiting. Wired into the room engine itself, so typed /reset and
+// /fork hit the same rule as the dedicated endpoints.
+func (rs *roomSession) runsGuard() error {
 	for _, r := range rs.sup.Runs() {
 		alias := r.Alias
 		if alias == "" {

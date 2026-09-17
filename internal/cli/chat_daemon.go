@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -89,27 +88,6 @@ func chatViaDaemon(cmd *cobra.Command, file, opening, socket string) error {
 			return nil
 		case text == "/help":
 			printAttachHelp(out)
-		case text == "/reset":
-			if archive, err := cl.RoomReset(info.Name); err != nil {
-				fmt.Fprintf(out, "✗ %v\n", err)
-			} else {
-				fmt.Fprintf(out, "↻ room reset — previous discussion archived as %s\n", archive)
-			}
-		case fields[0] == "/fork":
-			if len(fields) < 2 {
-				fmt.Fprintln(out, "usage: /fork <n> — keep the first n transcript lines, archive the rest")
-				continue
-			}
-			through, perr := strconv.Atoi(fields[1])
-			if perr != nil || through < 0 {
-				fmt.Fprintln(out, "✗ /fork expects a line number (what /status-style numbering shows; line 1 is the first message)")
-				continue
-			}
-			if archive, err := cl.RoomFork(info.Name, through); err != nil {
-				fmt.Fprintf(out, "✗ %v\n", err)
-			} else {
-				fmt.Fprintf(out, "↻ forked at line %d — later lines archived as %s\n", through, archive)
-			}
 		case text == "/agents":
 			if cur, ok, _ := cl.Room(info.Name); ok {
 				fmt.Fprintf(out, "  %s\n", strings.Join(cur.Agents, ", "))
