@@ -128,7 +128,13 @@ func (p *Pipeline) Validate() ValidationErrors {
 	for i := range p.Personas {
 		pers := &p.Personas[i]
 		path := fmt.Sprintf("personas[%d]", i)
-		if pers.Name == "" {
+		if pers.Ref != "" {
+			// A library reference: everything but tools/model comes from
+			// the library persona.
+			if pers.Name != "" || pers.Role != "" || pers.System != "" {
+				err(path, "references persona %q — a reference may only add tools or a model block (inline name/role/system would conflict)", pers.Ref)
+			}
+		} else if pers.Name == "" {
 			err(path+".name", "is required")
 		} else if !validIdent(pers.Name) {
 			err(path+".name", "must be lowercase letters, digits, '-' or '_' (got %q)", pers.Name)
@@ -201,7 +207,13 @@ func (r *Room) Validate() ValidationErrors {
 	for i := range r.Agents {
 		a := &r.Agents[i]
 		path := fmt.Sprintf("agents[%d]", i)
-		if a.Name == "" {
+		if a.Ref != "" {
+			// A library reference: everything but tools/model comes from
+			// the library persona.
+			if a.Name != "" || a.Role != "" || a.System != "" {
+				err(path, "references persona %q — a reference may only add tools or a model block (inline name/role/system would conflict)", a.Ref)
+			}
+		} else if a.Name == "" {
 			err(path+".name", "is required")
 		} else if !validIdent(a.Name) {
 			err(path+".name", "must be lowercase letters, digits, '-' or '_' (got %q)", a.Name)

@@ -67,7 +67,10 @@ run's stdin:
 
 - **`loop ui`** — a browser dashboard on loopback: active and past runs,
   live event timelines, gate answers, and your rooms as chat views with
-  a pipeline sidecar.
+  a pipeline sidecar. It creates too: describe a pipeline or room and
+  the daemon drafts the YAML, validates it, and saves it into the
+  workspace — reusing the persona library you manage there (per project
+  or global, referenced by rooms as `persona: name`).
 - **`loop run --daemon`** — submit and attach from the terminal; ctrl-c
   halts resumably, `--resume` reattaches.
 - **`loop chat --daemon`** — the room is hosted server-side; detach and

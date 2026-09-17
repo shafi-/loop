@@ -349,6 +349,19 @@ ctrl-c halts the run (it records its pause point on the daemon side).
 `--resume <id>` reattaches to a past run; `--run-id` is not
 supported (the daemon assigns ids).
 
+#### Create pipelines and rooms in the dashboard
+
+**new pipeline** / **new room** (or `/new`) opens an authoring page.
+Describe what you want — the daemon's generator drafts the YAML (the
+same draft → validate → repair engine as `loop new`, rooms included) —
+or write the YAML yourself. The editor is the source of truth either
+way: **validate** runs loop's strict parser and reports every problem
+with its place in the document (`stages[2].prompt: is required`), and
+**save** re-validates server-side before writing into the workspace's
+`pipelines/` or `rooms/` — a file that already exists is overwritten
+only after you confirm. Drafting uses the daemon's provider
+environment (the grand rule), so your keys never reach the browser.
+
 ### `loop chat <room.yaml> [opening message]`
 
 Open a multi-agent room. The optional opening message is delivered as if
@@ -592,6 +605,60 @@ errors go back to the model as results — a bad path is a correction,
 not a dead turn. Caveat worth knowing: `run_command` executes what the
 model asks; grant it only to agents you trust with a shell.
 
+### The persona library
+
+A **persona** is a reusable agent identity: one YAML file with a name,
+a role, a system prompt, and optional tools/model. Rooms and pipelines
+reference personas by name instead of restating the prompt:
+
+```yaml
+# personas/architect.yaml
+name: architect
+role: Software architect
+system: |
+  You are a pragmatic software architect. You design the simplest
+  system that satisfies the requirements and name concrete trade-offs.
+tools: [read_file]        # optional
+# model: {provider: ...}  # optional — env-driven like everywhere else
+```
+
+```yaml
+# rooms/demo.yaml — reference it (project scope or global)
+agents:
+  - persona: architect                  # everything comes from the library
+  - persona: architect
+    tools: [read_file, write_file]      # a reference may add tools…
+    model: {provider: openai}           # …or a model block — nothing else
+  - name: inline                        # inline agents keep working
+    role: Moderator
+    system: |
+      You keep the discussion on track.
+```
+
+A reference may only add `tools:` or a `model:` block; inline
+`name:`/`role:`/`system:` next to `persona:` is a validation error (the
+library provides them). Unknown references are hard errors at load
+time — a room that silently runs without an agent it names is worse
+than one that refuses to host.
+
+Personas live in two scopes:
+
+| Scope | Location | Available |
+|---|---|---|
+| project | `<workspace>/personas/` | this project only |
+| global | `~/.loop/personas/` | every project on the machine |
+
+Project personas shadow global ones with the same name. The `personas/`
+directory is looked up next to the document and in the workspace root.
+
+The dashboard manages the library (**new persona** / **manage
+personas**): a form composes the YAML, loop's parser validates it, and
+you choose the scope at save time. Existing personas can be edited and
+deleted — deleting one that a room or pipeline in the workspace still
+references is refused until the reference is removed. Room drafts
+reference your library personas automatically, so the AI-composed team
+reuses the seats you already have.
+
 ### Rooms command pipelines
 
 A room with a `pipelines:` section is a cockpit. In the session:
@@ -727,6 +794,10 @@ activity is auditable like everything else.
 | Symptom | Meaning / fix |
 |---|---|
 | `loop ui` shows no runs / "daemon unreachable" | The web UI is a client — start the daemon first: `loop serve` (in another window or the background). |
+| Drafting in the dashboard fails: "drafting needs a provider" | The daemon resolves your provider from the environment at draft time (same grand rule). Set a key in the daemon's `.env` or shell and retry — no restart needed. |
+| Save says "already exists — save again to overwrite it" | A file of that name is already in the workspace (the filename derives from the document's `name:`). Confirm the overwrite in the dialog and the save retries. |
+| `unknown persona "x" (looked in: ...)` | A room or pipeline references a persona the libraries don't have. Create it in the dashboard (**new persona**), or fix the reference. |
+| Deleting a persona is refused: "still referenced by ..." | A room or pipeline in this workspace uses that persona. Remove the `persona:` reference(s) first — deleting would break the file's next load. |
 | `bind: address already in use` (ui) or a "live daemon" report (serve) | A previous instance is still running. `loop serve` refuses to steal a live socket; kill the old process (`lsof -nP -t -iTCP:8787`) and start again. |
 | `env var X is not set (provider "..." requires it — set the key, or switch this model block...)` | A stage named a family you have no credentials for. Set the named key, add `PROVIDER`, or fix the stage's `provider:`. |
 | `HTTP 503 (model_not_found): No available channel for model ...` | Your endpoint serves a different model catalog. Point `*_MODEL` at a model the endpoint actually offers. |
@@ -750,6 +821,8 @@ with file:line warnings.
 |---|---|
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
 | `.loop/rooms/<room>/` | chat transcripts |
+| `personas/` | this project's persona library |
+| `~/.loop/personas/` | the global persona library (every project) |
 | `~/.loop/daemon.sock` | the daemon's control socket (`loop serve`; `LOOP_DAEMON_SOCK` to override) |
 | `~/.loop/daemon-<port>.sock` | control socket of a `loop serve --port N` daemon (derived from the port) |
 | `~/.loop/executors/cline/` | installed cline host |

@@ -239,12 +239,16 @@ func (s *Stage) init(t StageType, c stageCommonYAML) {
 }
 
 // Persona is an agent identity shared by rooms and pipeline agent stages.
+// A Persona either is concrete (name + system) or references the persona
+// library (Ref set): a reference may only add tools or a model block on
+// top of the library persona.
 type Persona struct {
 	Name   string       `yaml:"name"`
 	Role   string       `yaml:"role,omitempty"`
 	System string       `yaml:"system,omitempty"`
 	Model  *ModelConfig `yaml:"model,omitempty"`
 	Tools  []string     `yaml:"tools,omitempty"`
+	Ref    string       `yaml:"persona,omitempty"`
 }
 
 // RuntimeConfig configures the engine's own LLM usage (the "core loop").
@@ -291,9 +295,11 @@ type DocumentKind string
 const (
 	KindPipeline DocumentKind = "pipeline"
 	KindRoom     DocumentKind = "room"
+	KindPersona  DocumentKind = "persona"
 )
 
-// IdentifyKind sniffs a loaded document: pipelines have "stages", rooms have "agents".
+// IdentifyKind sniffs a loaded document: pipelines have "stages", rooms
+// have "agents", persona-library files have a top-level "system".
 func IdentifyKind(doc *yaml.Node) (DocumentKind, bool) {
 	if doc.Kind != yaml.MappingNode {
 		return "", false
@@ -304,6 +310,8 @@ func IdentifyKind(doc *yaml.Node) (DocumentKind, bool) {
 			return KindPipeline, true
 		case "agents":
 			return KindRoom, true
+		case "system":
+			return KindPersona, true
 		}
 	}
 	return "", false
