@@ -42,8 +42,25 @@ type pageData struct {
 	// workspace offered none; the forms fall back to typed paths)
 	Pipelines []daemon.WorkspaceFile
 	WSRooms   []daemon.WorkspaceFile
-	// Kind selects which picker frag_workspace renders
+	// Kind selects which picker frag_workspace renders / which authoring
+	// page /new/{kind} renders (pipeline | room | persona).
 	Kind string
+	// The persona library, both scopes (manage page, room-page hint).
+	Personas []daemon.PersonaInfo
+	// The /new/persona page's form state (edit mode prefills it).
+	Form *personaForm
+	// YAML the editor starts with (edit mode).
+	PersonaYAML string
+}
+
+// personaForm is the /new/persona page's structured fields; the YAML
+// editor is composed from them and remains the source of truth.
+type personaForm struct {
+	Name, Role, System       string
+	Provider, Model          string
+	Scope                    string // "project" | "global"
+	Tools                    map[string]bool
+	Editing                  bool
 }
 
 // SidecarRun is one entry of the room sidecar: the run plus a compact
@@ -130,6 +147,17 @@ func New(version, socket string) (http.Handler, error) {
 	mux.HandleFunc("POST /rooms/{name}/reset", func(w http.ResponseWriter, r *http.Request) { roomRotate(tmpl, cl, w, r, "reset") })
 	mux.HandleFunc("POST /rooms/{name}/fork", func(w http.ResponseWriter, r *http.Request) { roomRotate(tmpl, cl, w, r, "fork") })
 	mux.HandleFunc("POST /rooms/host", func(w http.ResponseWriter, r *http.Request) { roomHost(tmpl, cl, w, r) })
+	mux.HandleFunc("GET /new", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/new/pipeline", http.StatusSeeOther)
+	})
+	mux.HandleFunc("GET /new/{kind}", func(w http.ResponseWriter, r *http.Request) { newPage(tmpl, cl, w, r) })
+	mux.HandleFunc("POST /new/draft", func(w http.ResponseWriter, r *http.Request) { draftDoc(cl, w, r) })
+	mux.HandleFunc("POST /new/persona/compose", func(w http.ResponseWriter, r *http.Request) { composePersona(cl, w, r) })
+	mux.HandleFunc("POST /new/validate", func(w http.ResponseWriter, r *http.Request) { validateDoc(cl, w, r) })
+	mux.HandleFunc("POST /new/save", func(w http.ResponseWriter, r *http.Request) { saveDoc(cl, w, r) })
+	mux.HandleFunc("GET /personas", func(w http.ResponseWriter, r *http.Request) { personasPage(tmpl, cl, w) })
+	mux.HandleFunc("GET /frag/personas", func(w http.ResponseWriter, r *http.Request) { fragPersonas(tmpl, cl, w) })
+	mux.HandleFunc("POST /personas/delete", func(w http.ResponseWriter, r *http.Request) { personaDelete(tmpl, cl, w, r) })
 	return mux, nil
 }
 
@@ -247,6 +275,13 @@ func timeline(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter,
 		return
 	}
 	events, _ := cl.Events(id, 0)
+	renderTimeline(w, tmpl, info, events)
+}
+
+// renderTimeline writes the fragment from a single point-in-time
+// snapshot — callers must not re-query run state between reading it and
+// rendering it (see answer).
+func renderTimeline(w http.ResponseWriter, tmpl *template.Template, info daemon.RunInfo, events []daemon.EventLine) {
 	if err := tmpl.ExecuteTemplate(w, "frag_timeline", pageData{Info: info, Rows: Timeline(events)}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -266,12 +301,17 @@ func answer(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
-	// The answer may complete a fast run before the refresh lands.
-	if _, known, _ := cl.Run(id); !known {
+	// The answer may complete a fast run before the refresh lands. State
+	// is read once and rendered from that snapshot: a second query could
+	// race the run's retirement (the gap between the two checks is real
+	// work for the child) and turn a delivered answer into a 404.
+	info, known, _ := cl.Run(id)
+	if !known {
 		fmt.Fprint(w, `<p class="success">✓ answer delivered — the run has finished.</p>`)
 		return
 	}
-	timeline(tmpl, cl, w, r)
+	events, _ := cl.Events(id, 0)
+	renderTimeline(w, tmpl, info, events)
 }
 
 func halt(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
