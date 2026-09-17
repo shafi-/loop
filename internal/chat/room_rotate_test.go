@@ -2,15 +2,19 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shafi-/loop/internal/config"
 )
 
-// The rotation verbs parse once, in the room engine — the interface
-// every client drives. Whatever the surface (local CLI, attached CLI,
-// web composer through the daemon), /reset and /fork behave the same.
+// The rotation verbs are registered room commands, dispatched in
+// Room.Say — the interface every client drives. Whatever the surface
+// (local CLI, attached CLI, web composer through the daemon), a verb
+// means the same thing; its guard can veto, and feedback is a system
+// line in the transcript.
 func TestRoomSayRotationCommands(t *testing.T) {
 	dir := t.TempDir()
 	tr, err := OpenTranscript(dir)
@@ -19,9 +23,16 @@ func TestRoomSayRotationCommands(t *testing.T) {
 	}
 	_ = tr.Append("user", "earlier discussion")
 	_ = tr.Append("scout", "earlier reply")
+	r := NewRoom(config.Room{Name: "demo"}, nil, tr)
 	var vetoes int
-	r := &Room{Name: "demo", Transcript: tr}
-	r.RotateGuard = func() error { vetoes++; return nil }
+	if cmd := r.Command("reset"); cmd == nil {
+		t.Fatal("no reset command registered")
+	} else {
+		cmd.Guard = func(args []string) error {
+			vetoes++
+			return nil
+		}
+	}
 	ui := &recorderUI{}
 	ctx := context.Background()
 
@@ -30,11 +41,14 @@ func TestRoomSayRotationCommands(t *testing.T) {
 	if err := r.Say(ctx, "/reset", ui); err != nil {
 		t.Fatalf("/reset: %v", err)
 	}
-	if len(tr.Messages) != 1 || tr.Messages[0].From != "system" || !strings.Contains(tr.Messages[0].Text, "room reset") {
+	if len(tr.Messages) != 1 || tr.Messages[0].From == "user" || !strings.Contains(tr.Messages[0].Text, "room reset") {
 		t.Fatalf("after /reset = %+v", tr.Messages)
 	}
 	if len(ui.notices) != 1 || !strings.Contains(ui.notices[0], "archived as") {
 		t.Errorf("notices = %v", ui.notices)
+	}
+	if vetoes != 1 {
+		t.Errorf("the guard ran %d times, want 1", vetoes)
 	}
 
 	// /fork <n> keeps a prefix; the command text never becomes a message.
@@ -62,20 +76,35 @@ func TestRoomSayRotationCommands(t *testing.T) {
 		t.Errorf("usage line = %+v", tr.Messages[len(tr.Messages)-1])
 	}
 
-	// A guard veto (the daemon's active-runs rule) is a system line too.
-	r.RotateGuard = func() error {
-		vetoes++
-		return os.ErrPermission
+	// A guard veto (the daemon's active-runs rule) is a system line too,
+	// and the command does not run.
+	if cmd := r.Command("reset"); cmd == nil {
+		t.Fatal("no reset command")
+	} else {
+		cmd.Guard = func(args []string) error { return errors.New("pipeline x is still active") }
 	}
 	before := len(tr.Messages)
 	if err := r.Say(ctx, "/reset", ui); err != nil {
 		t.Fatalf("vetoed /reset: %v", err)
 	}
-	if vetoes < 2 {
-		t.Errorf("the guard was not consulted")
-	}
-	if len(tr.Messages) != before+1 {
+	if len(tr.Messages) != before+1 ||
+		!strings.Contains(tr.Messages[len(tr.Messages)-1].Text, "pipeline x is still active") {
 		t.Errorf("a vetoed reset must not rotate: %+v", tr.Messages)
+	}
+
+	// An unknown slash word is still chat — clients may know verbs this
+	// room's engine does not.
+	if err := r.Say(ctx, "/restart the effort", ui); err != nil {
+		t.Fatalf("/restart: %v", err)
+	}
+	var userLine bool
+	for _, m := range tr.Messages {
+		if m.From == "user" && m.Text == "/restart the effort" {
+			userLine = true
+		}
+	}
+	if !userLine {
+		t.Errorf("unknown verb never reached the room as a message")
 	}
 
 	// The archive files exist on disk from the successful rotations.
@@ -89,5 +118,4 @@ func TestRoomSayRotationCommands(t *testing.T) {
 	if archives < 2 {
 		t.Errorf("archives on disk = %d, want at least 2", archives)
 	}
-	_ = filepath.Join(dir, "transcript.jsonl")
 }

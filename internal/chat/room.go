@@ -42,6 +42,18 @@ type UI interface {
 	Notice(format string, args ...any)
 }
 
+// CustomCommand is a room verb beyond chatting ("/name args…"): parsed
+// once in Room.Say, so every client that talks to the room — local CLI,
+// attached CLI, web composer via the daemon — behaves identically.
+// Guard, when set, can veto the command before Handle runs; both a veto
+// and a Handle error land in the transcript as a system line, the one
+// surface every client shares.
+type CustomCommand struct {
+	Name   string                    // the verb, without the slash
+	Guard  func(args []string) error // optional veto
+	Handle func(args []string, ui UI) error
+}
+
 // Room is one configured multi-agent channel.
 type Room struct {
 	Name     string
@@ -53,9 +65,10 @@ type Room struct {
 		HistoryWindow         int
 	}
 	Transcript *Transcript
-	// RotateGuard, when set, can veto /reset and /fork (the daemon
-	// refuses while its pipeline runs are alive or waiting).
-	RotateGuard func() error
+	// CustomCommands are the room's verbs; NewRoom seeds the built-in
+	// rotation commands (/reset, /fork <n>), and hosts may adjust their
+	// guards or add their own via Command.
+	CustomCommands []CustomCommand
 }
 
 // NewRoom wires agents against their personas and applies settings
@@ -74,7 +87,55 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 	if r.Settings.HistoryWindow <= 0 {
 		r.Settings.HistoryWindow = DefaultHistoryWindow
 	}
+	r.CustomCommands = r.rotationCommands()
 	return r
+}
+
+// rotationCommands seeds the engine's built-in room verbs.
+func (r *Room) rotationCommands() []CustomCommand {
+	return []CustomCommand{
+		{
+			Name: "reset",
+			Handle: func(args []string, ui UI) error {
+				archive, err := r.Rotate(0, "reset")
+				if err != nil {
+					return err
+				}
+				ui.Notice("↻ reset — archived as %s", archive)
+				return nil
+			},
+		},
+		{
+			Name: "fork",
+			Handle: func(args []string, ui UI) error {
+				if len(args) != 1 {
+					return fmt.Errorf("usage: /fork <n> — keep the first n transcript lines")
+				}
+				n, err := strconv.Atoi(args[0])
+				if err != nil || n < 0 {
+					return fmt.Errorf("usage: /fork <n> — keep the first n transcript lines")
+				}
+				archive, err := r.Rotate(n, "fork")
+				if err != nil {
+					return err
+				}
+				ui.Notice("↻ fork — archived as %s", archive)
+				return nil
+			},
+		},
+	}
+}
+
+// Command returns the room verb by name, if registered. Callers may
+// adjust its Guard (the daemon vetoes rotation while its pipeline runs
+// are alive) — the pointer points into the room's registry.
+func (r *Room) Command(name string) *CustomCommand {
+	for i := range r.CustomCommands {
+		if r.CustomCommands[i].Name == name {
+			return &r.CustomCommands[i]
+		}
+	}
+	return nil
 }
 
 // Rotate restarts the room's conversation: the current transcript is
@@ -126,12 +187,17 @@ func tagged(text string, known map[string]bool) []string {
 // is still in motion, and the tagged replies often settle the question.
 // With no tags, decisions run immediately.
 func (r *Room) Say(ctx context.Context, text string, ui UI) error {
-	// The rotation verbs parse once here, in the room engine — the one
-	// interface every client drives (local CLI, attached CLI, web
-	// composer via the daemon) — so /reset and /fork behave identically
-	// everywhere and never become messages the agents puzzle over.
-	if text == "/reset" || strings.HasPrefix(text, "/fork") {
-		return r.rotateCommand(text, ui)
+	// Room verbs parse once here, in the engine — the one interface
+	// every client drives (local CLI, attached CLI, web composer via
+	// the daemon) — so a command means the same thing everywhere. A
+	// slash word the room doesn't know is still chat: clients may know
+	// verbs this room's engine does not.
+	if strings.HasPrefix(text, "/") {
+		if verb, args := splitCommand(text); verb != "" {
+			if cmd := r.Command(verb); cmd != nil {
+				return r.runCommand(*cmd, args, ui)
+			}
+		}
 	}
 	known := map[string]bool{}
 	byName := map[string]*agent.Agent{}
@@ -276,36 +342,34 @@ func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 	return nil
 }
 
-// rotateCommand handles the conversation-rotation verbs (/reset,
-// /fork <n>). Feedback is a system line in the transcript — the one
-// surface every client shares — plus ui.Notice for an immediate local
-// echo. Usage mistakes and vetoes are system lines too, never errors:
-// a mistyped command must not read as a failed turn.
-func (r *Room) rotateCommand(text string, ui UI) error {
-	kind, keep := "reset", 0
-	if text != "/reset" {
-		kind = "fork"
-		n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(text, "/fork")))
-		if err != nil || n < 0 {
-			return r.Transcript.Append("system", "↻ usage: /fork <n> — keep the first n transcript lines")
-		}
-		keep = n
+// splitCommand splits "/verb args…" into the verb and its arguments.
+func splitCommand(text string) (string, []string) {
+	fields := strings.Fields(strings.TrimPrefix(text, "/"))
+	if len(fields) == 0 {
+		return "", nil
 	}
-	if r.RotateGuard != nil {
-		if err := r.RotateGuard(); err != nil {
+	return fields[0], fields[1:]
+}
+
+// runCommand executes a room verb: the guard may veto, and any failure
+// — veto, usage, execution — lands in the transcript as a system line,
+// the one surface every client shares. A mistyped command must not read
+// as a failed turn.
+func (r *Room) runCommand(cmd CustomCommand, args []string, ui UI) error {
+	if cmd.Guard != nil {
+		if err := cmd.Guard(args); err != nil {
 			return r.Transcript.Append("system", "↻ "+err.Error())
 		}
 	}
-	archive, err := r.Rotate(keep, kind)
-	if err != nil {
-		return err
+	if err := cmd.Handle(args, ui); err != nil {
+		return r.Transcript.Append("system", "↻ "+err.Error())
 	}
-	ui.Notice("↻ %s — archived as %s", kind, archive)
 	return nil
 }
 
 // lastUser returns the most recent user message text.
-func lastUser(t *Transcript) string {	for i := len(t.Messages) - 1; i >= 0; i-- {
+func lastUser(t *Transcript) string {
+	for i := len(t.Messages) - 1; i >= 0; i-- {
 		if t.Messages[i].From == "user" {
 			return t.Messages[i].Text
 		}

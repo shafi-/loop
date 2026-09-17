@@ -115,8 +115,13 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 		tr:       tr,
 	}
 	// Typed /reset and /fork meet the same veto as the endpoints: no
-	// rotating under a live pipeline run.
-	rs.room.RotateGuard = rs.runsGuard
+	// rotating under a live pipeline run. The verbs live in the room's
+	// command registry; the daemon attaches its guard to them by name.
+	for _, verb := range []string{"reset", "fork"} {
+		if cmd := rs.room.Command(verb); cmd != nil {
+			cmd.Guard = func([]string) error { return rs.runsGuard() }
+		}
+	}
 	rs.sup = runctl.NewSupervisor(h.bin, runctl.Handlers{
 		// Run status lands in the room transcript: every attached
 		// client watches the room's pipelines through the same stream.
