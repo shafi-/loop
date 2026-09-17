@@ -40,21 +40,25 @@
           <input name="text" placeholder="@name your message — or just talk to the room" autocomplete="off" autofocus>
           <button type="submit" class="primary">send</button>
         </form>
-        {{if .Room.Pipelines}}
-        <form class="runline" hx-post="/rooms/{{.Room.Name}}/run" hx-target="#chat-log" hx-swap="innerHTML">
-          <span class="runline-label">run pipeline</span>
-          <select name="alias">
-            {{range .Room.Pipelines}}<option value="{{.}}">{{.}}</option>{{end}}
-          </select>
-          <input name="vars" placeholder="--var key=value …">
-          <button type="submit">run</button>
-        </form>
-        {{end}}
       </section>
     </section>
 
-    <aside class="sidecar" id="sidecar" hx-get="/rooms/{{.Room.Name}}/sidecar" hx-trigger="every 5s" hx-swap="innerHTML">
-      {{template "sidecar_fragment" .}}
+    <aside class="sidecar-col">
+      {{if .Room.Pipelines}}
+      <form class="runline" hx-post="/rooms/{{.Room.Name}}/run" hx-target="#chat-log" hx-swap="innerHTML">
+        <span class="runline-label">run pipeline</span>
+        <select name="alias">
+          {{range .Room.Pipelines}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+        <div class="run-actions">
+          <input name="vars" placeholder="--var key=value …">
+          <button type="submit">run</button>
+        </div>
+      </form>
+      {{end}}
+      <aside class="sidecar" id="sidecar" hx-get="/rooms/{{.Room.Name}}/sidecar" hx-trigger="every 5s" hx-swap="innerHTML">
+        {{template "sidecar_fragment" .}}
+      </aside>
     </aside>
   </div>
 </div>

@@ -311,10 +311,15 @@ details.room-head > summary:hover { background: var(--edge); }
 .composer input[name="text"]:focus { outline: none; border-color: var(--accent); }
 .composer button.primary { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600; }
 .composer button.primary:hover { filter: brightness(1.12); }
-.composer .runline { display: flex; gap: .5rem; margin-top: .5rem; align-items: center; flex-wrap: wrap; }
-.composer .runline-label { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; }
-.composer .runline input[name="vars"] { flex: 1; min-width: 10rem; }
 .chat-log + .composer { box-shadow: 0 -6px 18px rgba(0, 0, 0, .25); }
+
+/* the pipeline runner lives at the top of the sidecar rail, above the
+   polling run list (it is outside the swap target, so typing survives) */
+.runline { display: flex; flex-direction: column; gap: .4rem; }
+.runline-label { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+.runline select { width: 100%; }
+.runline .run-actions { display: flex; gap: .4rem; }
+.runline .run-actions input[name="vars"] { flex: 1; min-width: 0; }
 
 /* ─── @-mention menu ─────────────────────────────────────────────── */
 .composer .say-form { position: relative; }
@@ -331,10 +336,13 @@ details.room-head > summary:hover { background: var(--edge); }
 .mention-item.sel, .mention-item:hover { background: var(--edge); color: var(--accent); }
 
 /* ─── room sidecar: pipeline rail ────────────────────────────────── */
-.sidecar {
+.sidecar-col {
   width: 20.5rem; flex-shrink: 0; border-left: 1px solid var(--edge);
   background: var(--panel); padding: .8rem .9rem;
-  overflow-y: auto; max-height: 100%;
+  display: flex; flex-direction: column; gap: .7rem; min-height: 0;
+}
+.sidecar {
+  flex: 1; overflow-y: auto; min-height: 0;
 }
 .sidecar-title {
   font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
@@ -366,7 +374,8 @@ details.room-head > summary:hover { background: var(--edge); }
 @media (max-width: 56rem) {
   .room-shell { height: auto; min-height: calc(100vh - 42px); }
   .room-main { flex-direction: column; }
-  .sidecar { width: 100%; max-height: 18rem; border-left: none; border-top: 1px solid var(--edge); }
+  .sidecar-col { width: 100%; border-left: none; border-top: 1px solid var(--edge); }
+  .sidecar { max-height: 18rem; }
   .chat-log { max-height: 60vh; }
   .msg { max-width: 100%; }
 }
