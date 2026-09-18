@@ -58,8 +58,11 @@ loop run pipelines/review.yaml                                           # revie
 
 `pipelines/implement.yaml` goes further: the engineer agent works
 directly in your repository behind a reviewed, gated loop (that one
-needs `loop setup`'s agent executor). The classic examples are still
-there — `pipelines/feature-delivery.yaml` and `rooms/leadership.yaml`.
+needs `loop setup`'s agent executor). The hand-off is a file — the dev
+room's `@architect` writes agreed plans to `plans/<name>.md`, and
+`/run implement` from the room builds the newest one, nothing to
+memorize. The classic examples are still there —
+`pipelines/feature-delivery.yaml` and `rooms/leadership.yaml`.
 
 ## One engine, three doors
 

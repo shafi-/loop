@@ -103,12 +103,26 @@ whether counters are on.
 ## 2. Quickstart
 
 ```bash
-loop init                      # scaffold pipelines/ + rooms/ + README
-loop validate pipelines/feature-delivery.yaml
+loop init                      # scaffold rooms/ + pipelines/ + shipped personas
+loop chat rooms/feature.yaml "shape: one-off invoices for freelancers"
+loop chat rooms/dev.yaml "plan: add a health endpoint"
+```
+
+`loop init` scaffolds a workspace built for regular development. Two
+rooms share one team of shipped personas: **`rooms/feature.yaml`** is
+the decision side — `@product-owner`, `@cfo`, `@end-user`, and
+`@architect` shape a feature before it exists — and **`rooms/dev.yaml`**
+is the build side — `@architect` plans, `@engineer` writes files and
+runs commands in your workspace, `@reviewer` checks. Shape first, then
+build; tag who you need (`@engineer add a retry to the client`), and
+untagged agents speak when their seat has something to add.
+
+The classic demo pipeline is still scaffolded:
+
+```bash
 loop run pipelines/feature-delivery.yaml
 ```
 
-The example pipeline turns an idea into a reviewed implementation plan:
 an `llm` stage writes requirements, an `agent` stage (the `architect`
 persona, with tools) designs the system, and a **gated** `human` stage
 pauses for your approval — reply `yes`, `no`, or describe what should
@@ -117,15 +131,6 @@ intent). A `router` branches on that intent: `yes` proceeds to build,
 `no` ends the run rejected, and change requests feed a `revise` stage
 that asks you again. Rejections never redo the upstream stages; they
 feed your words forward.
-
-Chat with the leadership room:
-
-```bash
-loop chat rooms/leadership.yaml "@architect evaluate: is this feasible?"
-```
-
-Tag an agent → it must reply. Untagged agents judge whether they should
-speak; when they decline you'll see `👁 @ceo @cfo saw the message`.
 
 Smoke-test your provider configuration:
 
@@ -244,9 +249,26 @@ collectively — you see every problem at once. `--type` forces
 
 ### `loop init [dir] [--force]`
 
-Scaffold a workspace: `pipelines/feature-delivery.yaml`,
-`rooms/leadership.yaml`, and a `README.md`. Existing files are skipped
-unless `--force`.
+Scaffold a workspace: `rooms/feature.yaml` and `rooms/dev.yaml`
+(the shipped shaping council and dev team — the dev room owns the
+`implement` pipeline, see "the plan-to-build flow" below),
+`pipelines/implement.yaml`
+and `pipelines/review.yaml` (regular-development pipelines), the
+classic `pipelines/feature-delivery.yaml` and `rooms/leadership.yaml`,
+and a `README.md`. The six shipped personas (`architect`, `engineer`,
+`reviewer`, `product-owner`, `cfo`, `end-user`) are seeded into the
+global library (`~/.loop/personas/`) so every project can reference
+them; seeding never overwrites a persona you edited. Existing files
+are skipped unless `--force`.
+
+### `loop digest`
+
+Maintain the workspace's project knowledge layer (`.loop/knowledge/`)
+by hand — the digest and area notes that room agents carry and pull.
+Incremental: an unchanged workspace costs zero model calls. Runs
+automatically when a pipeline completes and when a room session opens;
+this command is for headless use (scripts, CI) or when you want the
+summaries now.
 
 ### `loop ask <prompt>`
 
@@ -586,6 +608,7 @@ settings:
   max_spontaneous_replies: 4    # cap per message (default 4)
   history_window: 50            # transcript lines each observer sees
   max_context_bytes: 24576      # byte budget of the conversation sent to models (default 24 KiB)
+  knowledge: false              # opt out of the maintained project knowledge layer (default: on)
 ```
 
 **How a message flows:** tagged agents reply first (mandatory, streamed).
@@ -621,6 +644,38 @@ kilobytes, and identical across the CLI and the daemon. Agents with
 file tools can of course read beyond it — the brief orients, the tools
 verify.
 
+### Project knowledge — briefs that maintain themselves
+
+On top of the static brief, rooms keep a **layered memory of your
+codebase** under `.loop/knowledge/`:
+
+- **digest.md** — a short maintained summary (what the project is, how
+  it's structured, conventions, current state, and an index of the
+  area notes). It rides every room agent's system prompt, re-read per
+  reply.
+- **notes/<area>.md** — one note per subsystem: what it does, its key
+  files, how it connects, non-obvious gotchas. Agents pull exactly one
+  when a task touches that area, via the read-only `project_notes`
+  tool (auto-granted to every tool-using agent; no argument lists the
+  notes, a slug reads one). You can read them yourself with `/notes
+  [slug]` — deterministic file reads, zero model calls.
+
+The idea is a pyramid you descend only as far as the task needs:
+digest (always) → area note (on demand) → raw files (`read_file`, for
+exact lines).
+
+**Maintenance is automatic, incremental, and describes landed work
+only.** A content-hash scan costs nothing when nothing changed.
+Refreshes run when a **pipeline run completes** — every path (direct
+`loop run`, room-commanded `/run`, daemon) hooks completion — and at
+**session open**, which reconciles edits made outside loop since the
+last session. Agent file writes mid-conversation never touch it: until
+a pipeline lands, everyone in the room sees the same last-completed
+state. Refresh calls are metered under the `knowledge` label (`/cost`
+shows them), capped per run, and every artifact carries a provenance
+header. Run `loop digest` to maintain headless, and set
+`settings.knowledge: false` in a room to opt out.
+
 ### Agents with tools
 
 `tools:` on a room agent enables a bounded native tool loop inside its
@@ -639,6 +694,12 @@ model asks; grant it only to agents you trust with a shell.
 A **persona** is a reusable agent identity: one YAML file with a name,
 a role, a system prompt, and optional tools/model. Rooms and pipelines
 reference personas by name instead of restating the prompt:
+
+Six personas ship with the binary and are seeded into the global
+library on `loop init` / `loop setup`: **architect**, **engineer**,
+**reviewer** (the build side) and **product-owner**, **cfo**,
+**end-user** (the side that shapes features). Edit your copies in
+`~/.loop/personas/` freely — seeding never overwrites an edited file.
 
 ```yaml
 # personas/architect.yaml
@@ -699,7 +760,27 @@ A room with a `pipelines:` section is a cockpit. In the session:
 | `/approve <yes\|no\|words>` | answer a pipeline asking for approval (free words understood — the gate contract) |
 | `/cost` | this session's token ledger: total calls and tokens, per-agent breakdown |
 | `/compact` | summarize everything before the live window into one "session so far" line; the summarized turns archive (never destroyed). One model call, metered under `compact` |
+| `/notes [slug]` | the project knowledge layer: list the maintained area notes, or read one. Deterministic file reads — zero model calls |
 | `/status` | active runs: alias, run id, state, last event |
+
+**The plan-to-build flow (shipped).** The dev room owns the
+`implement` pipeline, and its architect has file tools for one
+purpose: when a plan is agreed, `@architect` writes the full plan to
+`plans/<short-name>.md` and posts only a summary plus the path (whole
+plans pasted into chat bloat every later prompt). The implement
+pipeline's first stage finds the **newest** file in `plans/`, and the
+engineer agent treats it as the approved plan. So the entire hand-off
+from conversation to code is:
+
+```
+@architect plan the OAuth login            → architect writes plans/oauth.md
+(approval happens in the conversation)
+/run implement                             → the newest plan gets built
+```
+
+No variables to remember. `--var task="…"` still works when you'd
+rather describe the work inline — with no plan file present, the
+engineer drafts the plan itself before building.
 | `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
 | `/reset` | archive the conversation and start a fresh one |
 | `/fork <n>` | keep the first `n` transcript lines and continue from there — everything after is archived |
@@ -853,8 +934,9 @@ with file:line warnings.
 |---|---|
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
 | `.loop/rooms/<room>/` | chat transcripts |
+| `.loop/knowledge/` | the maintained project knowledge layer: `digest.md`, `notes/`, `index.json` |
 | `personas/` | this project's persona library |
-| `~/.loop/personas/` | the global persona library (every project) |
+| `~/.loop/personas/` | the global persona library (every project; seeded with the six shipped personas) |
 | `~/.loop/daemon.sock` | the daemon's control socket (`loop serve`; `LOOP_DAEMON_SOCK` to override) |
 | `~/.loop/daemon-<port>.sock` | control socket of a `loop serve --port N` daemon (derived from the port) |
 | `~/.loop/executors/cline/` | installed cline host |
