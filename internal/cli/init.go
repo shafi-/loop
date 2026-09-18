@@ -24,7 +24,10 @@ func newInitCmd() *cobra.Command {
 			}
 			files := map[string]string{
 				filepath.Join(dir, "pipelines", "feature-delivery.yaml"): examples.FeaturePipeline,
+				filepath.Join(dir, "pipelines", "implement.yaml"):        examples.ImplementPipeline,
+				filepath.Join(dir, "pipelines", "review.yaml"):           examples.ReviewPipeline,
 				filepath.Join(dir, "rooms", "leadership.yaml"):           assetRoom,
+				filepath.Join(dir, "rooms", "dev.yaml"):                  examples.DevRoom,
 				filepath.Join(dir, "README.md"):                          assetReadme,
 			}
 			written := 0
@@ -43,7 +46,13 @@ func newInitCmd() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "✓ wrote %s\n", path)
 				written++
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "\nWorkspace ready (%d file(s)). Next:\n  loop validate pipelines/feature-delivery.yaml\n  loop validate rooms/leadership.yaml\n", written)
+			// The shipped dev team: global personas every project can
+			// reference (rooms/dev.yaml and the pipelines do).
+			seedGlobalPersonas(cmd.OutOrStdout(), cmd.ErrOrStderr())
+			fmt.Fprintf(cmd.OutOrStdout(), "\nWorkspace ready (%d file(s)). Next:\n"+
+				"  loop chat rooms/dev.yaml \"plan: add a health endpoint\"\n"+
+				"  loop run pipelines/review.yaml\n"+
+				"  loop validate rooms/dev.yaml\n", written)
 			// Opt-in, anonymous, local (internal/counters).
 			counters.Bump("workspaces_initialized")
 			return nil

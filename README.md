@@ -44,19 +44,20 @@ endpoint) resolves from it, per the [grand rule](USER%20MANUAL.md#the-grand-rule
 export ANTHROPIC_API_KEY=sk-...   # or OPENAI_API_KEY; gateways: see the manual
 ```
 
-Scaffold a workspace and run your first pipeline:
+Scaffold a workspace — you get a dev room, two development pipelines,
+and the shipped personas (`architect`, `engineer`, `reviewer`) seeded
+into `~/.loop/personas/`, available in every project:
 
 ```bash
 loop init
-loop run pipelines/feature-delivery.yaml
+loop chat rooms/dev.yaml "plan: add a health endpoint"   # the shipped dev team
+loop run pipelines/review.yaml                           # review your working tree
 ```
 
-The example includes an `agent` stage; `loop setup` made it runnable.
-Then open a room:
-
-```bash
-loop chat rooms/leadership.yaml "We need to have a new drone shoot out"
-```
+`pipelines/implement.yaml` goes further: the engineer agent works
+directly in your repository behind a reviewed, gated loop (that one
+needs `loop setup`'s agent executor). The classic examples are still
+there — `pipelines/feature-delivery.yaml` and `rooms/leadership.yaml`.
 
 ## One engine, three doors
 

@@ -7,3 +7,37 @@ import _ "embed"
 
 //go:embed feature-pipeline.yaml
 var FeaturePipeline string
+
+// The starter kit: the shipped dev team (global personas), one room,
+// and two pipelines for regular development — everything a fresh
+// install needs to be useful in a minute, embedded so it travels with
+// the binary.
+
+//go:embed starter/personas/architect.yaml
+var StarterArchitect string
+
+//go:embed starter/personas/engineer.yaml
+var StarterEngineer string
+
+//go:embed starter/personas/reviewer.yaml
+var StarterReviewer string
+
+//go:embed starter/dev-room.yaml
+var DevRoom string
+
+//go:embed starter/implement-pipeline.yaml
+var ImplementPipeline string
+
+//go:embed starter/review-pipeline.yaml
+var ReviewPipeline string
+
+// BuiltinPersonas returns the shipped persona library contents by
+// name — the identities seeded into ~/.loop/personas/ so every project
+// on the machine can reference them (persona: <name>).
+func BuiltinPersonas() map[string]string {
+	return map[string]string{
+		"architect": StarterArchitect,
+		"engineer":  StarterEngineer,
+		"reviewer":  StarterReviewer,
+	}
+}

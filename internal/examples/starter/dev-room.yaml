@@ -1,0 +1,27 @@
+# Development room
+#
+# The shipped dev team: @architect plans, @engineer builds, @reviewer
+# checks. Tag who you need (@engineer add a retry to the client); the
+# rest read along and speak when their seat has something to add. The
+# engineer can read and write files and run commands in this workspace.
+# A maintained digest of the project rides everyone's context — /notes
+# lists the area summaries.
+#
+# The personas come from the global library (~/.loop/personas/), so
+# every project on this machine shares the same team; edit them there.
+#
+# Validate it:  loop validate rooms/dev.yaml
+# Open it:      loop chat rooms/dev.yaml
+
+name: dev
+
+agents:
+  - persona: architect
+  - persona: engineer
+    tools: [read_file, write_file, run_command]
+  - persona: reviewer
+
+settings:
+  speak_threshold: 0.6
+  max_spontaneous_replies: 2
+  history_window: 50

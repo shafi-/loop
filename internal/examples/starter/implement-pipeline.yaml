@@ -1,0 +1,125 @@
+# Implement pipeline
+#
+# A task goes in; reviewed, gated code comes out. The engineer agent
+# works directly in the repository (real file tools), the reviewer
+# report and a human gate decide the outcome, and change requests feed
+# a revise loop that listens — your words, not a frozen re-run.
+#
+# Prerequisite: `loop setup` once (installs the agent executor).
+#
+# Run it:
+#   loop run pipelines/implement.yaml --var task="add rate limiting to the API"
+
+name: implement
+description: Implement a development task with a reviewed, gated loop
+
+vars:
+  task: describe the task here
+
+# The engineer comes from the global persona library (~/.loop/personas/);
+# every project shares it. The model resolves from your environment.
+personas:
+  - persona: engineer
+
+stages:
+  - id: plan
+    type: llm
+    prompt: |
+      Turn this task into a short implementation plan for an engineer:
+      approach, files to create or change (best guess from the repo
+      layout), risks, and how to verify. Ten lines maximum.
+
+      Task: {{ vars.task }}
+    output: plan_md
+
+  - id: implement
+    type: agent
+    persona: engineer
+    input: |
+      Implement this task in the current workspace.
+
+      Task: {{ vars.task }}
+
+      Plan (follow it or improve it — report deviations):
+      ${outputs.plan_md}
+
+      Make the smallest coherent change, match the project's style,
+      and run its tests or build if available. Finish with a report:
+      files changed, what each does, how you verified.
+    tools: [read_file, write_file, run_command]
+    max_iterations: 15
+    output: implement_md
+
+  - id: review
+    type: llm
+    prompt: |
+      Review an engineer's implementation report against the task.
+      Judge completeness and risk: what is missing, what could break,
+      what should be double-checked before merge. End with either
+      "VERDICT: approve" or "VERDICT: request-changes" plus the
+      blocking list.
+
+      Task: {{ vars.task }}
+
+      Implementation report:
+      ${outputs.implement_md}
+    output: review_md
+
+  - id: approval
+    type: human
+    gate: true
+    prompt: |
+      The engineer implemented the task; the reviewer's take follows.
+      Reply yes to accept, no to reject, or describe what should
+      change — free words are understood.
+
+      ${outputs.review_md}
+
+      --- engineer's report ---
+      ${outputs.implement_md}
+    output: approval.answer
+
+  - id: route
+    type: router
+    when:
+      - if: "${stages.approval.intent} == 'yes'"
+        next: accepted
+      - if: "${stages.approval.intent} == 'no'"
+        next: rejected
+      - next: revise
+
+  # Change requests go back to the engineer; the shared implement_md
+  # slot is overwritten, so review and approval always see the latest.
+  - id: revise
+    type: agent
+    persona: engineer
+    input: |
+      The reviewer and the human asked for changes to work done in
+      this workspace. Apply exactly these changes, then report files
+      touched and how you verified.
+
+      Change requests:
+      ${stages.approval.answer}
+
+      Original task: {{ vars.task }}
+
+      Previous report:
+      ${outputs.implement_md}
+    tools: [read_file, write_file, run_command]
+    max_iterations: 15
+    output: implement_md
+
+  - id: back
+    type: router
+    when:
+      - next: review
+
+  - id: accepted
+    type: tool
+    terminal: true
+    run: echo "accepted — implementation complete"
+
+  - id: rejected
+    type: tool
+    terminal: true
+    run: echo "rejected — the workspace keeps the changes; review them with 'loop run pipelines/review.yaml'"
