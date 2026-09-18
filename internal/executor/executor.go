@@ -15,12 +15,12 @@ import "context"
 
 // ModelSpec is the resolved model configuration for a task.
 type ModelSpec struct {
-	Provider   string // "anthropic" | "openai"
-	Model      string
-	APIKey     string
-	BaseURL    string
+	Provider    string // "anthropic" | "openai"
+	Model       string
+	APIKey      string
+	BaseURL     string
 	Temperature *float64
-	MaxTokens  int
+	MaxTokens   int
 }
 
 // Task is a fully-resolved unit of agentic work. Everything is concrete:
@@ -40,18 +40,18 @@ type Task struct {
 type EventType string
 
 const (
-	EventText      EventType = "text"       // assistant text delta
-	EventToolCall  EventType = "tool_call"  // executor-side tool invocation
+	EventText       EventType = "text"      // assistant text delta
+	EventToolCall   EventType = "tool_call" // executor-side tool invocation
 	EventToolResult EventType = "tool_result"
-	EventNotice    EventType = "notice"     // executor lifecycle commentary
+	EventNotice     EventType = "notice" // executor lifecycle commentary
 )
 
 // Event is one observation from a running executor.
 type Event struct {
-	Type    EventType
-	Text    string
-	Tool    string
-	Detail  string
+	Type   EventType
+	Text   string
+	Tool   string
+	Detail string
 }
 
 // Result is the aggregated output of a finished task.

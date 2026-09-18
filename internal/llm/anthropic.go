@@ -50,8 +50,8 @@ type anthropicRequest struct {
 }
 
 type anthropicMessage struct {
-	Role    string          `json:"role"`
-	Content any             `json:"content"` // string or []anthropicBlock
+	Role    string `json:"role"`
+	Content any    `json:"content"` // string or []anthropicBlock
 }
 
 type anthropicBlock struct {

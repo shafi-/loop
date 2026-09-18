@@ -16,10 +16,10 @@ import (
 // Caps keep the brief a context, not a dump: it rides in every agent's
 // system prompt for the life of the room.
 const (
-	maxEntries  = 20             // depth-1 layout entries
-	maxReadme   = 1200           // README excerpt characters
-	maxBrief    = 3 * 1024       // whole-brief ceiling
-	maxReadSize = 64 * 1024      // never read more of any marker/readme
+	maxEntries  = 20        // depth-1 layout entries
+	maxReadme   = 1200      // README excerpt characters
+	maxBrief    = 3 * 1024  // whole-brief ceiling
+	maxReadSize = 64 * 1024 // never read more of any marker/readme
 	noiseMax    = ".git .hg .svn node_modules vendor dist build target __pycache__ .loop .idea .vscode coverage"
 )
 

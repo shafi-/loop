@@ -16,25 +16,25 @@ import (
 
 // Entry is one attribution bucket: a label and its accumulated tokens.
 type Entry struct {
-	Label           string
-	Calls           int
-	InputTokens     int64
-	OutputTokens    int64
+	Label        string
+	Calls        int
+	InputTokens  int64
+	OutputTokens int64
 }
 
 // Total returns the meter's whole-session sums.
 type Total struct {
-	Calls           int   `json:"calls"`
-	InputTokens     int64 `json:"input_tokens"`
-	OutputTokens    int64 `json:"output_tokens"`
+	Calls        int   `json:"calls"`
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
 }
 
 // Add sums two totals (e.g. a resumed run's prior sessions plus this one).
 func (t Total) Add(o Total) Total {
 	return Total{
-		Calls:           t.Calls + o.Calls,
-		InputTokens:     t.InputTokens + o.InputTokens,
-		OutputTokens:    t.OutputTokens + o.OutputTokens,
+		Calls:        t.Calls + o.Calls,
+		InputTokens:  t.InputTokens + o.InputTokens,
+		OutputTokens: t.OutputTokens + o.OutputTokens,
 	}
 }
 

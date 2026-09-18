@@ -318,7 +318,7 @@ func TestDraftEndpoint(t *testing.T) {
 	// Rooms go through the same endpoint with their own gate.
 	srv2 := New("test", filepath.Join(".loop", "runs"), "loop-fake")
 	srv2.newGenerator = fakeGenerator(t, &llm.Response{
-		Text: `{"name": "war-room", "agents": [{"name": "scout", "system": "You scout."}]}`,
+		Text:       `{"name": "war-room", "agents": [{"name": "scout", "system": "You scout."}]}`,
 		StopReason: llm.StopEndTurn,
 	})
 	ts2 := httptest.NewServer(srv2.Handler())

@@ -67,7 +67,7 @@ func TestCreatePageAndFlow(t *testing.T) {
 
 	// An invalid save is refused with the report, not written.
 	resp, body = postForm(t, ts.URL+"/new/save",
-		"kind=room&overwrite=0&yaml=" + urlQueryEscape(t, "name: broken\nagents: []\n"))
+		"kind=room&overwrite=0&yaml="+urlQueryEscape(t, "name: broken\nagents: []\n"))
 	if resp.StatusCode != 200 || !strings.Contains(body, "problem(s)") {
 		t.Fatalf("invalid room save = %d %q", resp.StatusCode, body)
 	}

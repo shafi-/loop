@@ -42,11 +42,11 @@ var DefaultAPIKeyEnv = map[Provider]string{
 // caller value > env override > built-in default.
 type ModelConfig struct {
 	Provider    Provider `yaml:"provider"`
-	Model       string   `yaml:"model"`                  // optional; see Resolve()
-	BaseURL     string   `yaml:"base_url,omitempty"`     // redirects the provider's API family
-	APIKeyEnv   string   `yaml:"api_key_env,omitempty"`  // env var holding the key
-	Temperature *float64 `yaml:"temperature,omitempty"`  // nil = provider default
-	MaxTokens   int      `yaml:"max_tokens,omitempty"`   // 0 = adapter default
+	Model       string   `yaml:"model"`                 // optional; see Resolve()
+	BaseURL     string   `yaml:"base_url,omitempty"`    // redirects the provider's API family
+	APIKeyEnv   string   `yaml:"api_key_env,omitempty"` // env var holding the key
+	Temperature *float64 `yaml:"temperature,omitempty"` // nil = provider default
+	MaxTokens   int      `yaml:"max_tokens,omitempty"`  // 0 = adapter default
 }
 
 // RetryPolicy controls per-stage retry on transient failures.

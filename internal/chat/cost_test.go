@@ -66,8 +66,8 @@ func TestCostCommand(t *testing.T) {
 
 type noopUI struct{}
 
-func (noopUI) AgentReplyStart(string)         {}
-func (noopUI) AgentTextDelta(_, _ string)     {}
-func (noopUI) AgentsSeen([]string)            {}
-func (noopUI) AgentCapped(string, int)        {}
-func (noopUI) Notice(string, ...any)          {}
+func (noopUI) AgentReplyStart(string)     {}
+func (noopUI) AgentTextDelta(_, _ string) {}
+func (noopUI) AgentsSeen([]string)        {}
+func (noopUI) AgentCapped(string, int)    {}
+func (noopUI) Notice(string, ...any)      {}

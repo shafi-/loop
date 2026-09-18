@@ -57,11 +57,11 @@ type pageData struct {
 // personaForm is the /new/persona page's structured fields; the YAML
 // editor is composed from them and remains the source of truth.
 type personaForm struct {
-	Name, Role, System       string
-	Provider, Model          string
-	Scope                    string // "project" | "global"
-	Tools                    map[string]bool
-	Editing                  bool
+	Name, Role, System string
+	Provider, Model    string
+	Scope              string // "project" | "global"
+	Tools              map[string]bool
+	Editing            bool
 }
 
 // SidecarRun is one entry of the room sidecar: the run plus a compact

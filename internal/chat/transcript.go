@@ -188,8 +188,8 @@ const (
 	DecisionWindowMessages = 10
 	DecisionContextBytes   = 6 << 10
 
-	omittedMarker   = "[earlier messages omitted]"
-	clippedSuffix   = "\n… [message clipped]"
+	omittedMarker = "[earlier messages omitted]"
+	clippedSuffix = "\n… [message clipped]"
 )
 
 // BuildConversation renders the windowed transcript as one attributed

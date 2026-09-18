@@ -6,10 +6,10 @@ import "context"
 type Role string
 
 const (
-	RoleSystem   Role = "system"
-	RoleUser     Role = "user"
+	RoleSystem    Role = "system"
+	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
-	RoleTool     Role = "tool" // a tool result answering a ToolCall
+	RoleTool      Role = "tool" // a tool result answering a ToolCall
 )
 
 // ToolCall is the model requesting a tool execution (or, in role-tool
@@ -58,9 +58,9 @@ type Request struct {
 type StopReason string
 
 const (
-	StopEndTurn   StopReason = "end_turn"     // model finished
-	StopToolUse   StopReason = "tool_use"     // model wants tools executed
-	StopMaxTokens StopReason = "max_tokens"   // ran out of budget
+	StopEndTurn   StopReason = "end_turn"   // model finished
+	StopToolUse   StopReason = "tool_use"   // model wants tools executed
+	StopMaxTokens StopReason = "max_tokens" // ran out of budget
 	StopOther     StopReason = "other"
 )
 

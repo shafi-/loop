@@ -13,6 +13,7 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/llm"
 )
+
 // Agent is one room participant: a persona with a resolved provider.
 type Agent struct {
 	Persona  config.Persona
@@ -165,7 +166,7 @@ exact code.`
 // the round budget is spent. Tool rounds use Complete — the final text
 // is delivered as one delta.
 func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conversation string, onDelta llm.StreamFunc) (string, error) {
-	system := strings.TrimSpace(a.base(room)+`
+	system := strings.TrimSpace(a.base(room) + `
 Reply to the user directly. Stay strictly in your role's perspective.
 Be concise. Do not repeat what other participants already said. Never
 prefix your reply with your own name.
@@ -173,7 +174,7 @@ prefix your reply with your own name.
 You have tools: read_file, write_file, run_command — confined to the
 workspace. When a deliverable is worth keeping (a plan, a brief, a
 report), write it to a file and say so in one line. Keep tool use
-purposeful; conversation is still your main job.`+workspaceOrientation)
+purposeful; conversation is still your main job.` + workspaceOrientation)
 
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: conversation}}
 	for round := 0; round < MaxToolRounds; round++ {

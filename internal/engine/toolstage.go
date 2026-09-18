@@ -79,8 +79,8 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil // always claim success: swallowing excess, not failing
 }
 
-func (b *cappedBuffer) Len() int         { return b.buf.Len() }
-func (b *cappedBuffer) String() string   { return b.buf.String() }
+func (b *cappedBuffer) Len() int       { return b.buf.Len() }
+func (b *cappedBuffer) String() string { return b.buf.String() }
 
 func tail(s string, n int) string {
 	if len(s) <= n {

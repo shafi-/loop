@@ -52,8 +52,8 @@ type UI interface {
 // and a Handle error land in the transcript as a system line, the one
 // surface every client shares.
 type CustomCommand struct {
-	Name   string                                              // the verb, without the slash
-	Guard  func(args []string) error                           // optional veto
+	Name   string                    // the verb, without the slash
+	Guard  func(args []string) error // optional veto
 	Handle func(ctx context.Context, args []string, ui UI) error
 }
 
@@ -198,7 +198,7 @@ func (r *Room) compactCommand() CustomCommand {
 				System: `You summarize a strategy-room session for its participants.
 One tight paragraph: what was decided, what is open, facts established,
 and what remains. No preamble, no bullet-point ceremony.`,
-				Messages: []llm.Message{{Role: llm.RoleUser, Content: prefix + "\n\nSummarize this session so far."}},
+				Messages:  []llm.Message{{Role: llm.RoleUser, Content: prefix + "\n\nSummarize this session so far."}},
 				MaxTokens: 700,
 			})
 			if err != nil {

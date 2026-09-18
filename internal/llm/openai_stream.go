@@ -51,7 +51,7 @@ func (o *OpenAI) stream(ctx context.Context, wire *openaiRequest, onDelta Stream
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
-					Content   string          `json:"content"`
+					Content   string `json:"content"`
 					ToolCalls []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`

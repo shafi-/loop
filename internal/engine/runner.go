@@ -24,7 +24,7 @@ type Runner struct {
 	Executors *executor.Registry
 	Providers ProviderFactory // nil → DefaultProviderFactory
 	Human     HumanIO
-	Narrator  Narrator // optional core-loop LLM; nil = silent progress
+	Narrator  Narrator  // optional core-loop LLM; nil = silent progress
 	Stdout    io.Writer // llm/agent stream target; nil = quiet
 	RunsDir   string    // default .loop/runs
 	RunID     string    // explicit id; generated when empty
