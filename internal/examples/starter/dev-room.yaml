@@ -2,10 +2,14 @@
 #
 # The shipped dev team: @architect plans, @engineer builds, @reviewer
 # checks. Tag who you need (@engineer add a retry to the client); the
-# rest read along and speak when their seat has something to add. The
-# engineer can read and write files and run commands in this workspace.
+# rest read along and speak when their seat has something to add.
 # A maintained digest of the project rides everyone's context — /notes
 # lists the area summaries.
+#
+# The flow this room is shaped for: @architect drafts a plan and
+# writes it to plans/<name>.md (a summary + path lands in the chat),
+# the room refines and approves it, then /run implement builds the
+# newest plan in plans/ — no variables to remember.
 #
 # The personas come from the global library (~/.loop/personas/), so
 # every project on this machine shares the same team; edit them there.
@@ -15,8 +19,13 @@
 
 name: dev
 
+pipelines:
+  - name: implement
+    file: ../pipelines/implement.yaml
+
 agents:
   - persona: architect
+    tools: [read_file, write_file]   # reads code to plan; writes plans/<name>.md
   - persona: engineer
     tools: [read_file, write_file, run_command]
   - persona: reviewer

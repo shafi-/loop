@@ -1,17 +1,25 @@
 # Implement pipeline
 #
-# A task goes in; reviewed, gated code comes out. The engineer agent
-# works directly in the repository (real file tools), the reviewer
-# report and a human gate decide the outcome, and change requests feed
-# a revise loop that listens — your words, not a frozen re-run.
+# The room's approved plan, built. The architect writes plans to
+# plans/<name>.md; this pipeline's first stage finds the newest one
+# and the engineer agent implements it — so from the dev room the
+# whole command is just:
+#
+#   /run implement
+#
+# No plan file yet? Set the task instead and the engineer plans
+# inline before building. The reviewer report and a human gate decide
+# the outcome; change requests feed a revise loop that listens.
 #
 # Prerequisite: `loop setup` once (installs the agent executor).
 #
-# Run it:
+# Run it (outside a room):
+#   loop run pipelines/implement.yaml
+# With an explicit task:
 #   loop run pipelines/implement.yaml --var task="add rate limiting to the API"
 
 name: implement
-description: Implement a development task with a reviewed, gated loop
+description: Implement the newest approved plan in plans/ (or a task) with a reviewed, gated loop
 
 vars:
   task: describe the task here
@@ -22,15 +30,12 @@ personas:
   - persona: engineer
 
 stages:
-  - id: plan
-    type: llm
-    prompt: |
-      Turn this task into a short implementation plan for an engineer:
-      approach, files to create or change (best guess from the repo
-      layout), risks, and how to verify. Ten lines maximum.
-
-      Task: {{ vars.task }}
-    output: plan_md
+  # The hand-off: the newest plan the room approved. Empty when plans/
+  # has nothing — the engineer then works from the task below.
+  - id: plan-file
+    type: tool
+    run: ls -t plans/*.md 2>/dev/null | head -1 || true
+    output: plan_file
 
   - id: implement
     type: agent
@@ -40,8 +45,11 @@ stages:
 
       Task: {{ vars.task }}
 
-      Plan (follow it or improve it — report deviations):
-      ${outputs.plan_md}
+      Approved plan file: ${stages.plan-file.output}
+      If the plan file above is non-empty, read it first and treat it
+      as the approved plan — follow it or improve it, reporting any
+      deviation. If it is empty, draft a short plan yourself from the
+      task before writing code.
 
       Make the smallest coherent change, match the project's style,
       and run its tests or build if available. Finish with a report:

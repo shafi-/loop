@@ -3,6 +3,7 @@ package examples
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shafi-/loop/internal/config"
@@ -65,21 +66,28 @@ func TestStarterDevRoomResolves(t *testing.T) {
 		t.Fatalf("dev room persona references do not resolve: %v", err)
 	}
 	// The engineer must come out of the library with a system, and the
-	// room grants it the file tools.
-	var engineer *config.Persona
+	// room grants it the file tools; the architect gets read+write for
+	// plan files (plans/<name>.md), not a shell.
+	var engineer, architect *config.Persona
 	for i := range room.Agents {
-		if room.Agents[i].Name == "engineer" {
+		switch room.Agents[i].Name {
+		case "engineer":
 			engineer = &room.Agents[i]
+		case "architect":
+			architect = &room.Agents[i]
 		}
 	}
-	if engineer == nil {
-		t.Fatal("engineer missing after resolution")
+	if engineer == nil || architect == nil {
+		t.Fatal("engineer or architect missing after resolution")
 	}
 	if engineer.System == "" {
 		t.Fatal("engineer resolved without a system prompt")
 	}
 	if len(engineer.Tools) != 3 {
 		t.Fatalf("engineer tools = %v, want the room's read/write/run grant", engineer.Tools)
+	}
+	if len(architect.Tools) != 2 {
+		t.Fatalf("architect tools = %v, want read+write for plan files", architect.Tools)
 	}
 }
 
@@ -133,9 +141,9 @@ func TestStarterPipelinesValidateAndResolve(t *testing.T) {
 	}
 }
 
-// The implement pipeline's rework loop must listen like the flagship
-// example's: a "changes" answer routes to revise, and revise writes
-// the shared implement_md slot that review re-reads.
+// The implement pipeline consumes the room's approved plan: a tool
+// stage discovers the newest plans/*.md, the engineer agent treats it
+// as the source of truth, and the gated revise loop listens.
 func TestStarterImplementPipelineShape(t *testing.T) {
 	p, err := config.ParsePipeline([]byte(ImplementPipeline))
 	if err != nil {
@@ -145,16 +153,29 @@ func TestStarterImplementPipelineShape(t *testing.T) {
 	for i := range p.Stages {
 		ids[p.Stages[i].ID] = p.Stages[i].Type
 	}
-	for _, id := range []string{"plan", "implement", "review", "approval", "revise"} {
+	for _, id := range []string{"plan-file", "implement", "review", "approval", "revise"} {
 		if _, ok := ids[id]; !ok {
 			t.Errorf("implement pipeline lost its %q stage", id)
 		}
 	}
-	// Every agent stage references the shipped engineer.
+	if ids["plan-file"] != config.StageTool {
+		t.Errorf("plan-file stage is %v, want a deterministic tool stage", ids["plan-file"])
+	}
+	// Every agent stage references the shipped engineer, and the
+	// implement input carries the discovered plan file.
 	for i := range p.Stages {
 		s := &p.Stages[i]
 		if s.Type == config.StageAgent && s.Agent.Persona != "engineer" {
 			t.Errorf("agent stage %q uses persona %q, want the shipped engineer", s.ID, s.Agent.Persona)
 		}
+	}
+	var input string
+	for i := range p.Stages {
+		if p.Stages[i].ID == "implement" {
+			input = p.Stages[i].Agent.Input
+		}
+	}
+	if !strings.Contains(input, "${stages.plan-file.output}") {
+		t.Errorf("implement input does not consume the discovered plan file:\n%s", input)
 	}
 }
