@@ -438,9 +438,10 @@ stage output.
 executor (default `cline`). Fields: `persona` (required, must exist in
 `personas`), `input` (required — the interpolated instruction; executors
 receive concrete tasks, never templates), `tools`
-(`read_file`, `write_file`, `run_command`), `max_iterations`,
-`approval` (`auto` default or `ask`), `executor`, `model` (optional
-override of the persona's), `output`.
+(`read_file`, `write_file`, `run_command`), `max_iterations` (the
+executor's turn budget — honored by the executor), `approval` (`auto`
+default or `ask`), `executor`, `model` (optional override of the
+persona's), `output`.
 
 **`tool`** — deterministic local command. Fields: `run` (required,
 executed via `sh -c`), `input` (piped to stdin), `env` (object,
@@ -533,6 +534,14 @@ Reference earlier results with `{{ ... }}` or `${ ... }`:
 Unknown references are **hard errors** — a deterministic run never
 silently substitutes empty strings.
 
+Values interpolated **into prompts and agent instructions** clip at
+64 KB with an in-prompt marker (`[… value clipped …]`), so a huge tool
+output referenced downstream cannot blow a model's context window; the
+clip is logged (`value_clipped` event). Context snapshots keep the full
+values — audit and resume are exact. Interpolation into tool commands,
+env values, and router expressions is never clipped: those may
+legitimately carry bulk data and compare exact strings.
+
 ### Failure policy
 
 Per stage:
@@ -576,6 +585,7 @@ settings:
   speak_threshold: 0.6          # 0–1; observers above this speak
   max_spontaneous_replies: 4    # cap per message (default 4)
   history_window: 50            # transcript lines each observer sees
+  max_context_bytes: 24576      # byte budget of the conversation sent to models (default 24 KiB)
 ```
 
 **How a message flows:** tagged agents reply first (mandatory, streamed).
@@ -591,6 +601,15 @@ made. Priority maps to confidence; only decisions above
 `👁 @name saw the message` — silence with a receipt, never a verbose
 excuse. Failed self-checks are silent (an observer that errs stays
 quiet).
+
+Context is budgeted by bytes as well as messages: the rendered
+conversation sent to models is capped (`max_context_bytes`, default
+24 KiB — newest turns win, oversized single messages render clipped
+with a visible marker, dropped history is announced), and speak
+decisions see a tighter window than replies (recency is what they
+need). `/compact` trades one model call for a shorter session: the
+pre-window turns summarize into a "session so far" line and archive.
+`/cost` shows what the session has spent so far.
 
 **The room knows your project.** When a room is opened, loop assembles
 a small **workspace brief** from the directory it runs in — detected
@@ -678,6 +697,8 @@ A room with a `pipelines:` section is a cockpit. In the session:
 | `/pipelines` | list owned pipelines |
 | `/run <name> [--var k=v]…` | run one as a **real `loop run` subprocess**, in the background |
 | `/approve <yes\|no\|words>` | answer a pipeline asking for approval (free words understood — the gate contract) |
+| `/cost` | this session's token ledger: total calls and tokens, per-agent breakdown |
+| `/compact` | summarize everything before the live window into one "session so far" line; the summarized turns archive (never destroyed). One model call, metered under `compact` |
 | `/status` | active runs: alias, run id, state, last event |
 | `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
 | `/reset` | archive the conversation and start a fresh one |
@@ -732,7 +753,8 @@ Every run writes `.loop/runs/<id>/`:
 
 - `pipeline.yaml` — the exact snapshot that ran
 - `events.jsonl` — every stage event: executor activity **with its text
-  content**, human questions and answers, router decisions, narrations
+  content**, human questions and answers, router decisions, narrations,
+  and a final `usage` event (calls, input/output tokens)
 - `context.json` — the accumulated run context (last snapshot)
 - `state.json` — executed path, stop point (failed or paused stage),
   completion state

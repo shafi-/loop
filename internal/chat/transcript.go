@@ -129,6 +129,40 @@ func (t *Transcript) Rotate(archive string, keep int, note string) error {
 	return os.WriteFile(t.path, []byte(b.String()), 0o644)
 }
 
+// Compact summarizes away history: the last keep messages stay live,
+// everything before them is archived to <dir>/<archive> (never
+// destroyed), and summary rides as the new first line — the "session
+// so far" every subsequent prompt opens with.
+func (t *Transcript) Compact(archive string, keep int, summary string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if keep < 0 {
+		keep = 0
+	}
+	if keep > len(t.Messages) {
+		keep = len(t.Messages)
+	}
+	kept := make([]Message, keep)
+	copy(kept, t.Messages[len(t.Messages)-keep:])
+	t.Messages = append([]Message{{TS: time.Now().UTC(), From: "system", Text: summary}}, kept...)
+	if t.path == "" {
+		return nil // in-memory only (tests)
+	}
+	if err := os.Rename(t.path, filepath.Join(filepath.Dir(t.path), archive)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var b strings.Builder
+	for _, m := range t.Messages {
+		line, err := json.Marshal(m)
+		if err != nil {
+			return err
+		}
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return os.WriteFile(t.path, []byte(b.String()), 0o644)
+}
+
 // Render formats messages with explicit attribution — the form every
 // agent prompt sees ([user] …, [ceo] …).
 func Render(msgs []Message) string {

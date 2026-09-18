@@ -32,6 +32,9 @@ type Agent struct {
 // Name returns the persona identifier.
 func (a *Agent) Name() string { return a.Persona.Name }
 
+// Model returns the resolved model id this agent's requests use.
+func (a *Agent) Model() string { return a.model() }
+
 // Decision is the structured outcome of the speak-or-silent call.
 type Decision struct {
 	Speak    bool   `json:"speak"`

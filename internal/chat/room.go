@@ -13,6 +13,7 @@ import (
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/llm"
 	"github.com/shafi-/loop/internal/usage"
 )
 
@@ -50,9 +51,9 @@ type UI interface {
 // and a Handle error land in the transcript as a system line, the one
 // surface every client shares.
 type CustomCommand struct {
-	Name   string                    // the verb, without the slash
-	Guard  func(args []string) error // optional veto
-	Handle func(args []string, ui UI) error
+	Name   string                                              // the verb, without the slash
+	Guard  func(args []string) error                           // optional veto
+	Handle func(ctx context.Context, args []string, ui UI) error
 }
 
 // Room is one configured multi-agent channel.
@@ -99,7 +100,7 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 	if r.Settings.MaxContextBytes <= 0 {
 		r.Settings.MaxContextBytes = DefaultMaxContextBytes
 	}
-	r.CustomCommands = append(r.rotationCommands(), r.costCommand())
+	r.CustomCommands = append(r.rotationCommands(), r.costCommand(), r.compactCommand())
 	return r
 }
 
@@ -109,12 +110,67 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 func (r *Room) costCommand() CustomCommand {
 	return CustomCommand{
 		Name: "cost",
-		Handle: func(args []string, ui UI) error {
+		Handle: func(_ context.Context, args []string, ui UI) error {
 			line := r.CostReport()
 			if err := r.Transcript.Append("system", line); err != nil {
 				return err
 			}
 			ui.Notice("%s", line)
+			return nil
+		},
+	}
+}
+
+// maxCompactInput bounds the text one /compact summarizes; the tail is
+// what matters (older turns are the first to fall off anyway).
+const maxCompactInput = 32 << 10
+
+// compactCommand seeds /compact: one LLM call summarizes everything
+// before the live window into a "session so far" line; the summarized
+// prefix archives (never destroyed) and the summary rides as the first
+// context line. Manual by design — compaction spends the user's tokens
+// only when they ask.
+func (r *Room) compactCommand() CustomCommand {
+	return CustomCommand{
+		Name: "compact",
+		Handle: func(ctx context.Context, _ []string, ui UI) error {
+			window := r.Settings.HistoryWindow
+			msgs := r.Transcript.Window(0)
+			if len(msgs) <= window {
+				return r.Transcript.Append("system",
+					"◈ nothing to compact — the whole session still fits in the live window")
+			}
+			if len(r.Agents) == 0 {
+				return r.Transcript.Append("system", "◈ /compact needs at least one agent")
+			}
+			prefix := Render(msgs[:len(msgs)-window])
+			if len(prefix) > maxCompactInput {
+				prefix = "[… older turns clipped …]\n" + prefix[len(prefix)-maxCompactInput:]
+			}
+			provider := r.Agents[0].Provider
+			if r.Usage != nil {
+				provider = usage.Wrap(provider, r.Usage, "compact")
+			}
+			resp, err := provider.Complete(ctx, llm.Request{
+				Model: r.Agents[0].Model(),
+				System: `You summarize a strategy-room session for its participants.
+One tight paragraph: what was decided, what is open, facts established,
+and what remains. No preamble, no bullet-point ceremony.`,
+				Messages: []llm.Message{{Role: llm.RoleUser, Content: prefix + "\n\nSummarize this session so far."}},
+				MaxTokens: 700,
+			})
+			if err != nil {
+				return r.Transcript.Append("system", "◈ /compact failed: "+err.Error())
+			}
+			summary := strings.TrimSpace(resp.Text)
+			if summary == "" {
+				return r.Transcript.Append("system", "◈ /compact produced no summary — transcript unchanged")
+			}
+			archive := fmt.Sprintf("transcript-%s.jsonl", time.Now().UTC().Format("20060102-150405"))
+			if err := r.Transcript.Compact(archive, window, "◈ session so far: "+summary); err != nil {
+				return err
+			}
+			ui.Notice("◈ compacted — %d turns summarized, archived as %s", len(msgs)-window, archive)
 			return nil
 		},
 	}
@@ -147,7 +203,7 @@ func (r *Room) rotationCommands() []CustomCommand {
 	return []CustomCommand{
 		{
 			Name: "reset",
-			Handle: func(args []string, ui UI) error {
+			Handle: func(_ context.Context, args []string, ui UI) error {
 				archive, err := r.Rotate(0, "reset")
 				if err != nil {
 					return err
@@ -158,7 +214,7 @@ func (r *Room) rotationCommands() []CustomCommand {
 		},
 		{
 			Name: "fork",
-			Handle: func(args []string, ui UI) error {
+			Handle: func(_ context.Context, args []string, ui UI) error {
 				if len(args) != 1 {
 					return fmt.Errorf("usage: /fork <n> — keep the first n transcript lines")
 				}
@@ -246,7 +302,7 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	if strings.HasPrefix(text, "/") {
 		if verb, args := splitCommand(text); verb != "" {
 			if cmd := r.Command(verb); cmd != nil {
-				return r.runCommand(*cmd, args, ui)
+				return r.runCommand(ctx, *cmd, args, ui)
 			}
 		}
 	}
@@ -413,13 +469,13 @@ func splitCommand(text string) (string, []string) {
 // — veto, usage, execution — lands in the transcript as a system line,
 // the one surface every client shares. A mistyped command must not read
 // as a failed turn.
-func (r *Room) runCommand(cmd CustomCommand, args []string, ui UI) error {
+func (r *Room) runCommand(ctx context.Context, cmd CustomCommand, args []string, ui UI) error {
 	if cmd.Guard != nil {
 		if err := cmd.Guard(args); err != nil {
 			return r.Transcript.Append("system", "↻ "+err.Error())
 		}
 	}
-	if err := cmd.Handle(args, ui); err != nil {
+	if err := cmd.Handle(ctx, args, ui); err != nil {
 		return r.Transcript.Append("system", "↻ "+err.Error())
 	}
 	return nil
