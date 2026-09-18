@@ -13,6 +13,7 @@ import (
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/knowledge"
 	"github.com/shafi-/loop/internal/llm"
 	"github.com/shafi-/loop/internal/usage"
 )
@@ -68,12 +69,25 @@ type Room struct {
 		// MaxContextBytes bounds the rendered conversation string sent
 		// to models (0 = DefaultMaxContextBytes).
 		MaxContextBytes int
+		// KnowledgeDisabled records settings.knowledge: false.
+		KnowledgeDisabled bool
 	}
 	Transcript *Transcript
+	// Workspace is the room's workspace root (the directory the room
+	// was opened in). /notes reads the knowledge layer through it.
+	Workspace string
+	// Knowledge maintains the workspace's project knowledge layer
+	// (.loop/knowledge/). When set, every turn that wrote files ends
+	// with an incremental refresh, announced as a system line. Hosts
+	// attach it via SetKnowledge; nil = disabled.
+	Knowledge *knowledge.Manager
 	// Usage is the session's token ledger; hosts set it when they wrap
 	// the agents' providers. The /cost command and the hosting surface
 	// read it. nil = this room's cost is not tracked.
 	Usage *usage.Meter
+	// wrote counts write_file calls this turn — the "implementation
+	// happened" signal for post-turn knowledge maintenance.
+	wrote int
 	// CustomCommands are the room's verbs; NewRoom seeds the built-in
 	// rotation commands (/reset, /fork <n>) and /cost, and hosts may
 	// adjust their guards or add their own via Command.
@@ -100,8 +114,36 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 	if r.Settings.MaxContextBytes <= 0 {
 		r.Settings.MaxContextBytes = DefaultMaxContextBytes
 	}
-	r.CustomCommands = append(r.rotationCommands(), r.costCommand(), r.compactCommand())
+	r.Settings.KnowledgeDisabled = cfg.Settings.Knowledge != nil && !*cfg.Settings.Knowledge
+	r.CustomCommands = append(r.rotationCommands(), r.costCommand(), r.compactCommand(), r.notesCommand())
 	return r
+}
+
+// SetKnowledge attaches the knowledge layer; a room whose settings say
+// knowledge: false declines it. Hosts call this once, after NewRoom.
+func (r *Room) SetKnowledge(m *knowledge.Manager) {
+	if r.Settings.KnowledgeDisabled {
+		return
+	}
+	r.Knowledge = m
+}
+
+// notesCommand seeds /notes: the knowledge layer for zero tokens —
+// list the area notes, or print one. Deterministic file reads appended
+// as system lines, so every attached client and every non-tool agent
+// sees the same thing.
+func (r *Room) notesCommand() CustomCommand {
+	return CustomCommand{
+		Name: "notes",
+		Handle: func(_ context.Context, args []string, ui UI) error {
+			line := knowledge.NotesReport(r.Workspace, args)
+			if err := r.Transcript.Append("system", line); err != nil {
+				return err
+			}
+			ui.Notice("%s", line)
+			return nil
+		},
+	}
 }
 
 // costCommand seeds /cost: the session's token ledger as one system
@@ -288,6 +330,35 @@ func tagged(text string, known map[string]bool) []string {
 	return order
 }
 
+// EnsureKnowledge scans the knowledge layer and refreshes it when stale
+// or missing — session-open maintenance. External edits and first seeds
+// are caught here; a fresh layer costs zero model calls and stays
+// silent. Returns the announcement line, if one was recorded. Safe to
+// call from a host goroutine.
+func (r *Room) EnsureKnowledge(ctx context.Context) string {
+	if r.Knowledge == nil {
+		return ""
+	}
+	line := r.Knowledge.MaintainLine(ctx)
+	if line != "" {
+		_ = r.Transcript.Append("system", line)
+	}
+	return line
+}
+
+// maintainKnowledge runs after a turn that wrote files: the briefs
+// catch up with the implementation that just happened. Never fails the
+// turn — a refresh error is a system line, the one shared surface.
+func (r *Room) maintainKnowledge(ctx context.Context) {
+	if r.Knowledge == nil || r.wrote == 0 {
+		return
+	}
+	r.wrote = 0
+	if line := r.Knowledge.MaintainLine(ctx); line != "" {
+		_ = r.Transcript.Append("system", line)
+	}
+}
+
 // Say processes one user message. Turn order matters: tagged agents reply
 // FIRST, and only then do observers decide — an observer judging the turn
 // before the named agents have spoken would evaluate a conversation that
@@ -312,6 +383,7 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 		known[a.Name()] = true
 		byName[a.Name()] = a
 	}
+	r.wrote = 0
 	if err := r.Transcript.Append("user", text); err != nil {
 		return fmt.Errorf("transcript: %w", err)
 	}
@@ -372,6 +444,7 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 		_ = r.Transcript.Append("system", hint)
 		ui.Notice("%s", hint)
 	}
+	r.maintainKnowledge(ctx)
 	return nil
 }
 
@@ -440,6 +513,9 @@ func (r *Room) decideAll(ctx context.Context, observers []*agent.Agent, ui UI) m
 // the other agents (they learn a file now exists).
 func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 	a.ToolHook = func(name, detail string) {
+		if name == "write_file" {
+			r.wrote++
+		}
 		ui.Notice("🔧 @%s %s", a.Name(), detail)
 		_ = r.Transcript.Append(a.Name(), "[tool] "+detail)
 	}

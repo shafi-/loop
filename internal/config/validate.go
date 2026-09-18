@@ -6,9 +6,10 @@ import "fmt"
 // agent stages delegate to their executor, whose tool surface is the
 // executor's own contract; rooms execute in-process, so the set is fixed.
 var allowedRoomTools = map[string]bool{
-	"read_file":   true,
-	"write_file":  true,
-	"run_command": true,
+	"read_file":     true,
+	"write_file":    true,
+	"run_command":   true,
+	"project_notes": true,
 }
 
 // Validate checks semantics after normalization and returns every problem it
@@ -226,7 +227,7 @@ func (r *Room) Validate() ValidationErrors {
 		for _, tool := range a.Tools {
 			// Rooms execute tools natively; the set is small on purpose.
 			if !allowedRoomTools[tool] {
-				err(path+".tools", "%q is not a room tool (available: read_file, write_file, run_command)", tool)
+				err(path+".tools", "%q is not a room tool (available: read_file, write_file, run_command, project_notes)", tool)
 			}
 		}
 	}

@@ -78,8 +78,14 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	counters.BumpKey("room_sessions", room.Name)
 	r := chat.NewRoom(*room, agents, transcript)
 	r.Usage = meter
-
 	out := cmd.OutOrStdout()
+	// The knowledge layer: agents carry the maintained digest, /notes
+	// reads it for zero tokens, and turns that write files end with an
+	// incremental refresh. Unresolvable provider = off, one notice.
+	if err := attachKnowledge(r, agents, meter); err != nil {
+		fmt.Fprintf(out, "· knowledge layer off: %v\n", err)
+	}
+
 	names := make([]string, 0, len(room.Agents))
 	for _, a := range room.Agents {
 		names = append(names, a.Name)
@@ -89,6 +95,11 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	fmt.Fprintln(out, "/agents list · /help · /quit")
 
 	ui := &terminalChatUI{out: out, err: cmd.ErrOrStderr()}
+	// Session-open maintenance: first seed or external edits are caught
+	// here; a fresh layer costs zero calls and stays silent.
+	if line := r.EnsureKnowledge(cmd.Context()); line != "" {
+		fmt.Fprintln(out, line)
+	}
 	// Pipelines this room owns: /run commands real `loop run`
 	// subprocesses from inside the conversation.
 	bin, err := executablePath()
@@ -191,6 +202,7 @@ func printChatHelp(out io.Writer) {
   /halt [name] stop a run cleanly (resumable with /run <name> --resume <id>)
   /reset       archive the conversation and start a fresh one
   /fork <n>    keep the first n lines, archive the rest — continue from there
+  /notes [slug]  project knowledge: list the area notes, or read one
   /quit        end the session (running pipelines are halted resumably)`)
 }
 

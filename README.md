@@ -84,6 +84,30 @@ loop serve          # window 1
 loop ui             # window 2 — opens http://127.0.0.1:8787
 ```
 
+## Project knowledge — briefs that maintain themselves
+
+Rooms and pipelines keep a **layered memory of your codebase** under
+`.loop/knowledge/`, so agents orient from a summary instead of
+re-reading the source tree every session:
+
+- **digest.md** — a short always-on summary (what the project is, how
+  it's structured, current state) that rides every room agent's system
+  prompt.
+- **notes/*.md** — per-area notes (one subsystem each). Agents pull one
+  on demand with the `project_notes` tool, or you with `/notes [slug]`
+  — zero model calls either way.
+
+Maintenance is automatic and **incremental**: a content-hash scan costs
+nothing when nothing changed, and a turn (or pipeline run) that wrote
+files ends with a refresh of just the stale notes plus the digest —
+metered under the `knowledge` label in `/cost`. Session open catches
+external edits the same way. Opt out per room with
+`settings.knowledge: false`, or drive it headless:
+
+```bash
+loop digest        # rebuild now — unchanged workspaces cost zero calls
+```
+
 ## The full story
 
 [`examples/agency-intake/`](examples/agency-intake/) is the flagship

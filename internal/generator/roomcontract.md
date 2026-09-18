@@ -30,8 +30,10 @@ based on its role. Design the team like real senior people:
     AVAILABLE PERSONAS, and never set `name`, `role`, or `system` next
     to it — the library provides them. `tools` may specialize it.
   - `tools` — optional array; only `read_file`, `write_file`,
-    `run_command` exist. Grant tools only when the agent genuinely needs
-    to read or persist files (e.g. an analyst that saves its findings).
+    `run_command` exist as grants (project_notes is auto-granted to
+    every tool-using agent). Grant tools only when the agent genuinely
+    needs to read or persist files (e.g. an analyst that saves its
+    findings).
 - `pipelines` — omit unless the description explicitly names a pipeline
   to command. `name` is the in-room alias users type after `/run`;
   `file` points at the pipeline YAML.

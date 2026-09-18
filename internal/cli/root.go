@@ -31,6 +31,7 @@ func NewRootCmd() *cobra.Command {
 		newAskCmd(),
 		newNewCmd(),
 		newRunCmd(),
+		newDigestCmd(),
 		newServeCmd(),
 		newUICmd(),
 		newChatCmd(),

@@ -40,6 +40,41 @@ func skipName(name string) bool {
 	return false
 }
 
+// IsNoise reports whether a directory or file name is excluded from
+// briefs and inventories: dotfiles, secrets, and the usual
+// build/dependency noise. Shared with the knowledge layer, which walks
+// deeper than the depth-1 layout but must skip the same things.
+func IsNoise(name string) bool { return skipName(name) }
+
+// Markers returns the root files the brief's facts come from — the
+// detected stack marker and the README — so staleness checks can watch
+// exactly the files a digest quotes. Absent files are omitted.
+func Markers(dir string) []string {
+	var out []string
+	if detectStack(dir) != "" {
+		for _, m := range stackMarkers {
+			if _, err := os.Stat(filepath.Join(dir, m.file)); err == nil {
+				out = append(out, m.file)
+				break
+			}
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			n := e.Name()
+			if strings.EqualFold(n, "readme.md") || strings.EqualFold(n, "readme.markdown") || strings.EqualFold(n, "readme.txt") {
+				out = append(out, n)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // stackMarker is one root file that names the project's stack.
 type stackMarker struct {
 	file string

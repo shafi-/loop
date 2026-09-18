@@ -229,6 +229,10 @@ func newRunCmd() *cobra.Command {
 				return errors.New(b.String())
 			}
 			logf("✓ run %s completed", res.RunID)
+			// Auto-maintained briefs: catch the knowledge layer up with
+			// whatever the run implemented. Incremental — unchanged
+			// workspaces cost zero model calls and stay silent.
+			maintainWorkspaceKnowledge(cmd.Context(), logf)
 			return nil
 		},
 	}

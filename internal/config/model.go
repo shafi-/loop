@@ -272,6 +272,9 @@ type RoomSettings struct {
 	MaxSpontaneousReplies int     `yaml:"max_spontaneous_replies,omitempty"` // 0 = engine default
 	HistoryWindow         int     `yaml:"history_window,omitempty"`          // messages of transcript an observer sees
 	MaxContextBytes       int     `yaml:"max_context_bytes,omitempty"`       // byte budget of the rendered conversation sent to models; 0 = default (24 KiB)
+	// Knowledge opts out of the auto-maintained project knowledge layer
+	// (digest + area notes under .loop/knowledge/). Unset = on.
+	Knowledge *bool `yaml:"knowledge,omitempty"`
 }
 
 // RoomPipeline is a pipeline a room can command: an in-room alias and

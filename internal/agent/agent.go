@@ -23,6 +23,11 @@ type Agent struct {
 	// workspace the room was opened in (workspace.Brief). Empty = no
 	// brief; prompts are then identical to a brief-less agent.
 	Workspace string
+	// Knowledge returns the maintained project digest block
+	// (knowledge.DigestBlock), re-read per reply so an auto-refresh
+	// mid-session is seen by the very next turn. nil = no knowledge
+	// layer; the decision prompt deliberately never sees it.
+	Knowledge func() string
 	// ToolHook, when set, is called once per executed tool with a
 	// compact human-readable line ("wrote plans/x.md (120 bytes)") —
 	// the room wires it to a UI notice and a transcript line.
@@ -90,16 +95,21 @@ func (a *Agent) framing(room []config.Persona) string {
 }
 
 // base composes the persona's identity preface: its own system prompt,
-// the workspace brief (when the host supplied one), and the room
-// framing. Both reply paths build on it so the brief can never reach
-// one and miss the other.
+// the workspace brief (when the host supplied one), the maintained
+// project digest (same terms), and the room framing. Both reply paths
+// build on it so grounding can never reach one and miss the other.
 func (a *Agent) base(room []config.Persona) string {
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 4)
 	if s := strings.TrimSpace(a.Persona.System); s != "" {
 		parts = append(parts, s)
 	}
 	if s := strings.TrimSpace(a.Workspace); s != "" {
 		parts = append(parts, s)
+	}
+	if a.Knowledge != nil {
+		if s := strings.TrimSpace(a.Knowledge()); s != "" {
+			parts = append(parts, s)
+		}
 	}
 	parts = append(parts, a.framing(room))
 	return strings.Join(parts, "\n\n")
@@ -143,7 +153,11 @@ Workspace orientation: pipeline runs keep their records under
 paused), events.jsonl (everything that happened, in order), and
 context.json (every stage's output text). To report a run's status,
 read its state.json first, then the tail of events.jsonl. Do not
-guess other filenames.`
+guess other filenames. A maintained digest of this codebase lives
+under .loop/knowledge/ (you may already see it above): for orientation
+prefer the project_notes tool — no argument lists the area notes, a
+slug reads one — and open files with read_file only when you need
+exact code.`
 
 // replyWithTools is the native tool loop for room agents: rounds of
 // completions with tools available, tool calls executed in-process
