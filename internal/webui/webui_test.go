@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shafi-/loop/internal/daemon"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 func ev(typ string, payload string) daemon.EventLine {
@@ -219,10 +220,13 @@ func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 		return strings.Contains(b, "your input needed") && strings.Contains(b, "Approve the draft?")
 	}, "the gate to render in the timeline")
 
-	// Answering through the form reaches the child's stdin.
-	if resp, _ := postForm(t, ts.URL+"/runs/"+runID+"/answer", "quick=yes"); resp.StatusCode != 200 {
-		t.Fatalf("answer = %d (runID %q)", resp.StatusCode, runID)
+	// Answering through the form reaches the child's stdin. The body is
+	// asserted too: a delivered answer must never render as a 404, no
+	// matter how fast the run retires afterwards.
+	if resp, body := postForm(t, ts.URL+"/runs/"+runID+"/answer", "quick=yes"); resp.StatusCode != 200 || strings.Contains(body, "404") {
+		t.Fatalf("answer = %d (runID %q) body: %s", resp.StatusCode, runID, body)
 	}
+
 	waitFor(t, func() bool {
 		data, err := os.ReadFile(filepath.Join(dir, "answer.txt"))
 		return err == nil && strings.Contains(string(data), "answered:yes")
@@ -302,7 +306,12 @@ func get(t *testing.T, url string) (*http.Response, string) {
 
 func postForm(t *testing.T, url, form string) (*http.Response, string) {
 	t.Helper()
-	resp, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(form))
+	return postClient(t, http.DefaultClient, url, form)
+}
+
+func postClient(t *testing.T, c *http.Client, url, form string) (*http.Response, string) {
+	t.Helper()
+	resp, err := c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(form))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,6 +371,7 @@ func TestChatFragmentRotateMarkup(t *testing.T) {
 		"hms":        func(t time.Time) string { return t.Local().Format("15:04") },
 		"hue":        hue,
 		"initial":    initial,
+		"human":      usage.Human,
 		"md":         func(s string) template.HTML { return template.HTML(s) },
 	}).ParseFS(files, "templates/*.html")
 	if err != nil {

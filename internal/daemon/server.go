@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/shafi-/loop/internal/engine"
+	"github.com/shafi-/loop/internal/generator"
 	"github.com/shafi-/loop/internal/runctl"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Server is the loop core as a service: it supervises `loop run` children
@@ -40,6 +42,10 @@ type Server struct {
 
 	mu    sync.Mutex
 	specs map[string]string // run id -> submitted pipeline file (this daemon's lifetime)
+	// newGenerator builds a drafting generator on demand: production
+	// resolves the environment's provider (the grand rule); tests
+	// inject a fake.
+	newGenerator func() (*generator.Generator, error)
 }
 
 // New builds the server. bin is the loop binary children are spawned
@@ -47,13 +53,14 @@ type Server struct {
 func New(version, runsDir, bin string) *Server {
 	workspace, _ := os.Getwd()
 	return &Server{
-		sup:       runctl.NewSupervisor(bin, runctl.Handlers{}),
-		rooms:     newHostRooms(bin),
-		version:   version,
-		started:   time.Now(),
-		runsDir:   runsDir,
-		workspace: filepath.Base(workspace),
-		specs:     map[string]string{},
+		sup:          runctl.NewSupervisor(bin, runctl.Handlers{}),
+		rooms:        newHostRooms(bin),
+		version:      version,
+		started:      time.Now(),
+		runsDir:      runsDir,
+		workspace:    filepath.Base(workspace),
+		specs:        map[string]string{},
+		newGenerator: envGenerator,
 	}
 }
 
@@ -182,6 +189,12 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/ping", s.handlePing)
 	mux.HandleFunc("GET /api/workspace", s.handleWorkspace)
+	mux.HandleFunc("POST /api/workspace/draft", s.handleDraft)
+	mux.HandleFunc("POST /api/workspace/validate", s.handleValidate)
+	mux.HandleFunc("POST /api/workspace/save", s.handleSave)
+	mux.HandleFunc("GET /api/personas", s.handlePersonas)
+	mux.HandleFunc("GET /api/personas/detail", s.handlePersonaDetail)
+	mux.HandleFunc("POST /api/personas/delete", s.handlePersonaDelete)
 	mux.HandleFunc("GET /api/runs", s.handleRuns)
 	mux.HandleFunc("POST /api/runs", s.handleSubmit)
 	mux.HandleFunc("GET /api/runs/{id}", s.handleRun)
@@ -484,6 +497,7 @@ type roomJSON struct {
 	Busy      bool              `json:"busy"`
 	Lines     int               `json:"transcript_lines"`
 	Runs      []runJSON         `json:"runs"` // the room's own pipeline runs
+	Usage     *usage.Total      `json:"usage,omitempty"`
 }
 
 func (s *Server) roomJSON(rs *roomSession) roomJSON {
@@ -503,6 +517,12 @@ func (s *Server) roomJSON(rs *roomSession) roomJSON {
 		out.Pipelines = append(out.Pipelines, p.Name)
 	}
 	out.Lines = countLines(filepath.Join(".loop", "rooms", rs.cfg.Name, "transcript.jsonl"))
+	if rs.room.Usage != nil {
+		t := rs.room.Usage.Totals()
+		if t.Calls > 0 {
+			out.Usage = &t
+		}
+	}
 	for _, ru := range rs.sup.Runs() {
 		out.Runs = append(out.Runs, s.toRunJSON(ru))
 	}

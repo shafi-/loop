@@ -16,6 +16,7 @@ import (
 	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/narrator"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // terminalHuman asks the user questions on stderr and reads replies from
@@ -175,6 +176,13 @@ func newRunCmd() *cobra.Command {
 				}
 			}
 
+			// The run's token ledger: stages, gates, and the narrator all
+			// record into it; the summary line prints at the end.
+			meter := usage.NewMeter()
+			if n, ok := narr.(*narrator.Narrator); ok {
+				n.Provider = usage.Wrap(n.Provider, meter, "narrator")
+			}
+
 			runner := &engine.Runner{
 				Pipeline:  pipeline,
 				Source:    source,
@@ -186,11 +194,17 @@ func newRunCmd() *cobra.Command {
 				RunID:     runID,
 				ResumeID:  resume,
 				Logf:      logf,
+				Usage:     meter,
 			}
 			logf("run %s starting: %s (%d stages)", runID, pipeline.Name, len(pipeline.Stages))
 			res, err := runner.Run(cmd.Context())
 			if err != nil {
 				return err
+			}
+			if res.Usage.Calls > 0 {
+				// Progress channel on purpose: the room's sidecar and the
+				// daemon's last-line both carry it.
+				fmt.Fprintf(cmd.ErrOrStderr(), "◈ tokens: %s\n", res.Usage.FormatTotal())
 			}
 			if res.Paused {
 				// A pause is a clean stop: state is saved, resume re-runs the
@@ -215,6 +229,10 @@ func newRunCmd() *cobra.Command {
 				return errors.New(b.String())
 			}
 			logf("✓ run %s completed", res.RunID)
+			// Auto-maintained briefs: catch the knowledge layer up with
+			// whatever the run implemented. Incremental — unchanged
+			// workspaces cost zero model calls and stay silent.
+			maintainWorkspaceKnowledge(cmd.Context(), logf)
 			return nil
 		},
 	}

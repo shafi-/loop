@@ -34,7 +34,7 @@ type Driver struct {
 	mu       sync.Mutex
 	cmd      *exec.Cmd
 	stdin    io.WriteCloser
-	waiting  bool // a gate is asking
+	waiting  bool   // a gate is asking
 	prompt   string // the open gate's question, "" when not waiting
 	lastLine string
 	done     chan struct{}

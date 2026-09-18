@@ -21,8 +21,8 @@ type Translator struct {
 	gateLive bool // a gate prompt was delivered, not yet resolved
 	prompt   []string
 
-	Notice func(text string)        // progress one-liner
-	Gate   func(prompt string)      // full question; /approve answers it
+	Notice func(text string)   // progress one-liner
+	Gate   func(prompt string) // full question; /approve answers it
 	Ended  func(kind, headline string)
 }
 

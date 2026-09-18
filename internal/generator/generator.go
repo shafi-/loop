@@ -1,9 +1,9 @@
-// Package generator turns a natural-language process description into a
-// validated loop pipeline. The LLM drafts; config's validator decides;
-// validation errors feed back for repair. The validator — not the
-// provider's schema enforcement — is the source of truth, which keeps the
-// generator identical for every provider including ones without strict
-// JSON modes.
+// Package generator turns a natural-language description into a
+// validated loop document — a pipeline or a chat room. The LLM drafts;
+// config's validator decides; validation errors feed back for repair.
+// The validator — not the provider's schema enforcement — is the source
+// of truth, which keeps the generator identical for every provider
+// including ones without strict JSON modes.
 package generator
 
 import (
@@ -20,24 +20,67 @@ import (
 
 const defaultMaxRepairs = 2
 
-// Generator produces pipelines from descriptions using one provider.
+// Generator produces documents from descriptions using one provider.
 type Generator struct {
-	Provider   llm.Provider
+	Provider     llm.Provider
 	ProviderName string // "anthropic" | "openai": emitted model blocks target this family
-	Model      string
-	MaxRepairs int              // repair passes after the first draft; 0 = default
-	Logf       func(format string, args ...any) // progress lines, may be nil
+	Model        string
+	MaxRepairs   int                              // repair passes after the first draft; 0 = default
+	Logf         func(format string, args ...any) // progress lines, may be nil
 }
 
-// Result carries both the validated pipeline and its YAML rendering.
+// Result carries the validated document and its YAML rendering; exactly
+// one of Pipeline/Room is set, per the kind that was drafted.
 type Result struct {
 	Pipeline *config.Pipeline
+	Room     *config.Room
 	YAML     []byte
 }
 
 // Generate runs draft → validate → repair until the pipeline passes or
 // the repair budget is spent.
 func (g *Generator) Generate(ctx context.Context, description string) (*Result, error) {
+	parsed, y, err := g.draft(ctx, description, draftKind{
+		noun:   "pipeline",
+		system: systemPrompt,
+		prompt: func() string { return buildPrompt(description, g.ProviderName) },
+		parse:  func(doc []byte) (any, error) { return config.ParsePipeline(doc) },
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Result{Pipeline: parsed.(*config.Pipeline), YAML: y}, nil
+}
+
+// GenerateRoom runs the same draft → validate → repair loop for chat
+// rooms: the gate is config.ParseRoom and the contract teaches the room
+// schema — agents with distinct seats, no model blocks (rooms follow the
+// environment's provider family per the grand rule). availablePersona
+// lists the workspace's library personas; the draft references those by
+// name instead of reinventing them.
+func (g *Generator) GenerateRoom(ctx context.Context, description string, availablePersonas []string) (*Result, error) {
+	parsed, y, err := g.draft(ctx, description, draftKind{
+		noun:   "room",
+		system: roomSystemPrompt,
+		prompt: func() string { return buildRoomPrompt(description, availablePersonas) },
+		parse:  func(doc []byte) (any, error) { return config.ParseRoom(doc) },
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Result{Room: parsed.(*config.Room), YAML: y}, nil
+}
+
+// draftKind is one generator target: a system prompt, a prompt builder,
+// and the strict validator that gates every attempt.
+type draftKind struct {
+	noun   string
+	system string
+	prompt func() string
+	parse  func(doc []byte) (any, error)
+}
+
+func (g *Generator) draft(ctx context.Context, description string, k draftKind) (any, []byte, error) {
 	maxRepairs := g.MaxRepairs
 	if maxRepairs == 0 {
 		maxRepairs = defaultMaxRepairs
@@ -47,7 +90,7 @@ func (g *Generator) Generate(ctx context.Context, description string) (*Result, 
 		logf = func(string, ...any) {}
 	}
 
-	prompt := buildPrompt(description, g.ProviderName)
+	prompt := k.prompt()
 	var lastErr error
 	for attempt := 0; attempt <= maxRepairs; attempt++ {
 		if attempt > 0 {
@@ -56,11 +99,11 @@ func (g *Generator) Generate(ctx context.Context, description string) (*Result, 
 		}
 		resp, err := g.Provider.Complete(ctx, llm.Request{
 			Model:    g.Model,
-			System:   systemPrompt,
+			System:   k.system,
 			Messages: []llm.Message{{Role: llm.RoleUser, Content: prompt}},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("generation failed: %w", err)
+			return nil, nil, fmt.Errorf("generation failed: %w", err)
 		}
 
 		doc, err := extractJSON(resp.Text)
@@ -68,18 +111,18 @@ func (g *Generator) Generate(ctx context.Context, description string) (*Result, 
 			lastErr = err
 			continue
 		}
-		pipeline, err := config.ParsePipeline(doc)
+		parsed, err := k.parse(doc)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 		y, err := jsonToYAML(doc)
 		if err != nil {
-			return nil, fmt.Errorf("converting to YAML: %w", err)
+			return nil, nil, fmt.Errorf("converting to YAML: %w", err)
 		}
-		return &Result{Pipeline: pipeline, YAML: y}, nil
+		return parsed, y, nil
 	}
-	return nil, fmt.Errorf("LLM could not produce a valid pipeline after %d repair pass(es):\n%v", maxRepairs, lastErr)
+	return nil, nil, fmt.Errorf("LLM could not produce a valid %s after %d repair pass(es):\n%v", k.noun, maxRepairs, lastErr)
 }
 
 const systemPrompt = `You are a pipeline compiler for "loop", a deterministic agentic
@@ -87,6 +130,12 @@ harness. The user describes a process; you emit exactly one JSON object
 describing a loop pipeline. Output ONLY the JSON object — no prose, no
 markdown fences. Use double-quoted JSON strings; prompt fields may
 contain \n escapes for multi-line text.`
+
+const roomSystemPrompt = `You are a room compiler for "loop", a deterministic agentic
+harness. The user describes a team and what it is for; you emit exactly
+one JSON object describing a loop chat room. Output ONLY the JSON
+object — no prose, no markdown fences. Use double-quoted JSON strings;
+system fields may contain \n escapes for multi-line text.`
 
 // buildPrompt composes the contract reference, the worked example, and the
 // user's description into one drafting prompt. A non-empty providerName
@@ -109,6 +158,33 @@ func buildPrompt(description, providerName string) string {
 		"lowercase-kebab `id`; a router needs a final default rule without \"if\";\n" +
 		"only providers \"anthropic\" and \"openai\" exist; only tools read_file,\n" +
 		"write_file, run_command exist.")
+	return b.String()
+}
+
+// buildRoomPrompt composes the room contract, the worked example, and the
+// user's description. Rooms never emit model blocks — every agent follows
+// the environment's configured family. availablePersonas lists the
+// workspace's library personas: the draft references those by name
+// instead of reinventing seats that already exist.
+func buildRoomPrompt(description string, availablePersonas []string) string {
+	var b strings.Builder
+	b.WriteString(roomContract)
+	if len(availablePersonas) > 0 {
+		b.WriteString("\n\nAVAILABLE PERSONAS (the workspace's persona library): " +
+			strings.Join(availablePersonas, ", ") +
+			"\nWhen the team should include one of these, use an agent entry with " +
+			"only \"persona\": \"<name>\" (plus optional \"tools\") — do not restate " +
+			"its name, role, or system. Mix references and concrete agents freely.")
+	}
+	b.WriteString("\n\n--- EXAMPLE (YAML form; emit the same structure as JSON) ---\n")
+	b.WriteString(exampleRoom)
+	b.WriteString("\n--- DESCRIPTION ---\n")
+	b.WriteString(strings.TrimSpace(description))
+	b.WriteString("\n\nRemember: one JSON object only. Every concrete agent needs a unique,\n" +
+		"lowercase-kebab `name` and a `system` prompt written in second person\n" +
+		"that says when to speak and when to stay silent. Only tools read_file,\n" +
+		"write_file, run_command exist. Never emit \"model\" objects. Include a\n" +
+		"\"pipelines\" section only if the description names a pipeline file.")
 	return b.String()
 }
 

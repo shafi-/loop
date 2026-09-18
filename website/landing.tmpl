@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
-<meta name="description" content="loop is a deterministic agentic harness in a single Go binary: YAML pipelines that run exactly as written, and chat rooms of persona agents that decide when to speak.">
+<meta name="description" content="loop is a single Go binary with both halves of building software: chat rooms of AI personas that speak up when their perspective matters, and deterministic YAML pipelines that run the work exactly as written.">
 <link rel="icon" type="image/svg+xml" href="{{.Root}}assets/favicon.svg?v=3">
 <link rel="alternate icon" type="image/png" sizes="32x32" href="{{.Root}}assets/favicon-32.png?v=3">
 <link rel="stylesheet" href="{{.Root}}site.css">
@@ -20,11 +20,12 @@
 
 <div class="landing">
   <header class="hero">
-    <h1>Determinism where work runs.<br><span class="accent">Judgment where models speak.</span></h1>
-    <p class="sub">loop is a deterministic agentic harness in a single Go binary.
-    Describe work as YAML pipelines that run <em>exactly</em> as written, and talk to
-    teams of persona agents in chat rooms that command those pipelines —
-    with you holding every approval.</p>
+    <h1>Before code, a planning room.<br><span class="accent">After the plan, a pipeline.</span></h1>
+    <p class="sub">loop is a single Go binary that carries both halves of building
+    software. Think an idea through with a room of AI personas — each one speaks
+    up only when its perspective matters — then run the implementation as a YAML
+    pipeline that does <em>exactly</em> what you wrote, pausing for your approval
+    at the checkpoints you define.</p>
     <div class="install">
       <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/shafi-/loop/main/install.sh | sh</code>
       <button id="copy-install" type="button" aria-label="copy install command">copy</button>
@@ -44,27 +45,30 @@
   </section>
 
   <section class="features">
-    <div class="card">
-      <h3>Pipelines</h3>
-      <p>Ordered stages — <code>llm</code>, <code>agent</code>, <code>tool</code>,
-      <code>human</code>, <code>router</code> — with deterministic flow, a full
-      audit trail, and resume-after-failure. Gates understand
-      <strong>yes / no / your words</strong>, so free-form answers route
-      deterministically.</p>
-    </div>
+    <h2>Two halves, one idea</h2>
     <div class="card">
       <h3>Rooms</h3>
-      <p>Teams of persona agents. Tag <code>@name</code> and it must reply;
-      untagged agents read along and judge for themselves whether to speak.
-      Rooms own pipelines: run them in-chat, several concurrently, and approve
-      gates without leaving the conversation.</p>
+      <p>Personas, not a lone chatbot. Tag <code>@name</code> and that agent
+      must reply; untagged ones read along and speak only when their
+      perspective truly matters — silence comes with a receipt, never an
+      excuse. Rooms command real pipelines: status streams into the
+      conversation, and approval gates ask you right there in the chat.</p>
     </div>
     <div class="card">
-      <h3>One engine, three doors</h3>
-      <p><code>loop serve</code> owns every run — runs outlive your terminal, and
-      a gate asked anywhere is answerable everywhere: the browser dashboard, the
-      attached terminal, or a hosted room. Or skip the daemon entirely;
-      plain <code>loop run</code> stays zero-setup.</p>
+      <h3>Pipelines</h3>
+      <p>Work as YAML: ordered stages — LLM steps, tool-running agents, human
+      checkpoints, deterministic routing — executed exactly as written, with a
+      full audit trail and resume from the exact point a run stopped. Even
+      free-form answers at a checkpoint route deterministically.</p>
+    </div>
+    <div class="card">
+      <h3>Runs that outlive your terminal</h3>
+      <p>With <code>loop serve</code>, every run is a background process: close
+      the session and the work continues, and a question asked by any run is
+      answerable from anywhere — the browser dashboard, another terminal, or a
+      hosted room. The dashboard creates too: describe a pipeline or room, and
+      the daemon drafts the YAML for you to validate and save. Entirely
+      optional: plain <code>loop run</code> stays zero-setup.</p>
     </div>
   </section>
 
@@ -81,12 +85,12 @@
         <pre>export ANTHROPIC_API_KEY=sk-...   # or OPENAI_API_KEY</pre>
       </li>
       <li>
-        <p><strong>Scaffold and run</strong>:</p>
+        <p><strong>Scaffold a workspace and run your first pipeline</strong>:</p>
         <pre>loop init
 loop run pipelines/feature-delivery.yaml</pre>
       </li>
       <li>
-        <p><strong>Open a room</strong> — or run the whole thing as a service:</p>
+        <p><strong>Open a planning room</strong> — or run the whole thing as a service:</p>
         <pre>loop chat rooms/leadership.yaml "We need a new drone shoot-out"
 # or: loop serve  +  loop ui   →  http://127.0.0.1:8787</pre>
       </li>
@@ -94,18 +98,19 @@ loop run pipelines/feature-delivery.yaml</pre>
   </section>
 
   <section class="examples">
-    <h2>See it worked out end to end</h2>
+    <h2>The full story, end to end</h2>
     <div class="card">
       <h3><a href="https://github.com/shafi-/loop/tree/main/examples/agency-intake">agency-intake →</a></h3>
-      <p>A client request enters a chat room, an intake team interrogates it, and
-      the room's settled transcript becomes the input of a delivery pipeline —
-      judgment first, determinism after.</p>
+      <p>A fuzzy client request walks into a room. An intake team — account
+      lead, strategist, estimator — interrogates it until the brief is
+      settled, and the room's transcript becomes the input of a delivery
+      pipeline. Judgment first, determinism after.</p>
     </div>
     <div class="card">
       <h3><a href="https://github.com/shafi-/loop/tree/main/examples/incident-room">incident-room →</a></h3>
-      <p>An incident response team — commander, SRE, comms — debates around a gated
-      mitigation pipeline. The SRE reads the last run's artifacts before trusting
-      the fix. Five minutes, one key.</p>
+      <p>An incident response team — commander, SRE, comms lead — debates
+      around a gated mitigation pipeline, and the SRE reads the last run's
+      artifacts before trusting the fix. Five minutes, one key.</p>
     </div>
   </section>
 </div>

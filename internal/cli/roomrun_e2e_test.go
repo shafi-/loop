@@ -54,11 +54,11 @@ func loopBinary(t *testing.T) string {
 // roomSession drives `loop chat` over real pipes: lines are written to
 // its stdin, its combined output is captured and polled for markers.
 type roomSession struct {
-	t       *testing.T
-	stdinW  *os.File
-	mu      sync.Mutex
+	t        *testing.T
+	stdinW   *os.File
+	mu       sync.Mutex
 	captured []string
-	done    chan error
+	done     chan error
 }
 
 func startRoomSession(t *testing.T, args ...string) *roomSession {

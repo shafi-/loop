@@ -1,0 +1,72 @@
+# Feature delivery pipeline
+#
+# This is loop's flagship example: an idea goes in, and a reviewed
+# implementation plan comes out. Every stage writes its result into the
+# run context under `output`; later stages reference earlier results with
+# {{ }} templates (e.g. ${stages.requirements.output}).
+#
+# Validate it:   loop validate pipelines/feature-delivery.yaml
+# Run it:        loop run pipelines/feature-delivery.yaml
+
+name: feature-delivery
+description: Turn an idea into a reviewed implementation plan
+
+# Inputs to the pipeline. Reference them in any prompt as {{ vars.idea }}.
+vars:
+  idea: add OAuth login to our web app
+
+# Personas are reusable agent identities. Pipeline agent stages reference
+# them by name; rooms define their own inline.
+personas:
+  - name: architect
+    role: Software architect
+    system: |
+      You are a pragmatic software architect. You design the simplest
+      system that satisfies the requirements, name concrete trade-offs,
+      and avoid resume-driven development. Be terse and concrete.
+
+stages:
+  # A single LLM completion. The prompt is a template over the run context.
+  - id: requirements
+    type: llm
+    # model:
+      # provider: anthropic
+      # model: claude-sonnet-4-5
+    prompt: |
+      Turn this product idea into a concise requirements document.
+      Include: problem, users, scope (in/out), and acceptance criteria.
+
+      Idea: {{ vars.idea }}
+    output: requirements_md
+
+  # An agent stage: a persona with tools, looping until done.
+  - id: architecture
+    type: agent
+    persona: architect
+    input: ${stages.requirements.output}
+    tools: [read_file, write_file, run_command]
+    max_iterations: 10
+    output: architecture_md
+
+  # A human checkpoint: the run pauses and asks you in the terminal.
+  - id: approval
+    type: human
+    prompt: |
+      Review the architecture below. Reply "yes" to continue or paste
+      your change requests.
+
+      ${stages.architecture.output}
+    output: approval.answer
+
+  # Deterministic branching. The last rule without an "if" is the default.
+  - id: quality
+    type: router
+    when:
+      - if: "${stages.approval.answer} == 'yes'"
+        next: build
+      - next: requirements
+
+  # A deterministic local command. stdout is captured into the context.
+  - id: build
+    type: tool
+    run: echo "building..."

@@ -61,11 +61,41 @@ func TestReplyWithToolsWritesFileThenAnswers(t *testing.T) {
 	if !strings.Contains(second[2].Content, "wrote plans/feature-x.md") {
 		t.Errorf("tool result content = %q", second[2].Content)
 	}
-	// Tools were offered on every round.
+	// Tools were offered on every round — read_file and write_file
+	// explicitly, plus project_notes auto-granted (read-only knowledge).
 	for i, req := range reqs {
-		if len(req.Tools) != 2 {
+		if len(req.Tools) != 3 || req.Tools[2].Name != "project_notes" {
 			t.Errorf("round %d tools = %v", i, req.Tools)
 		}
+	}
+}
+
+func TestProjectNotesTool(t *testing.T) {
+	// Empty workspace: the tool reports that nothing exists yet, without
+	// an error — the model should recover, not crash the turn.
+	out, err := execRoomTool(context.Background(), "project_notes", `{"slug":""}`, t.TempDir())
+	if err != nil || !strings.Contains(out, "no project notes yet") {
+		t.Errorf("empty list = %q (%v)", out, err)
+	}
+	// Seeded workspace: list shows the index, a slug reads the note.
+	dir := t.TempDir()
+	idx := `{"version":1,"notes":[{"slug":"engine","title":"Engine","scope":"runs it all","dirs":["internal/engine"]}]}`
+	k := filepath.Join(dir, ".loop", "knowledge")
+	os.MkdirAll(filepath.Join(k, "notes"), 0o755)
+	os.WriteFile(filepath.Join(k, "index.json"), []byte(idx), 0o644)
+	os.WriteFile(filepath.Join(k, "notes", "engine.md"), []byte("<!-- header -->\nthe engine note"), 0o644)
+
+	out, err = execRoomTool(context.Background(), "project_notes", `{"slug":""}`, dir)
+	if err != nil || !strings.Contains(out, "engine — Engine: runs it all") {
+		t.Errorf("list = %q (%v)", out, err)
+	}
+	out, err = execRoomTool(context.Background(), "project_notes", `{"slug":"engine"}`, dir)
+	if err != nil || !strings.Contains(out, "the engine note") || strings.Contains(out, "header") {
+		t.Errorf("read = %q (%v)", out, err)
+	}
+	out, _ = execRoomTool(context.Background(), "project_notes", `{"slug":"ghost"}`, dir)
+	if !strings.Contains(out, `no note "ghost"`) {
+		t.Errorf("missing slug = %q", out)
 	}
 }
 

@@ -124,7 +124,10 @@ func TestRunSendsTaskLine(t *testing.T) {
 }
 
 func TestParseNodeVersion(t *testing.T) {
-	for _, tc := range []struct{ in string; want int }{
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
 		{"v24.12.0\n", 24},
 		{"v22.0.0", 22},
 		{"22.3.1", 22},

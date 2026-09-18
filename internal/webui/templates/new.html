@@ -1,0 +1,82 @@
+{{define "new"}}
+{{template "head" .}}
+
+{{if eq .Kind "persona"}}
+<h1>{{if .Form.Editing}}edit persona{{else}}create a persona{{end}}</h1>
+<p class="muted">A persona is a reusable agent identity. Rooms and pipelines
+reference it by name (<code>persona: name</code>) instead of restating its prompt.
+Save it for this project only, or globally for every project on this machine.</p>
+
+<section class="card">
+  <h2>describe the persona</h2>
+  <form class="compose-form" hx-post="/new/persona/compose" hx-target="#yaml" hx-swap="innerHTML">
+    <label>name <input name="name" value="{{.Form.Name}}" placeholder="architect" required></label>
+    <label>role <input name="role" value="{{.Form.Role}}" placeholder="Software architect"></label>
+    <label class="field-wide">system prompt — who it is, how it answers, when to speak, when to stay silent
+      <textarea name="system" rows="7" placeholder="You are the principal architect. You think about systems, trade-offs, and feasibility. You speak when a design decision matters.">{{.Form.System}}</textarea>
+    </label>
+    <label>tools
+      <input type="checkbox" name="tools" value="read_file"{{if .Form.Tools.read_file}} checked{{end}}> read_file
+      <input type="checkbox" name="tools" value="write_file"{{if .Form.Tools.write_file}} checked{{end}}> write_file
+      <input type="checkbox" name="tools" value="run_command"{{if .Form.Tools.run_command}} checked{{end}}> run_command
+    </label>
+    <label>model provider <input name="provider" value="{{.Form.Provider}}" placeholder="blank = environment default"></label>
+    <label>model <input name="model" value="{{.Form.Model}}" placeholder="blank = environment default"></label>
+    <button type="submit">compose yaml</button>
+  </form>
+</section>
+{{else}}
+<h1>create a {{.Kind}}</h1>
+<p class="muted">Describe it and the daemon drafts the YAML — or write it yourself.
+Either way it's validated with loop's own parser before it saves into your workspace.</p>
+
+<div class="kind-tabs">
+  <a href="/new/pipeline"{{if eq .Kind "pipeline"}} class="on"{{end}}>pipeline</a>
+  <a href="/new/room"{{if eq .Kind "room"}} class="on"{{end}}>room</a>
+</div>
+
+<section class="card">
+  <h2>describe it</h2>
+  <form class="draft-form" hx-post="/new/draft" hx-target="#yaml" hx-swap="innerHTML" hx-indicator="#draft-busy">
+    <input type="hidden" name="kind" value="{{.Kind}}">
+    <textarea name="description" rows="3" placeholder="{{if eq .Kind "pipeline"}}an idea goes in: requirements, an architect designs it, I approve, then it builds{{else}}a standing incident-response room: a commander who drives, an SRE who answers with numbers, a comms lead for the humans{{end}}"></textarea>
+    <button type="submit">draft with AI</button>
+    <span id="draft-busy" class="busy">drafting — the model is writing your {{.Kind}}, this takes a few seconds…</span>
+  </form>
+  {{if and (eq .Kind "room") .Personas}}
+  <p class="muted">library personas available — the draft may reference them instead of inventing seats:
+    {{range $i, $p := .Personas}}{{if $i}}, {{end}}<code>{{$p.Name}}</code>{{if eq $p.Scope "global"}} (global){{end}}{{end}}</p>
+  {{end}}
+</section>
+{{end}}
+
+<section class="card">
+  <div class="card-head">
+    <h2>yaml</h2>
+    <form class="validate-form" hx-post="/new/validate" hx-target="#editor-result" hx-swap="innerHTML" hx-include="#yaml">
+      <input type="hidden" name="kind" value="{{.Kind}}">
+      <button type="submit" class="ghost">validate</button>
+    </form>
+  </div>
+  <textarea id="yaml" name="yaml" rows="22" spellcheck="false"
+            placeholder="{{if eq .Kind "persona"}}…compose above, or write the persona YAML here{{else}}…the draft lands here, or write your {{.Kind}} by hand{{end}}">{{if eq .Kind "persona"}}{{.PersonaYAML}}{{end}}</textarea>
+  <div id="editor-result"></div>
+  <form class="save-form" hx-post="/new/save" hx-target="#editor-result" hx-swap="innerHTML" hx-include="#yaml">
+    <input type="hidden" name="kind" value="{{.Kind}}">
+    {{if and (eq .Kind "persona") .Form.Editing}}
+    <input type="hidden" name="scope" value="{{.Form.Scope}}">
+    <input type="hidden" name="overwrite" value="1">
+    {{else}}
+    <input type="hidden" name="overwrite" value="0">
+    {{if eq .Kind "persona"}}
+    <label class="scope"><input type="radio" name="scope" value="project" checked> this project only</label>
+    <label class="scope"><input type="radio" name="scope" value="global"> every project (global)</label>
+    {{end}}
+    {{end}}
+    <button type="submit">{{if and (eq .Kind "persona") .Form.Editing}}save changes{{else}}save to workspace{{end}}</button>
+  </form>
+</section>
+
+{{template "foot" .}}
+{{end}}
+

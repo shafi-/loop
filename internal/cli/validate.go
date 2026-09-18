@@ -15,7 +15,7 @@ func newValidateCmd() *cobra.Command {
 	var kind string
 	cmd := &cobra.Command{
 		Use:   "validate <file>...",
-		Short: "Validate pipeline or room YAML files",
+		Short: "Validate pipeline, room, or persona YAML files",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			failed := false
@@ -33,7 +33,7 @@ func newValidateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&kind, "type", "auto", "document kind: auto, pipeline, or room")
+	cmd.Flags().StringVar(&kind, "type", "auto", "document kind: auto, pipeline, room, or persona")
 	return cmd
 }
 
@@ -55,7 +55,7 @@ func validateOne(path, kind string) error {
 	if effKind == "" || effKind == "auto" {
 		detected, ok := config.IdentifyKind(node.Content[0])
 		if !ok {
-			return fmt.Errorf("cannot tell if this is a pipeline or a room (no \"stages\" or \"agents\" key); pass --type")
+			return fmt.Errorf("cannot tell what this is (no \"stages\", \"agents\", or \"system\" key); pass --type")
 		}
 		effKind = detected
 	}
@@ -65,8 +65,10 @@ func validateOne(path, kind string) error {
 		_, err = config.LoadPipeline(path)
 	case config.KindRoom:
 		_, err = config.LoadRoom(path)
+	case config.KindPersona:
+		_, err = config.LoadPersona(path)
 	default:
-		err = fmt.Errorf("unknown --type %q (want auto, pipeline, or room)", kind)
+		err = fmt.Errorf("unknown --type %q (want auto, pipeline, room, or persona)", kind)
 	}
 	return err
 }

@@ -112,7 +112,9 @@ func ParseRoom(data []byte) (*Room, error) {
 	return &r, nil
 }
 
-// LoadPipeline reads, strictly decodes, normalizes, and validates a pipeline file.
+// LoadPipeline reads, strictly decodes, normalizes, validates, and
+// resolves a pipeline file: persona references fill from the persona
+// library (project personas/, then the global library).
 func LoadPipeline(path string) (*Pipeline, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -122,10 +124,15 @@ func LoadPipeline(path string) (*Pipeline, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pipeline %s: %w", filepath.Base(path), err)
 	}
+	if err := p.ResolvePersonas(NewPersonaLibrary(PersonaDirsFor(path)...)); err != nil {
+		return nil, fmt.Errorf("pipeline %s: %w", filepath.Base(path), err)
+	}
 	return p, nil
 }
 
-// LoadRoom reads, strictly decodes, normalizes, and validates a room file.
+// LoadRoom reads, strictly decodes, normalizes, validates, and resolves
+// a room file: persona references fill from the persona library
+// (project personas/, then the global library).
 func LoadRoom(path string) (*Room, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -133,6 +140,9 @@ func LoadRoom(path string) (*Room, error) {
 	}
 	r, err := ParseRoom(data)
 	if err != nil {
+		return nil, fmt.Errorf("room %s: %w", filepath.Base(path), err)
+	}
+	if err := r.ResolvePersonas(NewPersonaLibrary(PersonaDirsFor(path)...)); err != nil {
 		return nil, fmt.Errorf("room %s: %w", filepath.Base(path), err)
 	}
 	return r, nil

@@ -6,9 +6,10 @@ import "fmt"
 // agent stages delegate to their executor, whose tool surface is the
 // executor's own contract; rooms execute in-process, so the set is fixed.
 var allowedRoomTools = map[string]bool{
-	"read_file":   true,
-	"write_file":  true,
-	"run_command": true,
+	"read_file":     true,
+	"write_file":    true,
+	"run_command":   true,
+	"project_notes": true,
 }
 
 // Validate checks semantics after normalization and returns every problem it
@@ -128,7 +129,13 @@ func (p *Pipeline) Validate() ValidationErrors {
 	for i := range p.Personas {
 		pers := &p.Personas[i]
 		path := fmt.Sprintf("personas[%d]", i)
-		if pers.Name == "" {
+		if pers.Ref != "" {
+			// A library reference: everything but tools/model comes from
+			// the library persona.
+			if pers.Name != "" || pers.Role != "" || pers.System != "" {
+				err(path, "references persona %q — a reference may only add tools or a model block (inline name/role/system would conflict)", pers.Ref)
+			}
+		} else if pers.Name == "" {
 			err(path+".name", "is required")
 		} else if !validIdent(pers.Name) {
 			err(path+".name", "must be lowercase letters, digits, '-' or '_' (got %q)", pers.Name)
@@ -201,7 +208,13 @@ func (r *Room) Validate() ValidationErrors {
 	for i := range r.Agents {
 		a := &r.Agents[i]
 		path := fmt.Sprintf("agents[%d]", i)
-		if a.Name == "" {
+		if a.Ref != "" {
+			// A library reference: everything but tools/model comes from
+			// the library persona.
+			if a.Name != "" || a.Role != "" || a.System != "" {
+				err(path, "references persona %q — a reference may only add tools or a model block (inline name/role/system would conflict)", a.Ref)
+			}
+		} else if a.Name == "" {
 			err(path+".name", "is required")
 		} else if !validIdent(a.Name) {
 			err(path+".name", "must be lowercase letters, digits, '-' or '_' (got %q)", a.Name)
@@ -214,7 +227,7 @@ func (r *Room) Validate() ValidationErrors {
 		for _, tool := range a.Tools {
 			// Rooms execute tools natively; the set is small on purpose.
 			if !allowedRoomTools[tool] {
-				err(path+".tools", "%q is not a room tool (available: read_file, write_file, run_command)", tool)
+				err(path+".tools", "%q is not a room tool (available: read_file, write_file, run_command, project_notes)", tool)
 			}
 		}
 	}
@@ -226,6 +239,9 @@ func (r *Room) Validate() ValidationErrors {
 	}
 	if r.Settings.HistoryWindow < 0 {
 		err("settings.history_window", "must not be negative")
+	}
+	if r.Settings.MaxContextBytes < 0 {
+		err("settings.max_context_bytes", "must not be negative")
 	}
 	return errs
 }

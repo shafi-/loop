@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/shafi-/loop/internal/daemon"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Row is one rendered timeline entry. Classification happens here in
@@ -34,21 +35,24 @@ func Timeline(events []daemon.EventLine) []Row {
 	rows := []Row{}
 	for _, ev := range events {
 		var p struct {
-			Pipeline  string `json:"pipeline"`
-			Stage     string `json:"stage"`
-			StageType string `json:"stage_type"`
-			Attempt   int    `json:"attempt"`
-			Error     string `json:"error"`
-			Next      string `json:"next"`
-			Text      string `json:"text"`
-			Answer    string `json:"answer"`
-			Intent    string `json:"intent"`
-			Via       string `json:"via"`
-			Kind      string `json:"kind"`
-			Tool      string `json:"tool"`
-			Detail    string `json:"detail"`
-			Steps     int    `json:"steps"`
-			MaxTokens int    `json:"max_tokens"`
+			Pipeline     string `json:"pipeline"`
+			Stage        string `json:"stage"`
+			StageType    string `json:"stage_type"`
+			Attempt      int    `json:"attempt"`
+			Error        string `json:"error"`
+			Next         string `json:"next"`
+			Text         string `json:"text"`
+			Answer       string `json:"answer"`
+			Intent       string `json:"intent"`
+			Via          string `json:"via"`
+			Kind         string `json:"kind"`
+			Tool         string `json:"tool"`
+			Detail       string `json:"detail"`
+			Steps        int    `json:"steps"`
+			MaxTokens    int    `json:"max_tokens"`
+			Calls        int    `json:"calls"`
+			InputTokens  int64  `json:"input_tokens"`
+			OutputTokens int64  `json:"output_tokens"`
 		}
 		_ = json.Unmarshal(ev.Event, &p)
 
@@ -82,6 +86,9 @@ func Timeline(events []daemon.EventLine) []Row {
 			row = Row{Class: "executor", Head: head, Detail: p.Detail, LongBlk: len(p.Detail) > detailLimit}
 		case "output_truncated":
 			row = Row{Class: "retry", Head: fmt.Sprintf("⚠ output truncated at %d tokens", p.MaxTokens)}
+		case "usage":
+			row = Row{Class: "started", Head: fmt.Sprintf("◈ tokens: %d calls · in %s · out %s",
+				p.Calls, usage.Human(p.InputTokens), usage.Human(p.OutputTokens))}
 		case "run_completed":
 			row = Row{Class: "terminal ok", Head: fmt.Sprintf("✓ run complete (%d steps)", p.Steps)}
 		case "run_paused":

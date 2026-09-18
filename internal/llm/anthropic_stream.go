@@ -61,9 +61,9 @@ func (a *Anthropic) openStream(ctx context.Context, wire *anthropicRequest, onDe
 			var m struct {
 				Index int `json:"index"`
 				Block struct {
-					Type    string `json:"type"`
-					ID      string `json:"id"`
-					Name    string `json:"name"`
+					Type string `json:"type"`
+					ID   string `json:"id"`
+					Name string `json:"name"`
 				} `json:"content_block"`
 			}
 			if err := json.Unmarshal(ev.Data, &m); err == nil {

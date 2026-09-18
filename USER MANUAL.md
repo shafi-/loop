@@ -349,6 +349,19 @@ ctrl-c halts the run (it records its pause point on the daemon side).
 `--resume <id>` reattaches to a past run; `--run-id` is not
 supported (the daemon assigns ids).
 
+#### Create pipelines and rooms in the dashboard
+
+**new pipeline** / **new room** (or `/new`) opens an authoring page.
+Describe what you want — the daemon's generator drafts the YAML (the
+same draft → validate → repair engine as `loop new`, rooms included) —
+or write the YAML yourself. The editor is the source of truth either
+way: **validate** runs loop's strict parser and reports every problem
+with its place in the document (`stages[2].prompt: is required`), and
+**save** re-validates server-side before writing into the workspace's
+`pipelines/` or `rooms/` — a file that already exists is overwritten
+only after you confirm. Drafting uses the daemon's provider
+environment (the grand rule), so your keys never reach the browser.
+
 ### `loop chat <room.yaml> [opening message]`
 
 Open a multi-agent room. The optional opening message is delivered as if
@@ -425,9 +438,10 @@ stage output.
 executor (default `cline`). Fields: `persona` (required, must exist in
 `personas`), `input` (required — the interpolated instruction; executors
 receive concrete tasks, never templates), `tools`
-(`read_file`, `write_file`, `run_command`), `max_iterations`,
-`approval` (`auto` default or `ask`), `executor`, `model` (optional
-override of the persona's), `output`.
+(`read_file`, `write_file`, `run_command`), `max_iterations` (the
+executor's turn budget — honored by the executor), `approval` (`auto`
+default or `ask`), `executor`, `model` (optional override of the
+persona's), `output`.
 
 **`tool`** — deterministic local command. Fields: `run` (required,
 executed via `sh -c`), `input` (piped to stdin), `env` (object,
@@ -520,6 +534,14 @@ Reference earlier results with `{{ ... }}` or `${ ... }`:
 Unknown references are **hard errors** — a deterministic run never
 silently substitutes empty strings.
 
+Values interpolated **into prompts and agent instructions** clip at
+64 KB with an in-prompt marker (`[… value clipped …]`), so a huge tool
+output referenced downstream cannot blow a model's context window; the
+clip is logged (`value_clipped` event). Context snapshots keep the full
+values — audit and resume are exact. Interpolation into tool commands,
+env values, and router expressions is never clipped: those may
+legitimately carry bulk data and compare exact strings.
+
 ### Failure policy
 
 Per stage:
@@ -563,6 +585,7 @@ settings:
   speak_threshold: 0.6          # 0–1; observers above this speak
   max_spontaneous_replies: 4    # cap per message (default 4)
   history_window: 50            # transcript lines each observer sees
+  max_context_bytes: 24576      # byte budget of the conversation sent to models (default 24 KiB)
 ```
 
 **How a message flows:** tagged agents reply first (mandatory, streamed).
@@ -579,6 +602,25 @@ made. Priority maps to confidence; only decisions above
 excuse. Failed self-checks are silent (an observer that errs stays
 quiet).
 
+Context is budgeted by bytes as well as messages: the rendered
+conversation sent to models is capped (`max_context_bytes`, default
+24 KiB — newest turns win, oversized single messages render clipped
+with a visible marker, dropped history is announced), and speak
+decisions see a tighter window than replies (recency is what they
+need). `/compact` trades one model call for a shorter session: the
+pre-window turns summarize into a "session so far" line and archive.
+`/cost` shows what the session has spent so far.
+
+**The room knows your project.** When a room is opened, loop assembles
+a small **workspace brief** from the directory it runs in — detected
+stack (`go.mod`, `package.json`, …), the README's opening, and a capped
+top-level layout — and grounds every agent's system prompt with it, so
+replies are about *this* project, not a generic one. The brief is
+deterministic file reading (no model calls, no git), capped at a few
+kilobytes, and identical across the CLI and the daemon. Agents with
+file tools can of course read beyond it — the brief orients, the tools
+verify.
+
 ### Agents with tools
 
 `tools:` on a room agent enables a bounded native tool loop inside its
@@ -592,6 +634,60 @@ errors go back to the model as results — a bad path is a correction,
 not a dead turn. Caveat worth knowing: `run_command` executes what the
 model asks; grant it only to agents you trust with a shell.
 
+### The persona library
+
+A **persona** is a reusable agent identity: one YAML file with a name,
+a role, a system prompt, and optional tools/model. Rooms and pipelines
+reference personas by name instead of restating the prompt:
+
+```yaml
+# personas/architect.yaml
+name: architect
+role: Software architect
+system: |
+  You are a pragmatic software architect. You design the simplest
+  system that satisfies the requirements and name concrete trade-offs.
+tools: [read_file]        # optional
+# model: {provider: ...}  # optional — env-driven like everywhere else
+```
+
+```yaml
+# rooms/demo.yaml — reference it (project scope or global)
+agents:
+  - persona: architect                  # everything comes from the library
+  - persona: architect
+    tools: [read_file, write_file]      # a reference may add tools…
+    model: {provider: openai}           # …or a model block — nothing else
+  - name: inline                        # inline agents keep working
+    role: Moderator
+    system: |
+      You keep the discussion on track.
+```
+
+A reference may only add `tools:` or a `model:` block; inline
+`name:`/`role:`/`system:` next to `persona:` is a validation error (the
+library provides them). Unknown references are hard errors at load
+time — a room that silently runs without an agent it names is worse
+than one that refuses to host.
+
+Personas live in two scopes:
+
+| Scope | Location | Available |
+|---|---|---|
+| project | `<workspace>/personas/` | this project only |
+| global | `~/.loop/personas/` | every project on the machine |
+
+Project personas shadow global ones with the same name. The `personas/`
+directory is looked up next to the document and in the workspace root.
+
+The dashboard manages the library (**new persona** / **manage
+personas**): a form composes the YAML, loop's parser validates it, and
+you choose the scope at save time. Existing personas can be edited and
+deleted — deleting one that a room or pipeline in the workspace still
+references is refused until the reference is removed. Room drafts
+reference your library personas automatically, so the AI-composed team
+reuses the seats you already have.
+
 ### Rooms command pipelines
 
 A room with a `pipelines:` section is a cockpit. In the session:
@@ -601,6 +697,8 @@ A room with a `pipelines:` section is a cockpit. In the session:
 | `/pipelines` | list owned pipelines |
 | `/run <name> [--var k=v]…` | run one as a **real `loop run` subprocess**, in the background |
 | `/approve <yes\|no\|words>` | answer a pipeline asking for approval (free words understood — the gate contract) |
+| `/cost` | this session's token ledger: total calls and tokens, per-agent breakdown |
+| `/compact` | summarize everything before the live window into one "session so far" line; the summarized turns archive (never destroyed). One model call, metered under `compact` |
 | `/status` | active runs: alias, run id, state, last event |
 | `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
 | `/reset` | archive the conversation and start a fresh one |
@@ -655,7 +753,8 @@ Every run writes `.loop/runs/<id>/`:
 
 - `pipeline.yaml` — the exact snapshot that ran
 - `events.jsonl` — every stage event: executor activity **with its text
-  content**, human questions and answers, router decisions, narrations
+  content**, human questions and answers, router decisions, narrations,
+  and a final `usage` event (calls, input/output tokens)
 - `context.json` — the accumulated run context (last snapshot)
 - `state.json` — executed path, stop point (failed or paused stage),
   completion state
@@ -727,6 +826,10 @@ activity is auditable like everything else.
 | Symptom | Meaning / fix |
 |---|---|
 | `loop ui` shows no runs / "daemon unreachable" | The web UI is a client — start the daemon first: `loop serve` (in another window or the background). |
+| Drafting in the dashboard fails: "drafting needs a provider" | The daemon resolves your provider from the environment at draft time (same grand rule). Set a key in the daemon's `.env` or shell and retry — no restart needed. |
+| Save says "already exists — save again to overwrite it" | A file of that name is already in the workspace (the filename derives from the document's `name:`). Confirm the overwrite in the dialog and the save retries. |
+| `unknown persona "x" (looked in: ...)` | A room or pipeline references a persona the libraries don't have. Create it in the dashboard (**new persona**), or fix the reference. |
+| Deleting a persona is refused: "still referenced by ..." | A room or pipeline in this workspace uses that persona. Remove the `persona:` reference(s) first — deleting would break the file's next load. |
 | `bind: address already in use` (ui) or a "live daemon" report (serve) | A previous instance is still running. `loop serve` refuses to steal a live socket; kill the old process (`lsof -nP -t -iTCP:8787`) and start again. |
 | `env var X is not set (provider "..." requires it — set the key, or switch this model block...)` | A stage named a family you have no credentials for. Set the named key, add `PROVIDER`, or fix the stage's `provider:`. |
 | `HTTP 503 (model_not_found): No available channel for model ...` | Your endpoint serves a different model catalog. Point `*_MODEL` at a model the endpoint actually offers. |
@@ -750,6 +853,8 @@ with file:line warnings.
 |---|---|
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
 | `.loop/rooms/<room>/` | chat transcripts |
+| `personas/` | this project's persona library |
+| `~/.loop/personas/` | the global persona library (every project) |
 | `~/.loop/daemon.sock` | the daemon's control socket (`loop serve`; `LOOP_DAEMON_SOCK` to override) |
 | `~/.loop/daemon-<port>.sock` | control socket of a `loop serve --port N` daemon (derived from the port) |
 | `~/.loop/executors/cline/` | installed cline host |

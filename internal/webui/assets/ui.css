@@ -36,6 +36,25 @@ code { color: var(--violet); }
 .muted { color: var(--muted); }
 a { color: var(--accent); }
 
+/* ─── dashboard: head bar, two action cards, stacked forms ──────── */
+.dash-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;
+}
+.dash-head h1 { margin: 0; }
+.create-links { display: flex; gap: 1rem; font-size: .88rem; }
+.create-links a { color: var(--muted); text-decoration: none; }
+.create-links a:hover { color: var(--accent); }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+.stack-form { display: flex; flex-direction: column; gap: .5rem; }
+.stack-form input[name="file"] { width: 100%; flex: 1; min-width: 0; }
+.picker-row { display: flex; gap: .4rem; align-items: center; }
+.picker-row .picker-slot { flex: 1; min-width: 0; }
+.picker-row .picker-slot select { width: 100%; }
+.form-row { display: flex; gap: .5rem; }
+.form-row input { flex: 1; min-width: 0; }
+@media (max-width: 56rem) { .dash-grid { grid-template-columns: 1fr; } }
+
 .card {
   background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
   padding: .9rem 1.1rem; margin-bottom: 1rem;
@@ -130,6 +149,35 @@ button:hover { border-color: var(--accent); }
 }
 .error { color: var(--bad); }
 .success { color: var(--ok); }
+
+/* ─── create: describe → draft → editor ───────────────────────────── */
+.kind-tabs { display: flex; gap: .4rem; margin-bottom: .9rem; }
+.kind-tabs a {
+  padding: .25rem .9rem; border: 1px solid var(--edge); border-radius: 6px;
+  text-decoration: none; color: var(--muted);
+}
+.kind-tabs a.on { color: var(--ok); border-color: var(--ok); }
+textarea {
+  width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--edge);
+  border-radius: 6px; padding: .5rem .6rem; font: inherit; resize: vertical;
+}
+textarea:focus { outline: none; border-color: var(--accent); }
+.draft-form textarea { margin-bottom: .5rem; }
+.busy { color: var(--muted); visibility: hidden; }
+.busy.htmx-request { visibility: visible; animation: pulse 1.2s ease-in-out infinite; }
+ul.issues { margin: .4rem 0; padding-left: 1.4rem; }
+ul.issues li { margin: .2rem 0; color: var(--bad); }
+.save-form { margin-top: .6rem; }
+.save-form .scope { margin-right: .8rem; color: var(--muted); }
+.compose-form label.field-wide { width: 100%; flex-direction: column; align-items: flex-start; gap: .3rem; }
+.compose-form textarea { margin-top: .2rem; }
+.row-actions { display: flex; gap: .6rem; align-items: center; justify-content: flex-end; }
+form.inline-del { display: inline; }
+.btnlink {
+  display: inline-block; padding: .35rem .9rem; border: 1px solid var(--edge);
+  border-radius: 6px; text-decoration: none;
+}
+.btnlink:hover { border-color: var(--accent); }
 
 #toast {
   position: fixed; bottom: 5.4rem; left: 50%; transform: translateX(-50%);
@@ -349,6 +397,10 @@ details.room-head > summary:hover { background: var(--edge); }
   margin-bottom: .6rem;
 }
 .sidecar-empty { font-size: .85rem; }
+.sidecar-usage {
+  font-size: .72rem; color: var(--muted); border: 1px dashed var(--edge);
+  border-radius: 6px; padding: .3rem .5rem;
+}
 .sidecar-item { border: 1px solid var(--edge); border-radius: 8px; margin-bottom: .45rem; background: var(--bg); }
 .sidecar-item summary {
   display: flex; gap: .5rem; align-items: center;

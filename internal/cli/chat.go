@@ -15,6 +15,8 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/engine"
+	"github.com/shafi-/loop/internal/usage"
+	"github.com/shafi-/loop/internal/workspace"
 )
 
 func newChatCmd() *cobra.Command {
@@ -57,7 +59,10 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	if err != nil {
 		return err
 	}
-	agents, err := buildRoomAgents(room)
+	// The session's token ledger: every agent call records into it and
+	// /cost reports from it.
+	meter := usage.NewMeter()
+	agents, err := buildRoomAgents(room, meter)
 	if err != nil {
 		return err
 	}
@@ -72,8 +77,16 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	// per opened session, keyed by room name.
 	counters.BumpKey("room_sessions", room.Name)
 	r := chat.NewRoom(*room, agents, transcript)
-
+	r.Usage = meter
 	out := cmd.OutOrStdout()
+	// The knowledge layer: agents carry the maintained digest, /notes
+	// reads it for zero tokens. The layer only describes landed work —
+	// completed pipeline runs refresh it in their own process; session
+	// open reconciles it below. Unresolvable provider = off, one notice.
+	if err := attachKnowledge(r, agents, meter); err != nil {
+		fmt.Fprintf(out, "· knowledge layer off: %v\n", err)
+	}
+
 	names := make([]string, 0, len(room.Agents))
 	for _, a := range room.Agents {
 		names = append(names, a.Name)
@@ -83,6 +96,11 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	fmt.Fprintln(out, "/agents list · /help · /quit")
 
 	ui := &terminalChatUI{out: out, err: cmd.ErrOrStderr()}
+	// Session-open maintenance: first seed or external edits are caught
+	// here; a fresh layer costs zero calls and stays silent.
+	if line := r.EnsureKnowledge(cmd.Context()); line != "" {
+		fmt.Fprintln(out, line)
+	}
 	// Pipelines this room owns: /run commands real `loop run`
 	// subprocesses from inside the conversation.
 	bin, err := executablePath()
@@ -149,10 +167,14 @@ var executablePath = os.Executable
 // buildRoomAgents resolves a provider per agent. An agent without a
 // model block is env-driven: whatever family the environment configures
 // (ModelConfig.Resolve fills in provider, model id, and key var).
-// Agents with tools get the workspace as their working directory.
-func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
+// Agents with tools get the workspace as their working directory, and
+// every agent carries the workspace brief so replies are about THIS
+// project, not a generic one. When meter is non-nil, every provider is
+// wrapped into it under the agent's name — /cost's per-agent numbers.
+func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, error) {
 	factory := engine.DefaultProviderFactory()
 	cwd, _ := os.Getwd()
+	brief := workspace.Brief(cwd)
 	agents := make([]*agent.Agent, 0, len(room.Agents))
 	for i := range room.Agents {
 		p := room.Agents[i]
@@ -164,7 +186,8 @@ func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
 		}
-		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd})
+		provider = usage.Wrap(provider, meter, p.Name)
+		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
 	}
 	return agents, nil
 }
@@ -180,6 +203,7 @@ func printChatHelp(out io.Writer) {
   /halt [name] stop a run cleanly (resumable with /run <name> --resume <id>)
   /reset       archive the conversation and start a fresh one
   /fork <n>    keep the first n lines, archive the rest — continue from there
+  /notes [slug]  project knowledge: list the area notes, or read one
   /quit        end the session (running pipelines are halted resumably)`)
 }
 

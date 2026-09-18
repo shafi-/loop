@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shafi-/loop/internal/knowledge"
 	"github.com/shafi-/loop/internal/llm"
 )
 
@@ -60,21 +61,50 @@ var roomToolDefs = map[string]llm.ToolDef{
 			"required":   []string{"command"},
 		},
 	},
+	"project_notes": {
+		Name: "project_notes",
+		Description: "Read the maintained project knowledge (area notes). Pass an " +
+			"empty slug to list the available notes; pass a note's slug to read it.",
+		Schema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"slug": map[string]any{
+					"type":        "string",
+					"description": "Area note slug; empty string lists all notes",
+				},
+			},
+			"required": []string{"slug"},
+		},
+	},
 }
 
 // toolDefsFor returns definitions for the requested tool names, in order.
+// project_notes rides along automatically: it is read-only, and the
+// knowledge layer's whole point is that any tool-using agent can pull a
+// summary instead of re-reading the codebase.
 func toolDefsFor(names []string) []llm.ToolDef {
 	var defs []llm.ToolDef
+	hasNotes := false
 	for _, n := range names {
-		if d, ok := roomToolDefs[n]; ok {
-			defs = append(defs, d)
+		d, ok := roomToolDefs[n]
+		if !ok {
+			continue
 		}
+		if n == "project_notes" {
+			hasNotes = true
+		}
+		defs = append(defs, d)
+	}
+	if len(defs) > 0 && !hasNotes {
+		defs = append(defs, roomToolDefs["project_notes"])
 	}
 	return defs
 }
 
 // RoomTools returns the names of the native room tools, in canonical order.
-func RoomTools() []string { return []string{"read_file", "write_file", "run_command"} }
+func RoomTools() []string {
+	return []string{"read_file", "write_file", "run_command", "project_notes"}
+}
 
 // execRoomTool runs one tool call and returns the text fed back to the
 // model. cwd is the room's working directory; file paths are confined
@@ -133,8 +163,45 @@ func execRoomTool(ctx context.Context, name, argsJSON, cwd string) (string, erro
 			return text, fmt.Errorf("run_command %q: %w", a.Command, err)
 		}
 		return text, nil
+	case "project_notes":
+		var a struct {
+			Slug string `json:"slug"`
+		}
+		if err := json.Unmarshal([]byte(argsJSON), &a); err != nil {
+			return "", fmt.Errorf("project_notes: arguments must be JSON with a slug (empty to list): %w", err)
+		}
+		return projectNotesText(cwd, strings.TrimSpace(a.Slug)), nil
+
 	}
-	return "", fmt.Errorf("unknown tool %q (available: read_file, write_file, run_command)", name)
+	return "", fmt.Errorf("unknown tool %q (available: read_file, write_file, run_command, project_notes)", name)
+}
+
+// projectNotesText renders the knowledge layer for the model: the index
+// when no slug is given, one note's body otherwise. Read-only over the
+// workspace's .loop/knowledge/ — no path guard needed beyond the store's
+// own slug validation.
+func projectNotesText(cwd, slug string) string {
+	if slug == "" {
+		idx, err := knowledge.Load(cwd)
+		if err != nil || idx == nil || len(idx.Notes) == 0 {
+			return "no project notes yet — the digest and area notes appear after the first implementation turn (or run: loop digest)"
+		}
+		var b strings.Builder
+		if _, ok := knowledge.ReadDigest(cwd); ok {
+			b.WriteString("digest: present (you already carry it in your context)\n")
+		}
+		b.WriteString("area notes:\n")
+		for _, n := range idx.Notes {
+			fmt.Fprintf(&b, "  %s — %s: %s\n", n.Slug, n.Title, n.Scope)
+		}
+		b.WriteString("read one with project_notes <slug>")
+		return b.String()
+	}
+	body, ok := knowledge.ReadNote(cwd, slug)
+	if !ok {
+		return fmt.Sprintf("no note %q — call project_notes with an empty slug to list what exists", slug)
+	}
+	return "note " + slug + " (maintained summary — verify against code):\n" + body
 }
 
 // safePath confines p inside cwd: no absolute paths, no `..` escapes.

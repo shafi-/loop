@@ -1,0 +1,50 @@
+{{define "personas"}}
+{{template "head" .}}
+
+<h1>personas</h1>
+<p class="muted">Reusable agent identities. Project personas live in this workspace's
+<code>personas/</code>; global ones live in <code>~/.loop/personas</code> and are available to
+every project. Rooms and pipelines use them with <code>persona: name</code> — the room
+builder's AI draft references them automatically.</p>
+
+<section class="card">
+  <div class="card-head">
+    <h2>library</h2>
+    <div>
+      <a class="btnlink" href="/new/persona">new persona</a>
+      <button type="button" class="ghost" title="refresh list" aria-label="refresh list"
+              hx-get="/frag/personas" hx-target="#persona-list" hx-swap="innerHTML">↻</button>
+    </div>
+  </div>
+  <div id="persona-list" hx-get="/frag/personas" hx-trigger="load" hx-swap="innerHTML">{{template "frag_personas" .}}</div>
+</section>
+
+{{template "foot" .}}
+{{end}}
+
+{{define "frag_personas"}}
+{{if .Personas}}
+<table>
+  <tr><th>name</th><th>role</th><th>scope</th><th>file</th><th></th></tr>
+  {{range .Personas}}
+  <tr>
+    <td><code>{{.Name}}</code></td>
+    <td>{{.Role}}</td>
+    <td>{{if eq .Scope "global"}}global{{else}}project{{end}}</td>
+    <td class="muted">{{.Path}}</td>
+    <td class="row-actions">
+      <a href="/new/persona?scope={{.Scope}}&name={{.Name}}">edit</a>
+      <form class="inline-del" hx-post="/personas/delete" hx-confirm="Delete persona {{.Name}}? Rooms that reference it will stop loading."
+            hx-target="#persona-list" hx-swap="innerHTML">
+        <input type="hidden" name="scope" value="{{.Scope}}">
+        <input type="hidden" name="name" value="{{.Name}}">
+        <button type="submit" class="ghost">delete</button>
+      </form>
+    </td>
+  </tr>
+  {{end}}
+</table>
+{{else}}
+<p class="muted">no personas yet — <a href="/new/persona">create the first one</a>.</p>
+{{end}}
+{{end}}

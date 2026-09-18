@@ -24,6 +24,8 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/runctl"
+	"github.com/shafi-/loop/internal/usage"
+	"github.com/shafi-/loop/internal/workspace"
 )
 
 // errRoomBusy is returned when a turn is already in flight: a room
@@ -94,7 +96,10 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	if err != nil {
 		abs = file
 	}
-	agents, err := buildRoomAgents(cfg)
+	// The session's token ledger rides the room: agent calls record
+	// into it, /cost and the API report from it.
+	meter := usage.NewMeter()
+	agents, err := buildRoomAgents(cfg, meter)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +119,18 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 		room:     chat.NewRoom(*cfg, agents, tr),
 		tr:       tr,
 	}
+	rs.room.Usage = meter
+	// The knowledge layer: agents carry the maintained digest, /notes
+	// reads it for zero tokens. Completed pipeline runs refresh it in
+	// their own process; session open (below) reconciles it. An
+	// unresolvable provider leaves it off — hosting is not held hostage.
+	if err := attachKnowledge(rs.room, agents, meter); err != nil {
+		_ = tr.Append("system", "knowledge layer off: "+err.Error())
+	}
+	// Session-open maintenance in the background: first seed or external
+	// edits are caught here; fresh costs zero calls, a refresh lands in
+	// the transcript where every client sees it.
+	go rs.room.EnsureKnowledge(context.Background())
 	// Typed /reset and /fork meet the same veto as the endpoints: no
 	// rotating under a live pipeline run. The verbs live in the room's
 	// command registry; the daemon attaches its guard to them by name.
@@ -305,9 +322,10 @@ func resolveRoomPipeline(roomPath string, cfg *config.Room, alias string) (strin
 
 // buildRoomAgents resolves a provider per agent — the same rule as the
 // chat command: a persona without a model block is env-driven.
-func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
+func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, error) {
 	factory := engine.DefaultProviderFactory()
 	cwd, _ := os.Getwd()
+	brief := workspace.Brief(cwd)
 	agents := make([]*agent.Agent, 0, len(room.Agents))
 	for i := range room.Agents {
 		p := room.Agents[i]
@@ -319,7 +337,8 @@ func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
 		}
-		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd})
+		provider = usage.Wrap(provider, meter, p.Name)
+		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
 	}
 	return agents, nil
 }

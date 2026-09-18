@@ -119,3 +119,89 @@ func TestGenerateRepairsUnparseableOutput(t *testing.T) {
 		t.Errorf("expected recovery, got %+v", res.Pipeline)
 	}
 }
+
+// A minimal but genuinely valid room in JSON form, as we instruct the
+// model to emit.
+const goodRoomJSON = `{
+  "name": "incident",
+  "agents": [
+    {"name": "commander", "role": "incident commander",
+     "system": "You are the incident commander. You drive the response."},
+    {"name": "sre", "role": "site reliability engineer",
+     "system": "You are the SRE on call. You answer with facts and numbers.",
+     "tools": ["read_file"]}
+  ],
+  "settings": {"speak_threshold": 0.6, "max_spontaneous_replies": 2, "history_window": 50}
+}`
+
+func TestGenerateRoomFirstDraftValid(t *testing.T) {
+	m := llm.NewMock(draft(goodRoomJSON))
+	res, err := gen(m, 2).GenerateRoom(context.Background(), "an incident response team", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Room == nil || res.Pipeline != nil {
+		t.Fatalf("room draft should fill Room, not Pipeline: %+v", res)
+	}
+	if res.Room.Name != "incident" || len(res.Room.Agents) != 2 {
+		t.Errorf("room = %+v", res.Room)
+	}
+	if !strings.Contains(string(res.YAML), "name: incident") {
+		t.Errorf("YAML rendering = %q", res.YAML)
+	}
+	// The prompt must carry the room contract, the example, and the
+	// description — and must forbid model blocks.
+	prompt := m.Requests()[0].Messages[0].Content
+	if !strings.Contains(prompt, "an incident response team") ||
+		!strings.Contains(prompt, "loop room contract") ||
+		!strings.Contains(prompt, "NEVER emit `model`") {
+		t.Error("room draft prompt should carry contract, example, and description")
+	}
+}
+
+func TestGenerateRoomRepairsFromValidationErrors(t *testing.T) {
+	// First draft: duplicate agent name (invalid). Second: fixed.
+	attempt := 0
+	m := llm.NewMockFunc(func(req llm.Request) *llm.Response {
+		attempt++
+		if attempt == 1 {
+			return draft(`{"name": "broken", "agents": [
+				{"name": "a", "system": "You are A."},
+				{"name": "a", "system": "You are A again."}]}`)
+		}
+		if !strings.Contains(req.Messages[0].Content, "agents[1].name") {
+			panic("room repair prompt should contain the validator's error")
+		}
+		return draft(goodRoomJSON)
+	})
+	res, err := gen(m, 2).GenerateRoom(context.Background(), "a small team", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Room == nil || res.Room.Name != "incident" || attempt != 2 {
+		t.Errorf("room repair loop failed: attempt=%d room=%+v", attempt, res.Room)
+	}
+}
+
+func TestGenerateRoomGivesUpHonesty(t *testing.T) {
+	m := llm.NewMock(draft(`{"name": "broken", "agents": []}`))
+	_, err := gen(m, 2).GenerateRoom(context.Background(), "a small team", nil)
+	if err == nil || !strings.Contains(err.Error(), "valid room") {
+		t.Fatalf("expected honest room failure, got: %v", err)
+	}
+}
+
+// The room prompt teaches the draft about the workspace's persona
+// library so it references known personas instead of reinventing them.
+func TestGenerateRoomPromptListsAvailablePersonas(t *testing.T) {
+	m := llm.NewMock(draft(goodRoomJSON))
+	_, err := gen(m, 0).GenerateRoom(context.Background(), "a team", []string{"architect", "reviewer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := m.Requests()[0].Messages[0].Content
+	if !strings.Contains(prompt, "AVAILABLE PERSONAS") ||
+		!strings.Contains(prompt, "architect, reviewer") {
+		t.Errorf("prompt should list the library personas: %.400s", prompt)
+	}
+}

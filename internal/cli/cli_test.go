@@ -57,6 +57,9 @@ stages:
 
 func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 	t.Chdir(t.TempDir())
+	// init seeds the global persona library under $HOME — isolate it so
+	// the test never touches (or depends on) the real ~/.loop.
+	t.Setenv("HOME", t.TempDir())
 
 	out, _, err := runCLI(t, "", "init")
 	if err != nil {
@@ -64,15 +67,26 @@ func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 	}
 	for _, path := range []string{
 		filepath.Join("pipelines", "feature-delivery.yaml"),
+		filepath.Join("pipelines", "implement.yaml"),
+		filepath.Join("pipelines", "review.yaml"),
 		filepath.Join("rooms", "leadership.yaml"),
+		filepath.Join("rooms", "feature.yaml"),
+		filepath.Join("rooms", "dev.yaml"),
 		"README.md",
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("init did not write %s: %v", path, err)
 		}
 	}
-	if !strings.Contains(out, "Workspace ready (3 file(s))") {
+	if !strings.Contains(out, "Workspace ready (7 file(s))") {
 		t.Errorf("out = %q", out)
+	}
+	// The shipped personas landed in the (isolated) global library.
+	home, _ := os.UserHomeDir()
+	for _, name := range []string{"architect", "engineer", "reviewer", "product-owner", "cfo", "end-user"} {
+		if _, err := os.Stat(filepath.Join(home, ".loop", "personas", name+".yaml")); err != nil {
+			t.Errorf("persona %s not seeded: %v", name, err)
+		}
 	}
 
 	// A second init skips existing files instead of clobbering them.
@@ -89,13 +103,15 @@ func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Workspace ready (3 file(s))") {
+	if !strings.Contains(out, "Workspace ready (7 file(s))") {
 		t.Errorf("forced init out = %q", out)
 	}
 }
 
 func TestInitCountsWhenOptedIn(t *testing.T) {
 	t.Chdir(t.TempDir())
+	// Same isolation: counting an init must not seed the real home.
+	t.Setenv("HOME", t.TempDir())
 	countersFile := filepath.Join(t.TempDir(), "counters.json")
 	t.Setenv("LOOP_COUNTERS", "1")
 	t.Setenv("LOOP_COUNTERS_FILE", countersFile)

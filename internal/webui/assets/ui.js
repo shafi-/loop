@@ -216,8 +216,43 @@
     toastTimer = setTimeout(function () { t.hidden = true; }, 4500);
   }
   document.body.addEventListener("htmx:responseError", function (e) {
+    var f = e.detail.elt;
+    // The save form's 409 (file exists) is handled by its own confirm
+    // flow below — a toast behind a modal would just be noise.
+    if (f && f.matches && f.matches(".save-form") && e.detail.xhr.status === 409) return;
     var text = (e.detail.xhr.responseText || "").replace(/<[^>]*>/g, " ").trim();
     toast("✗ " + (text || "HTTP " + e.detail.xhr.status));
+  });
+
+  // ─── create page ────────────────────────────────────────────────────
+  // Drafting replaces the editor's content; if something is already
+  // there, ask before it vanishes.
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var f = e.detail.elt;
+    if (!f || !f.matches || !f.matches(".draft-form")) return;
+    var ed = document.getElementById("yaml");
+    if (ed && ed.value.trim() && !window.confirm("Drafting replaces the editor's current content. Continue?")) {
+      e.preventDefault();
+    }
+  });
+  // Saving onto an existing file: the daemon refuses with 409; ask the
+  // user and retry with the overwrite flag set. The daemon still
+  // re-validates before writing.
+  document.body.addEventListener("htmx:responseError", function (e) {
+    var f = e.detail.elt;
+    if (!f || !f.matches || !f.matches(".save-form") || e.detail.xhr.status !== 409) return;
+    var msg = (e.detail.xhr.responseText || "").replace(/<[^>]*>/g, " ").trim();
+    if (!window.confirm(msg + "\n\nOverwrite it?")) return;
+    var flag = f.querySelector("input[name='overwrite']");
+    if (flag) flag.value = "1";
+    window.htmx.trigger(f, "submit");
+  });
+  // A completed save resets the flag — the next save asks again.
+  document.body.addEventListener("htmx:afterRequest", function (e) {
+    var f = e.detail.elt;
+    if (!e.detail.successful || !f || !f.matches || !f.matches(".save-form")) return;
+    var flag = f.querySelector("input[name='overwrite']");
+    if (flag) flag.value = "0";
   });
 
   // The composer sits outside the swap region, so htmx never replaces

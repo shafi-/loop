@@ -77,15 +77,20 @@ changed.`,
 				return fmt.Errorf("executor is not ready — fix the problems above and re-run `loop setup`")
 			}
 
-			// 3. Doctor.
+			// 3. Shipped personas (the dev team every project can reference).
+			fmt.Fprintln(out, "\n── built-in personas ──")
+			seedGlobalPersonas(out, cmd.ErrOrStderr())
+
+			// 4. Doctor.
 			fmt.Fprintln(out, "\n── health check ──")
 			if err := runDoctor(out, cmd.ErrOrStderr()); err != nil {
 				return err
 			}
 			fmt.Fprintln(out, "\nready. next:")
-			fmt.Fprintln(out, "  loop init                                # scaffold a workspace (if you haven't)")
-			fmt.Fprintln(out, "  loop run pipelines/feature-delivery.yaml # first pipeline")
-			fmt.Fprintln(out, "  loop chat rooms/leadership.yaml          # first room")
+			fmt.Fprintln(out, "  loop init                      # scaffold a workspace (if you haven't)")
+			fmt.Fprintln(out, "  loop chat rooms/feature.yaml   # shape a feature with the shipped council")
+			fmt.Fprintln(out, "  loop chat rooms/dev.yaml       # the shipped dev team")
+			fmt.Fprintln(out, "  loop run pipelines/review.yaml")
 			return nil
 		},
 	}

@@ -13,12 +13,22 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/llm"
 )
+
 // Agent is one room participant: a persona with a resolved provider.
 type Agent struct {
 	Persona  config.Persona
 	Provider llm.Provider
 	// CWD confines the persona's file tools (empty = process cwd).
 	CWD string
+	// Workspace is the project brief grounding the persona in the
+	// workspace the room was opened in (workspace.Brief). Empty = no
+	// brief; prompts are then identical to a brief-less agent.
+	Workspace string
+	// Knowledge returns the maintained project digest block
+	// (knowledge.DigestBlock), re-read per reply so an auto-refresh
+	// mid-session is seen by the very next turn. nil = no knowledge
+	// layer; the decision prompt deliberately never sees it.
+	Knowledge func() string
 	// ToolHook, when set, is called once per executed tool with a
 	// compact human-readable line ("wrote plans/x.md (120 bytes)") —
 	// the room wires it to a UI notice and a transcript line.
@@ -27,6 +37,9 @@ type Agent struct {
 
 // Name returns the persona identifier.
 func (a *Agent) Name() string { return a.Persona.Name }
+
+// Model returns the resolved model id this agent's requests use.
+func (a *Agent) Model() string { return a.model() }
 
 // Decision is the structured outcome of the speak-or-silent call.
 type Decision struct {
@@ -82,6 +95,27 @@ func (a *Agent) framing(room []config.Persona) string {
 		a.Persona.Name, role, others(room, a.Persona.Name))
 }
 
+// base composes the persona's identity preface: its own system prompt,
+// the workspace brief (when the host supplied one), the maintained
+// project digest (same terms), and the room framing. Both reply paths
+// build on it so grounding can never reach one and miss the other.
+func (a *Agent) base(room []config.Persona) string {
+	parts := make([]string, 0, 4)
+	if s := strings.TrimSpace(a.Persona.System); s != "" {
+		parts = append(parts, s)
+	}
+	if s := strings.TrimSpace(a.Workspace); s != "" {
+		parts = append(parts, s)
+	}
+	if a.Knowledge != nil {
+		if s := strings.TrimSpace(a.Knowledge()); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	parts = append(parts, a.framing(room))
+	return strings.Join(parts, "\n\n")
+}
+
 // Reply produces this agent's answer to the conversation. The transcript
 // is explicitly attributed ([name] lines) because provider role arrays
 // cannot represent multi-party conversations cleanly. When onDelta is
@@ -94,7 +128,7 @@ func (a *Agent) Reply(ctx context.Context, room []config.Persona, conversation s
 	if len(a.Persona.Tools) > 0 {
 		return a.replyWithTools(ctx, room, conversation, onDelta)
 	}
-	system := strings.TrimSpace(a.Persona.System + "\n\n" + a.framing(room) + `
+	system := strings.TrimSpace(a.base(room) + `
 Reply to the user directly. Stay strictly in your role's perspective.
 Be concise. Do not repeat what other participants already said. Never
 prefix your reply with your own name.`)
@@ -120,7 +154,11 @@ Workspace orientation: pipeline runs keep their records under
 paused), events.jsonl (everything that happened, in order), and
 context.json (every stage's output text). To report a run's status,
 read its state.json first, then the tail of events.jsonl. Do not
-guess other filenames.`
+guess other filenames. A maintained digest of this codebase lives
+under .loop/knowledge/ (you may already see it above): for orientation
+prefer the project_notes tool — no argument lists the area notes, a
+slug reads one — and open files with read_file only when you need
+exact code.`
 
 // replyWithTools is the native tool loop for room agents: rounds of
 // completions with tools available, tool calls executed in-process
@@ -128,7 +166,7 @@ guess other filenames.`
 // the round budget is spent. Tool rounds use Complete — the final text
 // is delivered as one delta.
 func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conversation string, onDelta llm.StreamFunc) (string, error) {
-	system := strings.TrimSpace(a.Persona.System+"\n\n"+a.framing(room)+`
+	system := strings.TrimSpace(a.base(room) + `
 Reply to the user directly. Stay strictly in your role's perspective.
 Be concise. Do not repeat what other participants already said. Never
 prefix your reply with your own name.
@@ -136,7 +174,7 @@ prefix your reply with your own name.
 You have tools: read_file, write_file, run_command — confined to the
 workspace. When a deliverable is worth keeping (a plan, a brief, a
 report), write it to a file and say so in one line. Keep tool use
-purposeful; conversation is still your main job.`+workspaceOrientation)
+purposeful; conversation is still your main job.` + workspaceOrientation)
 
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: conversation}}
 	for round := 0; round < MaxToolRounds; round++ {
@@ -213,17 +251,16 @@ func outOrError(out string, err error) string {
 // to answer with your role's best perspective — silence is the rare
 // case, not the polite one. (The old framing — "silence is
 // respectable" — made rooms dead: every untagged message ended in
-// silence.)
-func (a *Agent) decideSpeakPrompt(conversation, newMessage string) string {
+// silence.) The conversation ends with the CEO's new message; the
+// prompt points at it rather than embedding it twice.
+func (a *Agent) decideSpeakPrompt(conversation string) string {
 	role := a.Persona.Role
 	if role == "" {
 		role = "colleague"
 	}
-	return fmt.Sprintf(`%s
+	return fmt.Sprintf(`The conversation so far — the CEO's new message is its LAST line:
 
-=== New message from the CEO ===
 %s
-
 You are %s, the %s. The user is the CEO of the company: when the CEO
 speaks, everyone at this table is expected to bring their best
 perspective — your role's vantage point is exactly why you are in the
@@ -239,19 +276,20 @@ another agent this turn.
 priority: how strongly you should answer. 5 — the CEO asked something
 your role is closest to. 4 — you can add real value from your seat.
 3 — marginal color only. 1-2 — the silent cases above.`,
-		conversation, newMessage, a.Persona.Name, role)
+		conversation, a.Persona.Name, role)
 }
 
 // DecideSpeak asks whether this agent should respond to the new message.
 // It uses structured output: cheap (few hundred tokens), typed, and
-// identical across providers.
-func (a *Agent) DecideSpeak(ctx context.Context, room []config.Persona, conversation, newMessage string) (Decision, error) {
+// identical across providers. The conversation must end with the new
+// user message.
+func (a *Agent) DecideSpeak(ctx context.Context, room []config.Persona, conversation string) (Decision, error) {
 	system := fmt.Sprintf("You are %s, the %s. You decide whether you personally should answer the CEO's latest message, and how strongly.", a.Persona.Name, a.Persona.Role)
 
 	req := llm.Request{
 		Model:          a.model(),
 		System:         system,
-		Messages:       []llm.Message{{Role: llm.RoleUser, Content: a.decideSpeakPrompt(conversation, newMessage)}},
+		Messages:       []llm.Message{{Role: llm.RoleUser, Content: a.decideSpeakPrompt(conversation)}},
 		ResponseSchema: speakSchema,
 		MaxTokens:      300,
 	}

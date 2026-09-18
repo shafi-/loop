@@ -1,0 +1,37 @@
+# Review pipeline
+#
+# Reviews the working tree's uncommitted changes the way a senior
+# reviewer reads a diff: correctness first, then security, tests,
+# style — with a verdict. Plain stages only (no agent executor), so
+# it runs in any workspace, CI included.
+#
+# Run it:
+#   loop run pipelines/review.yaml
+# Scoped:
+#   loop run pipelines/review.yaml --var scope=internal/api
+
+name: review
+description: Review the working tree's uncommitted changes
+
+vars:
+  scope: ""
+
+stages:
+  - id: diff
+    type: tool
+    run: git -c color.ui=never diff HEAD -- ${vars.scope} || echo "(no git repository or no uncommitted changes)"
+    output: diff_text
+
+  - id: review
+    type: llm
+    terminal: true
+    prompt: |
+      Review these code changes like a senior reviewer: correctness
+      first, then security, then tests, then style. For each finding:
+      location, what breaks or risks, and the fix you would make.
+      Separate blocking issues from nits. If the diff is empty, say
+      so plainly. End with "VERDICT: approve" or "VERDICT:
+      request-changes".
+
+      ${outputs.diff_text}
+    output: review_md

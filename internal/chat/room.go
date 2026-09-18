@@ -13,6 +13,9 @@ import (
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/knowledge"
+	"github.com/shafi-/loop/internal/llm"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Defaults when the room YAML leaves settings unset.
@@ -51,7 +54,7 @@ type UI interface {
 type CustomCommand struct {
 	Name   string                    // the verb, without the slash
 	Guard  func(args []string) error // optional veto
-	Handle func(args []string, ui UI) error
+	Handle func(ctx context.Context, args []string, ui UI) error
 }
 
 // Room is one configured multi-agent channel.
@@ -63,11 +66,31 @@ type Room struct {
 		SpeakThreshold        float64
 		MaxSpontaneousReplies int
 		HistoryWindow         int
+		// MaxContextBytes bounds the rendered conversation string sent
+		// to models (0 = DefaultMaxContextBytes).
+		MaxContextBytes int
+		// KnowledgeDisabled records settings.knowledge: false.
+		KnowledgeDisabled bool
 	}
 	Transcript *Transcript
+	// Workspace is the room's workspace root (the directory the room
+	// was opened in). /notes reads the knowledge layer through it.
+	Workspace string
+	// Knowledge maintains the workspace's project knowledge layer
+	// (.loop/knowledge/). The layer only describes landed work: hosts
+	// call EnsureKnowledge at session open to reconcile it with the
+	// workspace, and completed pipeline runs refresh it in their own
+	// process. Agent file writes mid-conversation never touch it —
+	// until a pipeline lands, everyone sees the last completed state.
+	// Hosts attach it via SetKnowledge; nil = disabled.
+	Knowledge *knowledge.Manager
+	// Usage is the session's token ledger; hosts set it when they wrap
+	// the agents' providers. The /cost command and the hosting surface
+	// read it. nil = this room's cost is not tracked.
+	Usage *usage.Meter
 	// CustomCommands are the room's verbs; NewRoom seeds the built-in
-	// rotation commands (/reset, /fork <n>), and hosts may adjust their
-	// guards or add their own via Command.
+	// rotation commands (/reset, /fork <n>) and /cost, and hosts may
+	// adjust their guards or add their own via Command.
 	CustomCommands []CustomCommand
 }
 
@@ -87,8 +110,134 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 	if r.Settings.HistoryWindow <= 0 {
 		r.Settings.HistoryWindow = DefaultHistoryWindow
 	}
-	r.CustomCommands = r.rotationCommands()
+	r.Settings.MaxContextBytes = cfg.Settings.MaxContextBytes
+	if r.Settings.MaxContextBytes <= 0 {
+		r.Settings.MaxContextBytes = DefaultMaxContextBytes
+	}
+	r.Settings.KnowledgeDisabled = cfg.Settings.Knowledge != nil && !*cfg.Settings.Knowledge
+	r.CustomCommands = append(r.rotationCommands(), r.costCommand(), r.compactCommand(), r.notesCommand())
 	return r
+}
+
+// SetKnowledge attaches the knowledge layer; a room whose settings say
+// knowledge: false declines it. Hosts call this once, after NewRoom.
+func (r *Room) SetKnowledge(m *knowledge.Manager) {
+	if r.Settings.KnowledgeDisabled {
+		return
+	}
+	r.Knowledge = m
+}
+
+// notesCommand seeds /notes: the knowledge layer for zero tokens —
+// list the area notes, or print one. Deterministic file reads appended
+// as system lines, so every attached client and every non-tool agent
+// sees the same thing.
+func (r *Room) notesCommand() CustomCommand {
+	return CustomCommand{
+		Name: "notes",
+		Handle: func(_ context.Context, args []string, ui UI) error {
+			line := knowledge.NotesReport(r.Workspace, args)
+			if err := r.Transcript.Append("system", line); err != nil {
+				return err
+			}
+			ui.Notice("%s", line)
+			return nil
+		},
+	}
+}
+
+// costCommand seeds /cost: the session's token ledger as one system
+// line, so every attached client — terminal, web, daemon — sees the
+// same answer without any surface-specific plumbing.
+func (r *Room) costCommand() CustomCommand {
+	return CustomCommand{
+		Name: "cost",
+		Handle: func(_ context.Context, args []string, ui UI) error {
+			line := r.CostReport()
+			if err := r.Transcript.Append("system", line); err != nil {
+				return err
+			}
+			ui.Notice("%s", line)
+			return nil
+		},
+	}
+}
+
+// maxCompactInput bounds the text one /compact summarizes; the tail is
+// what matters (older turns are the first to fall off anyway).
+const maxCompactInput = 32 << 10
+
+// compactCommand seeds /compact: one LLM call summarizes everything
+// before the live window into a "session so far" line; the summarized
+// prefix archives (never destroyed) and the summary rides as the first
+// context line. Manual by design — compaction spends the user's tokens
+// only when they ask.
+func (r *Room) compactCommand() CustomCommand {
+	return CustomCommand{
+		Name: "compact",
+		Handle: func(ctx context.Context, _ []string, ui UI) error {
+			window := r.Settings.HistoryWindow
+			msgs := r.Transcript.Window(0)
+			if len(msgs) <= window {
+				return r.Transcript.Append("system",
+					"◈ nothing to compact — the whole session still fits in the live window")
+			}
+			if len(r.Agents) == 0 {
+				return r.Transcript.Append("system", "◈ /compact needs at least one agent")
+			}
+			prefix := Render(msgs[:len(msgs)-window])
+			if len(prefix) > maxCompactInput {
+				prefix = "[… older turns clipped …]\n" + prefix[len(prefix)-maxCompactInput:]
+			}
+			provider := r.Agents[0].Provider
+			if r.Usage != nil {
+				provider = usage.Wrap(provider, r.Usage, "compact")
+			}
+			resp, err := provider.Complete(ctx, llm.Request{
+				Model: r.Agents[0].Model(),
+				System: `You summarize a strategy-room session for its participants.
+One tight paragraph: what was decided, what is open, facts established,
+and what remains. No preamble, no bullet-point ceremony.`,
+				Messages:  []llm.Message{{Role: llm.RoleUser, Content: prefix + "\n\nSummarize this session so far."}},
+				MaxTokens: 700,
+			})
+			if err != nil {
+				return r.Transcript.Append("system", "◈ /compact failed: "+err.Error())
+			}
+			summary := strings.TrimSpace(resp.Text)
+			if summary == "" {
+				return r.Transcript.Append("system", "◈ /compact produced no summary — transcript unchanged")
+			}
+			archive := fmt.Sprintf("transcript-%s.jsonl", time.Now().UTC().Format("20060102-150405"))
+			if err := r.Transcript.Compact(archive, window, "◈ session so far: "+summary); err != nil {
+				return err
+			}
+			ui.Notice("◈ compacted — %d turns summarized, archived as %s", len(msgs)-window, archive)
+			return nil
+		},
+	}
+}
+
+// CostReport renders the session's usage: the total plus per-agent
+// attribution when the ledger knows more than one contributor.
+func (r *Room) CostReport() string {
+	if r.Usage == nil {
+		return "◈ usage: not tracked for this session"
+	}
+	tot := r.Usage.Totals()
+	if tot.Calls == 0 {
+		return "◈ usage: no model calls recorded yet"
+	}
+	report := fmt.Sprintf("◈ session usage — %s", tot.FormatTotal())
+	if entries := r.Usage.Snapshot(); len(entries) > 1 {
+		var parts []string
+		for _, e := range entries {
+			parts = append(parts, fmt.Sprintf("%s: %d calls · in %s · out %s",
+				e.Label, e.Calls, usage.Human(e.InputTokens), usage.Human(e.OutputTokens)))
+		}
+		report += "\n" + strings.Join(parts, "\n")
+	}
+	return report
 }
 
 // rotationCommands seeds the engine's built-in room verbs.
@@ -96,7 +245,7 @@ func (r *Room) rotationCommands() []CustomCommand {
 	return []CustomCommand{
 		{
 			Name: "reset",
-			Handle: func(args []string, ui UI) error {
+			Handle: func(_ context.Context, args []string, ui UI) error {
 				archive, err := r.Rotate(0, "reset")
 				if err != nil {
 					return err
@@ -107,7 +256,7 @@ func (r *Room) rotationCommands() []CustomCommand {
 		},
 		{
 			Name: "fork",
-			Handle: func(args []string, ui UI) error {
+			Handle: func(_ context.Context, args []string, ui UI) error {
 				if len(args) != 1 {
 					return fmt.Errorf("usage: /fork <n> — keep the first n transcript lines")
 				}
@@ -181,6 +330,23 @@ func tagged(text string, known map[string]bool) []string {
 	return order
 }
 
+// EnsureKnowledge scans the knowledge layer and refreshes it when stale
+// or missing — session-open maintenance, the reconciliation point with
+// the workspace: external edits since last session, writes from
+// completed pipeline runs. A fresh layer costs zero model calls and
+// stays silent. Returns the announcement line, if one was recorded.
+// Safe to call from a host goroutine.
+func (r *Room) EnsureKnowledge(ctx context.Context) string {
+	if r.Knowledge == nil {
+		return ""
+	}
+	line := r.Knowledge.MaintainLine(ctx)
+	if line != "" {
+		_ = r.Transcript.Append("system", line)
+	}
+	return line
+}
+
 // Say processes one user message. Turn order matters: tagged agents reply
 // FIRST, and only then do observers decide — an observer judging the turn
 // before the named agents have spoken would evaluate a conversation that
@@ -195,7 +361,7 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	if strings.HasPrefix(text, "/") {
 		if verb, args := splitCommand(text); verb != "" {
 			if cmd := r.Command(verb); cmd != nil {
-				return r.runCommand(*cmd, args, ui)
+				return r.runCommand(ctx, *cmd, args, ui)
 			}
 		}
 	}
@@ -299,13 +465,20 @@ func (r *Room) decideAll(ctx context.Context, observers []*agent.Agent, ui UI) m
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	out := map[string]agent.Decision{}
-	conversation := r.Transcript.BuildConversation(r.Settings.HistoryWindow)
-	newMessage := lastUser(r.Transcript)
+	// The decision is a cheap structured call — it needs recency, not
+	// depth: a tighter window and byte budget than replies. The new
+	// message is the conversation's last line (appended before this
+	// runs), and the prompt points at it instead of re-embedding it.
+	window := r.Settings.HistoryWindow
+	if window > DecisionWindowMessages {
+		window = DecisionWindowMessages
+	}
+	conversation := r.Transcript.BuildConversation(window, DecisionContextBytes)
 	for _, a := range observers {
 		wg.Add(1)
 		go func(a *agent.Agent) {
 			defer wg.Done()
-			d, err := a.DecideSpeak(ctx, r.Personas, conversation, newMessage)
+			d, err := a.DecideSpeak(ctx, r.Personas, conversation)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -330,7 +503,7 @@ func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 		_ = r.Transcript.Append(a.Name(), "[tool] "+detail)
 	}
 	ui.AgentReplyStart(a.Name())
-	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow), func(delta string) {
+	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow, r.Settings.MaxContextBytes), func(delta string) {
 		ui.AgentTextDelta(a.Name(), delta)
 	})
 	if err != nil {
@@ -355,13 +528,13 @@ func splitCommand(text string) (string, []string) {
 // — veto, usage, execution — lands in the transcript as a system line,
 // the one surface every client shares. A mistyped command must not read
 // as a failed turn.
-func (r *Room) runCommand(cmd CustomCommand, args []string, ui UI) error {
+func (r *Room) runCommand(ctx context.Context, cmd CustomCommand, args []string, ui UI) error {
 	if cmd.Guard != nil {
 		if err := cmd.Guard(args); err != nil {
 			return r.Transcript.Append("system", "↻ "+err.Error())
 		}
 	}
-	if err := cmd.Handle(args, ui); err != nil {
+	if err := cmd.Handle(ctx, args, ui); err != nil {
 		return r.Transcript.Append("system", "↻ "+err.Error())
 	}
 	return nil

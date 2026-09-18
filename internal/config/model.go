@@ -42,11 +42,11 @@ var DefaultAPIKeyEnv = map[Provider]string{
 // caller value > env override > built-in default.
 type ModelConfig struct {
 	Provider    Provider `yaml:"provider"`
-	Model       string   `yaml:"model"`                  // optional; see Resolve()
-	BaseURL     string   `yaml:"base_url,omitempty"`     // redirects the provider's API family
-	APIKeyEnv   string   `yaml:"api_key_env,omitempty"`  // env var holding the key
-	Temperature *float64 `yaml:"temperature,omitempty"`  // nil = provider default
-	MaxTokens   int      `yaml:"max_tokens,omitempty"`   // 0 = adapter default
+	Model       string   `yaml:"model"`                 // optional; see Resolve()
+	BaseURL     string   `yaml:"base_url,omitempty"`    // redirects the provider's API family
+	APIKeyEnv   string   `yaml:"api_key_env,omitempty"` // env var holding the key
+	Temperature *float64 `yaml:"temperature,omitempty"` // nil = provider default
+	MaxTokens   int      `yaml:"max_tokens,omitempty"`  // 0 = adapter default
 }
 
 // RetryPolicy controls per-stage retry on transient failures.
@@ -239,12 +239,16 @@ func (s *Stage) init(t StageType, c stageCommonYAML) {
 }
 
 // Persona is an agent identity shared by rooms and pipeline agent stages.
+// A Persona either is concrete (name + system) or references the persona
+// library (Ref set): a reference may only add tools or a model block on
+// top of the library persona.
 type Persona struct {
 	Name   string       `yaml:"name"`
 	Role   string       `yaml:"role,omitempty"`
 	System string       `yaml:"system,omitempty"`
 	Model  *ModelConfig `yaml:"model,omitempty"`
 	Tools  []string     `yaml:"tools,omitempty"`
+	Ref    string       `yaml:"persona,omitempty"`
 }
 
 // RuntimeConfig configures the engine's own LLM usage (the "core loop").
@@ -267,6 +271,10 @@ type RoomSettings struct {
 	SpeakThreshold        float64 `yaml:"speak_threshold,omitempty"`         // 0..1; 0 = engine default
 	MaxSpontaneousReplies int     `yaml:"max_spontaneous_replies,omitempty"` // 0 = engine default
 	HistoryWindow         int     `yaml:"history_window,omitempty"`          // messages of transcript an observer sees
+	MaxContextBytes       int     `yaml:"max_context_bytes,omitempty"`       // byte budget of the rendered conversation sent to models; 0 = default (24 KiB)
+	// Knowledge opts out of the auto-maintained project knowledge layer
+	// (digest + area notes under .loop/knowledge/). Unset = on.
+	Knowledge *bool `yaml:"knowledge,omitempty"`
 }
 
 // RoomPipeline is a pipeline a room can command: an in-room alias and
@@ -291,9 +299,11 @@ type DocumentKind string
 const (
 	KindPipeline DocumentKind = "pipeline"
 	KindRoom     DocumentKind = "room"
+	KindPersona  DocumentKind = "persona"
 )
 
-// IdentifyKind sniffs a loaded document: pipelines have "stages", rooms have "agents".
+// IdentifyKind sniffs a loaded document: pipelines have "stages", rooms
+// have "agents", persona-library files have a top-level "system".
 func IdentifyKind(doc *yaml.Node) (DocumentKind, bool) {
 	if doc.Kind != yaml.MappingNode {
 		return "", false
@@ -304,6 +314,8 @@ func IdentifyKind(doc *yaml.Node) (DocumentKind, bool) {
 			return KindPipeline, true
 		case "agents":
 			return KindRoom, true
+		case "system":
+			return KindPersona, true
 		}
 	}
 	return "", false

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // RunLog persists one run: the exact pipeline it ran, an append-only
@@ -78,7 +80,13 @@ type runState struct {
 	Failed string   `json:"failed,omitempty"`
 	Paused string   `json:"paused,omitempty"`
 	Done   bool     `json:"done,omitempty"`
+	// Usage accumulates every session's tokens (resume adds onto it);
+	// nil on runs that predate the ledger.
+	Usage *usage.Total `json:"usage,omitempty"`
 }
+
+// usageTotalPtr is a nil-safe pointer for runState.Usage.
+func usageTotalPtr(t usage.Total) *usage.Total { return &t }
 
 // SaveState atomically persists the resume pointer.
 func (l *RunLog) SaveState(s runState) error {

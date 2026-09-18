@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Client speaks to a loop daemon over its unix socket. Shared by the
@@ -20,6 +22,7 @@ import (
 // drives runs through the same API.
 type Client struct {
 	http *http.Client
+	slow *http.Client // long-haul calls (drafting) beyond the default timeout
 	base string
 }
 
@@ -101,7 +104,11 @@ func Dial(socket string) (*Client, error) {
 			return net.Dial("unix", socket)
 		},
 	}
-	c := &Client{http: &http.Client{Timeout: 10 * time.Second, Transport: tr}, base: "http://daemon"}
+	c := &Client{
+		http: &http.Client{Timeout: 10 * time.Second, Transport: tr},
+		slow: &http.Client{Timeout: 3 * time.Minute, Transport: tr},
+		base: "http://daemon",
+	}
 	if _, err := c.Ping(); err != nil {
 		return nil, fmt.Errorf("no loop daemon at %s — start one with `loop serve`", socket)
 	}
@@ -109,6 +116,16 @@ func Dial(socket string) (*Client, error) {
 }
 
 func (c *Client) do(method, path string, body, out any) error {
+	return c.call(c.http, method, path, body, out)
+}
+
+// doLong is do, on the patient client: drafting waits on a model, not
+// on the daemon.
+func (c *Client) doLong(method, path string, body, out any) error {
+	return c.call(c.slow, method, path, body, out)
+}
+
+func (c *Client) call(hc *http.Client, method, path string, body, out any) error {
 	var rd io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -124,7 +141,7 @@ func (c *Client) do(method, path string, body, out any) error {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return err
 	}
@@ -251,7 +268,8 @@ type RoomInfo struct {
 	Pipelines []string          `json:"pipelines"`
 	Busy      bool              `json:"busy"`
 	Lines     int               `json:"transcript_lines"`
-	Runs      []RunInfo         `json:"runs"` // the room's own pipeline runs
+	Runs      []RunInfo         `json:"runs"`  // the room's own pipeline runs
+	Usage     *usage.Total      `json:"usage"` // the session's token ledger, when calls were made
 }
 
 // HostRoom hosts (or attaches to) a room session on the daemon.
@@ -411,6 +429,105 @@ func (c *Client) RoomFork(name string, through int) (string, error) {
 	}
 	err := c.do("POST", "/api/rooms/"+name+"/fork", map[string]int{"through": through}, &res)
 	return res.Archived, err
+}
+
+// ─── authoring: draft, validate, save ────────────────────────────────
+
+// ValidationIssue is one problem with a document: where, and what.
+type ValidationIssue struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+// ValidationResult is the answer to a validate call; Errors is nil
+// when OK.
+type ValidationResult struct {
+	OK     bool              `json:"ok"`
+	Errors []ValidationIssue `json:"errors"`
+}
+
+// Draft asks the daemon to turn a plain-language description into
+// drafted YAML (kind: "pipeline" or "room"). The generator's honesty
+// contract holds: a failure returns as an error, never a guess.
+func (c *Client) Draft(kind, description string) (string, error) {
+	var res struct {
+		YAML string `json:"yaml"`
+	}
+	err := c.doLong("POST", "/api/workspace/draft",
+		map[string]string{"kind": kind, "description": description}, &res)
+	return res.YAML, err
+}
+
+// Validate checks YAML with the daemon's strict parser — the same
+// report `loop validate` would give the saved file.
+func (c *Client) Validate(kind, content string) (ValidationResult, error) {
+	var res ValidationResult
+	err := c.do("POST", "/api/workspace/validate",
+		map[string]string{"kind": kind, "content": content}, &res)
+	return res, err
+}
+
+// Save validates and writes the document into the kind's workspace
+// directory; the saved path comes back. When the target exists, the
+// daemon refuses (409) — retry with overwrite confirmed by the user.
+func (c *Client) Save(kind, content string, overwrite bool) (string, error) {
+	var res struct {
+		Path string `json:"path"`
+	}
+	err := c.do("POST", "/api/workspace/save",
+		map[string]any{"kind": kind, "content": content, "overwrite": overwrite}, &res)
+	return res.Path, err
+}
+
+// ─── personas ────────────────────────────────────────────────────────
+
+// PersonaInfo is one listed persona and where it lives.
+type PersonaInfo struct {
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+	Scope string `json:"scope"` // "project" | "global"
+	Path  string `json:"path"`
+}
+
+// Personas lists both libraries: project first, then global.
+func (c *Client) Personas() ([]PersonaInfo, error) {
+	var res struct {
+		Personas []PersonaInfo `json:"personas"`
+	}
+	err := c.get("/api/personas", &res)
+	return res.Personas, err
+}
+
+// PersonaDetail returns a persona's YAML text for editing.
+func (c *Client) PersonaDetail(scope, name string) (string, error) {
+	var res struct {
+		YAML string `json:"yaml"`
+	}
+	err := c.do("GET", "/api/personas/detail?scope="+scope+"&name="+name, nil, &res)
+	return res.YAML, err
+}
+
+// SavePersona saves a persona into one of the libraries ("project" or
+// "global"); same validate-then-write, overwrite-refuses contract as
+// Save.
+func (c *Client) SavePersona(scope, content string, overwrite bool) (string, error) {
+	var res struct {
+		Path string `json:"path"`
+	}
+	err := c.do("POST", "/api/workspace/save",
+		map[string]any{"kind": "persona", "scope": scope, "content": content, "overwrite": overwrite}, &res)
+	return res.Path, err
+}
+
+// DeletePersona removes a persona from one library. The daemon refuses
+// while workspace documents still reference it.
+func (c *Client) DeletePersona(scope, name string) (string, error) {
+	var res struct {
+		Removed string `json:"removed"`
+	}
+	err := c.do("POST", "/api/personas/delete",
+		map[string]string{"scope": scope, "name": name}, &res)
+	return res.Removed, err
 }
 
 // Stream subscribes to a run's events from after the given sequence

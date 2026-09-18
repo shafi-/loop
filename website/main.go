@@ -100,7 +100,7 @@ func run(out string) error {
 	if err := buildDocs(out, docsT, manual); err != nil {
 		return err
 	}
-	landing := pageData{Root: "", Title: "loop — a deterministic agentic harness"}
+	landing := pageData{Root: "", Title: "loop — plan in a room, run in a pipeline"}
 	var buf bytes.Buffer
 	if err := landingT.Execute(&buf, landing); err != nil {
 		return err
@@ -197,7 +197,7 @@ func buildDocs(out string, docsT *template.Template, manual []byte) error {
 	if len(sections) > 0 {
 		next = &docsLink{Title: sections[0].Title, Href: sections[0].Slug + "/"}
 	}
-	if err := write("docs", "..", "", template.HTML(rewriteAnchors(intro, "", "", anchorSection)), nil, cards, nil, next); err != nil {
+	if err := write("docs", "../", "", template.HTML(rewriteAnchors(intro, "", "", anchorSection)), nil, cards, nil, next); err != nil {
 		return err
 	}
 
