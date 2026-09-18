@@ -80,8 +80,9 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	r.Usage = meter
 	out := cmd.OutOrStdout()
 	// The knowledge layer: agents carry the maintained digest, /notes
-	// reads it for zero tokens, and turns that write files end with an
-	// incremental refresh. Unresolvable provider = off, one notice.
+	// reads it for zero tokens. The layer only describes landed work —
+	// completed pipeline runs refresh it in their own process; session
+	// open reconciles it below. Unresolvable provider = off, one notice.
 	if err := attachKnowledge(r, agents, meter); err != nil {
 		fmt.Fprintf(out, "· knowledge layer off: %v\n", err)
 	}

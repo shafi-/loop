@@ -17,7 +17,7 @@ import (
 // knowledgeMock scripts the knowledge maintainer's calls: a plan, one
 // note, one digest — dispatched by request shape like the knowledge
 // package's own tests.
-func knowledgeMock(plan string) llm.Provider {
+func knowledgeMock(plan string) *llm.Mock {
 	return llm.NewMockFunc(func(req llm.Request) *llm.Response {
 		if req.ResponseSchema != nil {
 			return &llm.Response{Text: plan}
@@ -31,7 +31,7 @@ func knowledgeMock(plan string) llm.Provider {
 
 const areaPlan = `{"areas":[{"name":"Core","scope":"the core","dirs":["pkg"],"files":[]}]}`
 
-func TestKnowledgeMaintainsAfterWritingTurn(t *testing.T) {
+func TestWritingTurnDoesNotTouchKnowledge(t *testing.T) {
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, "pkg"), 0o755); err != nil {
 		t.Fatal(err)
@@ -40,8 +40,8 @@ func TestKnowledgeMaintainsAfterWritingTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// One tool-using agent: writes a file, then answers. An empty room
-	// roster keeps observers (and their decision calls) out of the way.
+	// One tool-using agent: writes a file, then answers. A writing turn
+	// is drafting, not landing — the knowledge layer must not move.
 	writer := &agent.Agent{
 		Persona: config.Persona{Name: "builder", Role: "Builder", System: "build", Tools: []string{"write_file"}},
 		Provider: llm.NewMock(
@@ -59,41 +59,39 @@ func TestKnowledgeMaintainsAfterWritingTurn(t *testing.T) {
 	cfg := config.Room{Name: "k", Agents: []config.Persona{p}}
 	r := NewRoom(cfg, []*agent.Agent{writer}, tr)
 	r.Workspace = ws
-	r.SetKnowledge(&knowledge.Manager{WS: ws, Provider: knowledgeMock(areaPlan), Model: "mock", Meter: usage.NewMeter()})
+	km := knowledgeMock(areaPlan)
+	r.SetKnowledge(&knowledge.Manager{WS: ws, Provider: km, Model: "mock", Meter: usage.NewMeter()})
 
 	ui := &recorderUI{}
 	if err := r.Say(context.Background(), "@builder make it so", ui); err != nil {
 		t.Fatal(err)
 	}
-
-	// The refresh ran and was announced once.
-	announcements := 0
 	for _, m := range tr.Messages {
-		if m.From == "system" && strings.Contains(m.Text, "◈ knowledge:") {
-			announcements++
+		if m.From == "system" && strings.Contains(m.Text, "◈ knowledge") {
+			t.Fatalf("writing turn touched knowledge: %q", m.Text)
 		}
 	}
-	if announcements != 1 {
-		t.Fatalf("knowledge announcements = %d, want 1 (messages: %+v)", announcements, tr.Messages)
+	if _, ok := knowledge.ReadDigest(ws); ok {
+		t.Fatal("digest built by a writing turn — only landed work maintains the layer")
 	}
-	if _, ok := knowledge.ReadDigest(ws); !ok {
-		t.Fatal("digest not built by post-turn maintenance")
+	if km.Calls() != 0 {
+		t.Fatalf("writing turn spent %d knowledge calls, want 0", km.Calls())
 	}
 
-	// A turn that writes nothing spends nothing.
-	before := r.Knowledge // same manager; assert via a fresh scan instead
+	// Session open is the reconciliation point: EnsureKnowledge catches
+	// the drifted workspace (external edits, draft writes) exactly once.
+	if line := r.EnsureKnowledge(context.Background()); line == "" {
+		t.Fatal("session-open maintenance should announce a rebuild")
+	}
+	if _, ok := knowledge.ReadDigest(ws); !ok {
+		t.Fatal("digest not built by session-open maintenance")
+	}
 	rep := knowledge.Scan(ws, knowledgeMustLoad(t, ws))
 	if !rep.Fresh {
 		t.Fatalf("layer not fresh after maintenance: %+v", rep)
 	}
-	_ = before
-	if err := r.Say(context.Background(), "@builder just talk", ui); err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range tr.Messages {
-		if m.From == "system" && strings.HasPrefix(m.Text, "◈ knowledge: knowledge up to date") {
-			t.Fatal("no-op maintenance must stay silent")
-		}
+	if line := r.EnsureKnowledge(context.Background()); line != "" {
+		t.Fatalf("fresh layer must stay silent, got %q", line)
 	}
 }
 

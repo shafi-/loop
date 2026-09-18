@@ -121,7 +121,8 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	}
 	rs.room.Usage = meter
 	// The knowledge layer: agents carry the maintained digest, /notes
-	// reads it for zero tokens, turns that write files refresh it. An
+	// reads it for zero tokens. Completed pipeline runs refresh it in
+	// their own process; session open (below) reconciles it. An
 	// unresolvable provider leaves it off — hosting is not held hostage.
 	if err := attachKnowledge(rs.room, agents, meter); err != nil {
 		_ = tr.Append("system", "knowledge layer off: "+err.Error())

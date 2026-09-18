@@ -98,10 +98,12 @@ re-reading the source tree every session:
   — zero model calls either way.
 
 Maintenance is automatic and **incremental**: a content-hash scan costs
-nothing when nothing changed, and a turn (or pipeline run) that wrote
-files ends with a refresh of just the stale notes plus the digest —
-metered under the `knowledge` label in `/cost`. Session open catches
-external edits the same way. Opt out per room with
+nothing when nothing changed. Refreshes run when a pipeline run
+completes — just the stale notes plus the digest, metered under the
+`knowledge` label in `/cost` — and session open reconciles external
+edits the same way. Agent file writes mid-conversation never touch it:
+until a pipeline lands, the knowledge every participant sees is the
+last completed state. Opt out per room with
 `settings.knowledge: false`, or drive it headless:
 
 ```bash

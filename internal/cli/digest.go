@@ -30,10 +30,11 @@ func newKnowledgeManager(meter *usage.Meter) (*knowledge.Manager, error) {
 }
 
 // attachKnowledge wires the knowledge layer into a room: the /notes
-// verb and post-turn refreshes read and write .loop/knowledge/, and
-// every agent carries the digest block, re-read per reply so a
-// mid-session refresh is seen by the next turn. An unresolvable
-// provider returns an error — the knowledge layer is off, not fatal.
+// verb reads .loop/knowledge/, and every agent carries the digest
+// block, re-read per reply so a refresh (a completed pipeline run, or
+// session-open reconciliation) is seen by the next turn. An
+// unresolvable provider returns an error — the knowledge layer is off,
+// not fatal.
 func attachKnowledge(r *chat.Room, agents []*agent.Agent, meter *usage.Meter) error {
 	cwd, _ := os.Getwd()
 	r.Workspace = cwd
@@ -71,8 +72,9 @@ func newDigestCmd() *cobra.Command {
 The knowledge layer lives in .loop/knowledge/: a digest that rides every
 room agent's system prompt, and per-area notes agents pull on demand.
 Maintenance is incremental — an unchanged workspace costs zero model
-calls. Rooms maintain it automatically after implementation turns; this
-command does it headless (from scripts, or after pipeline runs).`,
+calls. Completed pipeline runs refresh it automatically; rooms reconcile
+it at session open. This command does it headless (from scripts, or any
+time you want the summaries now).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			km, err := newKnowledgeManager(usage.NewMeter())

@@ -26,8 +26,9 @@ func newKnowledgeManager(meter *usage.Meter) (*knowledge.Manager, error) {
 
 // attachKnowledge wires the knowledge layer into a hosted room: the
 // digest rides every agent's system prompt (re-read per reply, so a
-// refresh is seen by the next turn), /notes reads it for zero tokens,
-// and file-writing turns end with an incremental refresh.
+// refresh is seen by the next turn) and /notes reads it for zero
+// tokens. Refreshes come from completed pipeline runs and session-open
+// reconciliation — agent file writes mid-conversation never touch it.
 func attachKnowledge(r *chat.Room, agents []*agent.Agent, meter *usage.Meter) error {
 	cwd, _ := os.Getwd()
 	r.Workspace = cwd
