@@ -18,6 +18,7 @@ import (
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/generator"
 	"github.com/shafi-/loop/internal/runctl"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Server is the loop core as a service: it supervises `loop run` children
@@ -496,6 +497,7 @@ type roomJSON struct {
 	Busy      bool              `json:"busy"`
 	Lines     int               `json:"transcript_lines"`
 	Runs      []runJSON         `json:"runs"` // the room's own pipeline runs
+	Usage     *usage.Total      `json:"usage,omitempty"`
 }
 
 func (s *Server) roomJSON(rs *roomSession) roomJSON {
@@ -515,6 +517,12 @@ func (s *Server) roomJSON(rs *roomSession) roomJSON {
 		out.Pipelines = append(out.Pipelines, p.Name)
 	}
 	out.Lines = countLines(filepath.Join(".loop", "rooms", rs.cfg.Name, "transcript.jsonl"))
+	if rs.room.Usage != nil {
+		t := rs.room.Usage.Totals()
+		if t.Calls > 0 {
+			out.Usage = &t
+		}
+	}
 	for _, ru := range rs.sup.Runs() {
 		out.Runs = append(out.Runs, s.toRunJSON(ru))
 	}

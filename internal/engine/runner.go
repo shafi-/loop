@@ -9,6 +9,7 @@ import (
 
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/executor"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // maxSteps caps total stage transitions per run. The schema allows routers
@@ -30,6 +31,11 @@ type Runner struct {
 	ResumeID  string    // non-empty: resume this run
 	CWD       string    // working dir for tool/agent stages; empty = process cwd
 	Logf      func(format string, args ...any)
+	// Usage, when set, is the run's token ledger — the caller may
+	// pre-populate it (e.g. wrapping the narrator's provider in it
+	// before Run). Run creates a fresh meter when nil. Resumed runs
+	// accumulate onto the totals their state.json recorded.
+	Usage *usage.Meter
 }
 
 // RunResult is the terminal state of a run.
@@ -42,6 +48,7 @@ type RunResult struct {
 	Err         error
 	Summary     string // narrator's failure explanation, when configured
 	Steps       int
+	Usage       usage.Total // tokens across all sessions of this run (0 when nothing was metered)
 }
 
 // resumeState tracks which stages already produced output in a resumed run.
@@ -74,6 +81,10 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	if deps.Executors == nil {
 		deps.Executors = executor.NewRegistry()
 	}
+	if r.Usage == nil {
+		r.Usage = usage.NewMeter()
+	}
+	deps.Usage = r.Usage
 
 	runID := r.RunID
 	if runID == "" {
@@ -115,6 +126,15 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 	deps.Narrator = r.Narrator
 
 	c := NewContext(r.Pipeline.Vars)
+	// persistState saves the resume pointer with the run's accumulated
+	// usage: prior sessions (state.json) + this session's meter.
+	var priorUsage usage.Total
+	persistState := func(s runState) {
+		s.Usage = usageTotalPtr(priorUsage.Add(r.Usage.Totals()))
+		if err := log.SaveState(s); err != nil {
+			r.runlogf("saving state: %v", err)
+		}
+	}
 	indexByID := make(map[string]int, len(r.Pipeline.Stages))
 	for i := range r.Pipeline.Stages {
 		indexByID[r.Pipeline.Stages[i].ID] = i
@@ -136,6 +156,9 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		}
 		if st == nil {
 			return nil, fmt.Errorf("run %s has no recorded state to resume from", runID)
+		}
+		if st.Usage != nil {
+			priorUsage = *st.Usage
 		}
 		if st.Done {
 			r.runlogf("run %s is already complete — nothing to resume", runID)
@@ -179,7 +202,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		// (a failed label lingering after progress misleads readers).
 		state.Failed = ""
 		state.Paused = ""
-		log.SaveState(state)
+		persistState(state)
 	}
 	defer func() {
 		ev := "run_completed"
@@ -192,6 +215,12 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			// The event names where the run stopped: for a failure that is
 			// the failed stage, not the (empty) pause pointer.
 			stage = res.FailedStage
+		}
+		res.Usage = priorUsage.Add(r.Usage.Totals())
+		if res.Usage.Calls > 0 {
+			log.Event("usage", "", map[string]any{
+				"calls": res.Usage.Calls, "input_tokens": res.Usage.InputTokens, "output_tokens": res.Usage.OutputTokens,
+			})
 		}
 		log.Event(ev, stage, map[string]any{"steps": res.Steps})
 	}()
@@ -211,7 +240,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			res.PausedStage = s.ID
 			res.Err = ctx.Err()
 			state.Paused = s.ID
-			log.SaveState(state)
+			persistState(state)
 			return res, nil
 		}
 
@@ -230,7 +259,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 				res.PausedStage = s.ID
 				state.Paused = s.ID
 				state.Failed = ""
-				log.SaveState(state)
+				persistState(state)
 				return res, nil
 			}
 			log.Event("stage_failed", s.ID, map[string]any{"error": err.Error()})
@@ -253,7 +282,7 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 					log.Event("narration", s.ID, map[string]any{"text": summary})
 				}
 			}
-			log.SaveState(state)
+			persistState(state)
 			return res, nil
 		}
 

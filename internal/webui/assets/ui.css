@@ -397,6 +397,10 @@ details.room-head > summary:hover { background: var(--edge); }
   margin-bottom: .6rem;
 }
 .sidecar-empty { font-size: .85rem; }
+.sidecar-usage {
+  font-size: .72rem; color: var(--muted); border: 1px dashed var(--edge);
+  border-radius: 6px; padding: .3rem .5rem;
+}
 .sidecar-item { border: 1px solid var(--edge); border-radius: 8px; margin-bottom: .45rem; background: var(--bg); }
 .sidecar-item summary {
   display: flex; gap: .5rem; align-items: center;

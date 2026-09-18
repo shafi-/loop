@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Client speaks to a loop daemon over its unix socket. Shared by the
@@ -266,7 +268,8 @@ type RoomInfo struct {
 	Pipelines []string          `json:"pipelines"`
 	Busy      bool              `json:"busy"`
 	Lines     int               `json:"transcript_lines"`
-	Runs      []RunInfo         `json:"runs"` // the room's own pipeline runs
+	Runs      []RunInfo         `json:"runs"`  // the room's own pipeline runs
+	Usage     *usage.Total      `json:"usage"` // the session's token ledger, when calls were made
 }
 
 // HostRoom hosts (or attaches to) a room session on the daemon.

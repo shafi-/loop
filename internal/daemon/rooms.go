@@ -24,6 +24,7 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/runctl"
+	"github.com/shafi-/loop/internal/usage"
 	"github.com/shafi-/loop/internal/workspace"
 )
 
@@ -95,7 +96,10 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	if err != nil {
 		abs = file
 	}
-	agents, err := buildRoomAgents(cfg)
+	// The session's token ledger rides the room: agent calls record
+	// into it, /cost and the API report from it.
+	meter := usage.NewMeter()
+	agents, err := buildRoomAgents(cfg, meter)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +119,7 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 		room:     chat.NewRoom(*cfg, agents, tr),
 		tr:       tr,
 	}
+	rs.room.Usage = meter
 	// Typed /reset and /fork meet the same veto as the endpoints: no
 	// rotating under a live pipeline run. The verbs live in the room's
 	// command registry; the daemon attaches its guard to them by name.
@@ -306,7 +311,7 @@ func resolveRoomPipeline(roomPath string, cfg *config.Room, alias string) (strin
 
 // buildRoomAgents resolves a provider per agent — the same rule as the
 // chat command: a persona without a model block is env-driven.
-func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
+func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, error) {
 	factory := engine.DefaultProviderFactory()
 	cwd, _ := os.Getwd()
 	brief := workspace.Brief(cwd)
@@ -321,6 +326,7 @@ func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
 		}
+		provider = usage.Wrap(provider, meter, p.Name)
 		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
 	}
 	return agents, nil

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/shafi-/loop/internal/daemon"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 func ev(typ string, payload string) daemon.EventLine {
@@ -370,6 +371,7 @@ func TestChatFragmentRotateMarkup(t *testing.T) {
 		"hms":        func(t time.Time) string { return t.Local().Format("15:04") },
 		"hue":        hue,
 		"initial":    initial,
+		"human":      usage.Human,
 		"md":         func(s string) template.HTML { return template.HTML(s) },
 	}).ParseFS(files, "templates/*.html")
 	if err != nil {

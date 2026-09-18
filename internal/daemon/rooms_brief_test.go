@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Room agents are grounded in the workspace they were hosted from: the
@@ -26,7 +27,7 @@ func TestBuildRoomAgentsCarriesWorkspaceBrief(t *testing.T) {
 	}
 
 	room := &config.Room{Name: "demo", Agents: []config.Persona{{Name: "scout", System: "You scout."}}}
-	agents, err := buildRoomAgents(room)
+	agents, err := buildRoomAgents(room, usage.NewMeter())
 	if err != nil {
 		t.Fatal(err)
 	}

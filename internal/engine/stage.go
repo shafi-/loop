@@ -8,6 +8,7 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/executor"
 	"github.com/shafi-/loop/internal/llm"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // HumanIO is how the engine asks the user a question (human stages).
@@ -27,6 +28,14 @@ type stageDeps struct {
 	CWD       string
 	Log       *RunLog                          // run event log (executor observability lands here)
 	Warnf     func(format string, args ...any) // progress warnings (nil = silent)
+	Usage     *usage.Meter                     // token ledger; stage/gate calls wrap their providers with it
+}
+
+// metered wraps a resolved provider so its calls land in the run's
+// ledger under a stage-scoped label. A nil meter (tests, quiet runs)
+// returns the provider unchanged.
+func (d *stageDeps) metered(p llm.Provider, label string) llm.Provider {
+	return usage.Wrap(p, d.Usage, label)
 }
 
 // stageOutcome is a stage's effect on the run: its textual output plus an
@@ -62,6 +71,7 @@ func runLLMStage(ctx context.Context, s *config.Stage, c *Context, d *stageDeps)
 	if err != nil {
 		return nil, err
 	}
+	provider = d.metered(provider, "stage:"+s.ID)
 	req := llmRequest(cfg, s.LLM.System, []llm.Message{{Role: llm.RoleUser, Content: prompt}})
 
 	resp, err := completeLLM(ctx, provider, req, d.Stdout)

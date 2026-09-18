@@ -15,6 +15,7 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/engine"
+	"github.com/shafi-/loop/internal/usage"
 	"github.com/shafi-/loop/internal/workspace"
 )
 
@@ -58,7 +59,10 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	if err != nil {
 		return err
 	}
-	agents, err := buildRoomAgents(room)
+	// The session's token ledger: every agent call records into it and
+	// /cost reports from it.
+	meter := usage.NewMeter()
+	agents, err := buildRoomAgents(room, meter)
 	if err != nil {
 		return err
 	}
@@ -73,6 +77,7 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	// per opened session, keyed by room name.
 	counters.BumpKey("room_sessions", room.Name)
 	r := chat.NewRoom(*room, agents, transcript)
+	r.Usage = meter
 
 	out := cmd.OutOrStdout()
 	names := make([]string, 0, len(room.Agents))
@@ -152,8 +157,9 @@ var executablePath = os.Executable
 // (ModelConfig.Resolve fills in provider, model id, and key var).
 // Agents with tools get the workspace as their working directory, and
 // every agent carries the workspace brief so replies are about THIS
-// project, not a generic one.
-func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
+// project, not a generic one. When meter is non-nil, every provider is
+// wrapped into it under the agent's name — /cost's per-agent numbers.
+func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, error) {
 	factory := engine.DefaultProviderFactory()
 	cwd, _ := os.Getwd()
 	brief := workspace.Brief(cwd)
@@ -168,6 +174,7 @@ func buildRoomAgents(room *config.Room) ([]*agent.Agent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
 		}
+		provider = usage.Wrap(provider, meter, p.Name)
 		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
 	}
 	return agents, nil

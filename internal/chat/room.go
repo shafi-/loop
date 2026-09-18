@@ -13,6 +13,7 @@ import (
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/usage"
 )
 
 // Defaults when the room YAML leaves settings unset.
@@ -65,9 +66,13 @@ type Room struct {
 		HistoryWindow         int
 	}
 	Transcript *Transcript
+	// Usage is the session's token ledger; hosts set it when they wrap
+	// the agents' providers. The /cost command and the hosting surface
+	// read it. nil = this room's cost is not tracked.
+	Usage *usage.Meter
 	// CustomCommands are the room's verbs; NewRoom seeds the built-in
-	// rotation commands (/reset, /fork <n>), and hosts may adjust their
-	// guards or add their own via Command.
+	// rotation commands (/reset, /fork <n>) and /cost, and hosts may
+	// adjust their guards or add their own via Command.
 	CustomCommands []CustomCommand
 }
 
@@ -87,8 +92,47 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 	if r.Settings.HistoryWindow <= 0 {
 		r.Settings.HistoryWindow = DefaultHistoryWindow
 	}
-	r.CustomCommands = r.rotationCommands()
+	r.CustomCommands = append(r.rotationCommands(), r.costCommand())
 	return r
+}
+
+// costCommand seeds /cost: the session's token ledger as one system
+// line, so every attached client — terminal, web, daemon — sees the
+// same answer without any surface-specific plumbing.
+func (r *Room) costCommand() CustomCommand {
+	return CustomCommand{
+		Name: "cost",
+		Handle: func(args []string, ui UI) error {
+			line := r.CostReport()
+			if err := r.Transcript.Append("system", line); err != nil {
+				return err
+			}
+			ui.Notice("%s", line)
+			return nil
+		},
+	}
+}
+
+// CostReport renders the session's usage: the total plus per-agent
+// attribution when the ledger knows more than one contributor.
+func (r *Room) CostReport() string {
+	if r.Usage == nil {
+		return "◈ usage: not tracked for this session"
+	}
+	tot := r.Usage.Totals()
+	if tot.Calls == 0 {
+		return "◈ usage: no model calls recorded yet"
+	}
+	report := fmt.Sprintf("◈ session usage — %s", tot.FormatTotal())
+	if entries := r.Usage.Snapshot(); len(entries) > 1 {
+		var parts []string
+		for _, e := range entries {
+			parts = append(parts, fmt.Sprintf("%s: %d calls · in %s · out %s",
+				e.Label, e.Calls, usage.Human(e.InputTokens), usage.Human(e.OutputTokens)))
+		}
+		report += "\n" + strings.Join(parts, "\n")
+	}
+	return report
 }
 
 // rotationCommands seeds the engine's built-in room verbs.

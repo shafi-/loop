@@ -94,6 +94,7 @@ func classifyIntent(ctx context.Context, s *config.Stage, d *stageDeps, prompt, 
 		// their hint — masking them would hide actionable setup errors.
 		return "", "", fmt.Errorf("gate classification for %s: %w", s.ID, err)
 	}
+	provider = d.metered(provider, "gate:"+s.ID)
 	req := llmRequest(s.Human.Model, gateClassifierSystem, []llm.Message{{
 		Role: llm.RoleUser,
 		Content: "The question the reviewer was asked:\n\n" + prompt +

@@ -1,4 +1,5 @@
 {{define "sidecar_fragment"}}
+{{if .Room.Usage}}<div class="sidecar-usage" title="this session's model usage — /cost for per-agent detail">◈ {{.Room.Usage.Calls}} calls · in {{human .Room.Usage.InputTokens}} · out {{human .Room.Usage.OutputTokens}} tokens</div>{{end}}
 <div class="sidecar-title">pipelines</div>
 {{if not .Sidecar}}<p class="muted sidecar-empty">no runs yet — start one below the chat.</p>{{else}}
 {{range .Sidecar}}
