@@ -36,6 +36,25 @@ code { color: var(--violet); }
 .muted { color: var(--muted); }
 a { color: var(--accent); }
 
+/* ─── dashboard: head bar, two action cards, stacked forms ──────── */
+.dash-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;
+}
+.dash-head h1 { margin: 0; }
+.create-links { display: flex; gap: 1rem; font-size: .88rem; }
+.create-links a { color: var(--muted); text-decoration: none; }
+.create-links a:hover { color: var(--accent); }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+.stack-form { display: flex; flex-direction: column; gap: .5rem; }
+.stack-form input[name="file"] { width: 100%; flex: 1; min-width: 0; }
+.picker-row { display: flex; gap: .4rem; align-items: center; }
+.picker-row .picker-slot { flex: 1; min-width: 0; }
+.picker-row .picker-slot select { width: 100%; }
+.form-row { display: flex; gap: .5rem; }
+.form-row input { flex: 1; min-width: 0; }
+@media (max-width: 56rem) { .dash-grid { grid-template-columns: 1fr; } }
+
 .card {
   background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
   padding: .9rem 1.1rem; margin-bottom: 1rem;

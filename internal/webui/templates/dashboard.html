@@ -1,42 +1,53 @@
 {{define "dashboard"}}
 {{template "head" .}}
 
-<h1>runs &amp; rooms</h1>
+<div class="dash-head">
+  <h1>runs &amp; rooms</h1>
+  <nav class="create-links" aria-label="create">
+    <span class="muted">new</span>
+    <a href="/new/pipeline">pipeline</a>
+    <a href="/new/room">room</a>
+    <a href="/new/persona">persona</a>
+    <a href="/personas">manage personas</a>
+  </nav>
+</div>
 
 {{$first := ""}}{{if .Pipelines}}{{$first = (index .Pipelines 0).Path}}{{end}}
 {{$firstRoom := ""}}{{if .WSRooms}}{{$firstRoom = (index .WSRooms 0).Path}}{{end}}
 
-<section class="card">
-  <h2>start a run</h2>
-  <form hx-post="/runs" hx-target="#submit-result" hx-swap="innerHTML">
-    <span id="pipeline-picker" class="picker-slot">{{if .Pipelines}}{{template "picker_pipelines" .}}{{end}}</span>
-    <button type="button" class="ghost" title="refresh pipeline list" aria-label="refresh pipeline list"
-            hx-get="/frag/workspace?kind=pipelines" hx-target="#pipeline-picker" hx-swap="innerHTML">↻</button>
-    <label>pipeline file <input name="file" id="run-file" placeholder="pipelines/feature-delivery.yaml" required{{if $first}} value="{{$first}}"{{end}}></label>
-    <label>vars <input name="vars" placeholder="--var key=value …"></label>
-    <button type="submit">run</button>
-  </form>
-  <div id="submit-result"></div>
-</section>
+<div class="dash-grid">
+  <section class="card">
+    <h2>start a run</h2>
+    <form class="stack-form" hx-post="/runs" hx-target="#submit-result" hx-swap="innerHTML">
+      <div class="picker-row">
+        <span id="pipeline-picker" class="picker-slot">{{if .Pipelines}}{{template "picker_pipelines" .}}{{end}}</span>
+        <button type="button" class="ghost" title="refresh pipeline list" aria-label="refresh pipeline list"
+                hx-get="/frag/workspace?kind=pipelines" hx-target="#pipeline-picker" hx-swap="innerHTML">↻</button>
+      </div>
+      <input name="file" id="run-file" placeholder="pipelines/feature-delivery.yaml" required{{if $first}} value="{{$first}}"{{end}}>
+      <div class="form-row">
+        <input name="vars" placeholder="--var key=value …">
+        <button type="submit">run</button>
+      </div>
+    </form>
+    <div id="submit-result"></div>
+  </section>
 
-<section class="card">
-  <h2>open a room</h2>
-  <form method="post" action="/rooms/host">
-    <span id="room-picker" class="picker-slot">{{if .WSRooms}}{{template "picker_rooms" .}}{{end}}</span>
-    <button type="button" class="ghost" title="refresh room list" aria-label="refresh room list"
-            hx-get="/frag/workspace?kind=rooms" hx-target="#room-picker" hx-swap="innerHTML">↻</button>
-    <label>room file <input name="file" id="host-file" placeholder="rooms/leadership.yaml" required{{if $firstRoom}} value="{{$firstRoom}}"{{end}}></label>
-    <button type="submit">open</button>
-  </form>
-  <p class="muted">hosts the room on the daemon (or attaches to it if it's already live). pickers list pipelines/ and rooms/ in the workspace; typed paths still work anywhere.</p>
-</section>
-
-<section class="card">
-  <h2>create</h2>
-  <p class="muted">describe it — the daemon drafts the YAML, loop's parser validates it, and it saves into this workspace.</p>
-  <p><a class="btnlink" href="/new/pipeline">new pipeline</a> <a class="btnlink" href="/new/room">new room</a>
-     <a class="btnlink" href="/new/persona">new persona</a> <a class="btnlink" href="/personas">manage personas</a></p>
-</section>
+  <section class="card">
+    <h2>open a room</h2>
+    <form class="stack-form" method="post" action="/rooms/host">
+      <div class="picker-row">
+        <span id="room-picker" class="picker-slot">{{if .WSRooms}}{{template "picker_rooms" .}}{{end}}</span>
+        <button type="button" class="ghost" title="refresh room list" aria-label="refresh room list"
+                hx-get="/frag/workspace?kind=rooms" hx-target="#room-picker" hx-swap="innerHTML">↻</button>
+      </div>
+      <div class="form-row">
+        <input name="file" id="host-file" placeholder="rooms/leadership.yaml" required{{if $firstRoom}} value="{{$firstRoom}}"{{end}}>
+        <button type="submit">open</button>
+      </div>
+    </form>
+  </section>
+</div>
 
 <section class="card">
   <div class="card-head">
@@ -44,7 +55,7 @@
     <button type="button" class="ghost" title="refresh rooms" aria-label="refresh rooms"
             hx-get="/frag/rooms" hx-target="#rooms" hx-swap="innerHTML">↻ refresh</button>
   </div>
-  <div id="rooms" hx-get="/frag/rooms" hx-trigger="load" hx-swap="innerHTML"><p class="muted">loading…</p></div>
+  <div id="rooms" hx-get="/frag/rooms" hx-trigger="load" hx-swap="innerHTML">{{template "frag_rooms" .}}</div>
 </section>
 
 <div id="runs" hx-get="/frag/runs" hx-trigger="every 3s" hx-swap="innerHTML">
