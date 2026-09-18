@@ -16,9 +16,10 @@ import (
 )
 
 // seedGlobalPersonas writes the shipped personas (architect, engineer,
-// reviewer) into ~/.loop/personas/ — the library every project reads.
-// Idempotent: an existing file is never overwritten, so a persona the
-// user edited stays edited (delete the file to restore the built-in).
+// reviewer, product-owner, cfo, end-user) into ~/.loop/personas/ — the
+// library every project reads. Idempotent: an existing file is never
+// overwritten, so a persona the user edited stays edited (delete the
+// file to restore the built-in).
 func seedGlobalPersonas(out, warn io.Writer) {
 	dir, err := config.GlobalPersonaDir()
 	if err != nil {

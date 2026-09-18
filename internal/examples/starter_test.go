@@ -83,6 +83,39 @@ func TestStarterDevRoomResolves(t *testing.T) {
 	}
 }
 
+func TestStarterFeatureRoomResolves(t *testing.T) {
+	if _, err := config.ParseRoom([]byte(FeatureRoom)); err != nil {
+		t.Fatalf("feature room no longer validates: %v", err)
+	}
+	lib, _ := seedLibrary(t)
+	room, err := config.ParseRoom([]byte(FeatureRoom))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := room.ResolvePersonas(lib); err != nil {
+		t.Fatalf("feature room persona references do not resolve: %v", err)
+	}
+	// The shaping council, not the build team: every seat is a
+	// decision-side persona or the architect, and none carries tools —
+	// shaping is talk, not file work.
+	want := map[string]bool{"product-owner": true, "cfo": true, "end-user": true, "architect": true}
+	got := map[string]bool{}
+	for i := range room.Agents {
+		got[room.Agents[i].Name] = true
+		if len(room.Agents[i].Tools) > 0 {
+			t.Errorf("feature room grants %v to %s — shaping seats carry no tools", room.Agents[i].Tools, room.Agents[i].Name)
+		}
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("feature room lost its %q seat", name)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("feature room seats = %v, want exactly %v", got, want)
+	}
+}
+
 func TestStarterPipelinesValidateAndResolve(t *testing.T) {
 	lib, _ := seedLibrary(t)
 	for name, content := range map[string]string{

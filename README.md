@@ -44,14 +44,16 @@ endpoint) resolves from it, per the [grand rule](USER%20MANUAL.md#the-grand-rule
 export ANTHROPIC_API_KEY=sk-...   # or OPENAI_API_KEY; gateways: see the manual
 ```
 
-Scaffold a workspace — you get a dev room, two development pipelines,
-and the shipped personas (`architect`, `engineer`, `reviewer`) seeded
-into `~/.loop/personas/`, available in every project:
+Scaffold a workspace — you get two rooms, two development pipelines,
+and six shipped personas seeded into `~/.loop/personas/`, available in
+every project: the build side (`architect`, `engineer`, `reviewer`)
+and the feature-shaping side (`product-owner`, `cfo`, `end-user`):
 
 ```bash
 loop init
-loop chat rooms/dev.yaml "plan: add a health endpoint"   # the shipped dev team
-loop run pipelines/review.yaml                           # review your working tree
+loop chat rooms/feature.yaml "shape: one-off invoices for freelancers"   # decide the shape
+loop chat rooms/dev.yaml "plan: add a health endpoint"                   # then build it
+loop run pipelines/review.yaml                                           # review your working tree
 ```
 
 `pipelines/implement.yaml` goes further: the engineer agent works

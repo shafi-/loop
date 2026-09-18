@@ -27,6 +27,7 @@ func newInitCmd() *cobra.Command {
 				filepath.Join(dir, "pipelines", "implement.yaml"):        examples.ImplementPipeline,
 				filepath.Join(dir, "pipelines", "review.yaml"):           examples.ReviewPipeline,
 				filepath.Join(dir, "rooms", "leadership.yaml"):           assetRoom,
+				filepath.Join(dir, "rooms", "feature.yaml"):              examples.FeatureRoom,
 				filepath.Join(dir, "rooms", "dev.yaml"):                  examples.DevRoom,
 				filepath.Join(dir, "README.md"):                          assetReadme,
 			}
@@ -50,9 +51,9 @@ func newInitCmd() *cobra.Command {
 			// reference (rooms/dev.yaml and the pipelines do).
 			seedGlobalPersonas(cmd.OutOrStdout(), cmd.ErrOrStderr())
 			fmt.Fprintf(cmd.OutOrStdout(), "\nWorkspace ready (%d file(s)). Next:\n"+
+				"  loop chat rooms/feature.yaml \"shape: one-off invoices for freelancers\"\n"+
 				"  loop chat rooms/dev.yaml \"plan: add a health endpoint\"\n"+
-				"  loop run pipelines/review.yaml\n"+
-				"  loop validate rooms/dev.yaml\n", written)
+				"  loop run pipelines/review.yaml\n", written)
 			// Opt-in, anonymous, local (internal/counters).
 			counters.Bump("workspaces_initialized")
 			return nil

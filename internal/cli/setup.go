@@ -87,8 +87,9 @@ changed.`,
 				return err
 			}
 			fmt.Fprintln(out, "\nready. next:")
-			fmt.Fprintln(out, "  loop init                    # scaffold a workspace (if you haven't)")
-			fmt.Fprintln(out, "  loop chat rooms/dev.yaml     # the shipped dev team")
+			fmt.Fprintln(out, "  loop init                      # scaffold a workspace (if you haven't)")
+			fmt.Fprintln(out, "  loop chat rooms/feature.yaml   # shape a feature with the shipped council")
+			fmt.Fprintln(out, "  loop chat rooms/dev.yaml       # the shipped dev team")
 			fmt.Fprintln(out, "  loop run pipelines/review.yaml")
 			return nil
 		},

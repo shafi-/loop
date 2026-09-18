@@ -70,6 +70,7 @@ func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 		filepath.Join("pipelines", "implement.yaml"),
 		filepath.Join("pipelines", "review.yaml"),
 		filepath.Join("rooms", "leadership.yaml"),
+		filepath.Join("rooms", "feature.yaml"),
 		filepath.Join("rooms", "dev.yaml"),
 		"README.md",
 	} {
@@ -77,12 +78,12 @@ func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 			t.Errorf("init did not write %s: %v", path, err)
 		}
 	}
-	if !strings.Contains(out, "Workspace ready (6 file(s))") {
+	if !strings.Contains(out, "Workspace ready (7 file(s))") {
 		t.Errorf("out = %q", out)
 	}
 	// The shipped personas landed in the (isolated) global library.
 	home, _ := os.UserHomeDir()
-	for _, name := range []string{"architect", "engineer", "reviewer"} {
+	for _, name := range []string{"architect", "engineer", "reviewer", "product-owner", "cfo", "end-user"} {
 		if _, err := os.Stat(filepath.Join(home, ".loop", "personas", name+".yaml")); err != nil {
 			t.Errorf("persona %s not seeded: %v", name, err)
 		}
@@ -102,7 +103,7 @@ func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Workspace ready (6 file(s))") {
+	if !strings.Contains(out, "Workspace ready (7 file(s))") {
 		t.Errorf("forced init out = %q", out)
 	}
 }
