@@ -17,9 +17,13 @@ import (
 //	stages.<id>.answer       a human stage's raw reply (output mirrors it)
 //	outputs.<name>           alias when a stage sets an explicit output name
 type Context struct {
-	vars   map[string]any
-	stages map[string]map[string]string
+	vars    map[string]any
+	stages  map[string]map[string]string
 	outputs map[string]string
+	// lastClipped remembers which references the most recent
+	// InterpolatePrompt clipped, for the runner to log. Stages run
+	// sequentially on one goroutine, so no lock is needed.
+	lastClipped []string
 }
 
 func NewContext(vars map[string]any) *Context {
@@ -145,7 +149,29 @@ var refRe = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}|\$\{([^{}]+)\}`)
 // references are hard errors — silent empty strings would corrupt a
 // deterministic run.
 func (c *Context) Interpolate(s string) (string, error) {
+	return c.interpolate(s, 0)
+}
+
+// MaxPromptValue bounds one interpolated value entering a model prompt
+// or agent instruction (InterpolatePrompt). Tool commands, env values,
+// and router expressions use plain Interpolate and stay unclipped —
+// commands may legitimately carry bulk data, and routers compare exact
+// strings.
+const MaxPromptValue = 64 << 10
+
+const clippedValueMarker = "\n[… value clipped at %d bytes — the full text is in the run's context.json …]\n"
+
+// InterpolatePrompt is Interpolate for text a model will read: any
+// single resolved value larger than MaxPromptValue renders clipped with
+// a marker saying so (the model knows, the run log can be checked).
+// The context itself keeps full values — audit and resume are exact.
+func (c *Context) InterpolatePrompt(s string) (string, error) {
+	return c.interpolate(s, MaxPromptValue)
+}
+
+func (c *Context) interpolate(s string, maxValue int) (string, error) {
 	var perr error
+	var clipped []string
 	out := refRe.ReplaceAllStringFunc(s, func(m string) string {
 		groups := refRe.FindStringSubmatch(m)
 		raw := groups[1]
@@ -157,10 +183,24 @@ func (c *Context) Interpolate(s string) (string, error) {
 			perr = err
 			return m
 		}
+		if maxValue > 0 && len(v) > maxValue {
+			clipped = append(clipped, raw)
+			return v[:maxValue] + fmt.Sprintf(clippedValueMarker, maxValue)
+		}
 		return v
 	})
 	if perr != nil {
 		return "", perr
 	}
+	c.lastClipped = clipped
 	return out, nil
+}
+
+// TakeClipped returns (and clears) the references clipped by the most
+// recent InterpolatePrompt call — the caller logs them as events so a
+// clipped prompt is visible, never silent.
+func (c *Context) TakeClipped() []string {
+	clipped := c.lastClipped
+	c.lastClipped = nil
+	return clipped
 }

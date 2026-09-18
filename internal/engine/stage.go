@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/executor"
@@ -24,7 +25,7 @@ type stageDeps struct {
 	Human     HumanIO
 	Narrator  Narrator
 	Pipeline  *config.Pipeline
-	Stdout    io.Writer                        // streaming target for llm text (nil = quiet)
+	Stdout    io.Writer // streaming target for llm text (nil = quiet)
 	CWD       string
 	Log       *RunLog                          // run event log (executor observability lands here)
 	Warnf     func(format string, args ...any) // progress warnings (nil = silent)
@@ -58,15 +59,34 @@ var stageRunners = map[config.StageType]stageRunner{
 	config.StageAgent:  runAgentStage,
 }
 
+// logClippedValues records which references a prompt interpolation
+// clipped, so a shortened prompt is visible in the run log — never
+// silent.
+func logClippedValues(d *stageDeps, stageID string, c *Context) {
+	clipped := c.TakeClipped()
+	if len(clipped) == 0 || d.Log == nil {
+		return
+	}
+	d.Log.Event("value_clipped", stageID, map[string]any{
+		"refs":      clipped,
+		"max_bytes": MaxPromptValue,
+	})
+	if d.Warnf != nil {
+		d.Warnf("⚠ %s: %s clipped to %d bytes in the prompt (full value kept in context.json)",
+			stageID, strings.Join(clipped, ", "), MaxPromptValue)
+	}
+}
+
 // runLLMStage renders the prompt and asks the provider. When Stdout is
 // set the response streams to it token-by-token. Failures carry
 // kind-specific hints; silent truncation is surfaced loudly.
 func runLLMStage(ctx context.Context, s *config.Stage, c *Context, d *stageDeps) (*stageOutcome, error) {
 	cfg := s.LLM.Model // nil = env-driven (Resolve handles it)
-	prompt, err := c.Interpolate(s.LLM.Prompt)
+	prompt, err := c.InterpolatePrompt(s.LLM.Prompt)
 	if err != nil {
 		return nil, fmt.Errorf("prompt template: %w", err)
 	}
+	logClippedValues(d, s.ID, c)
 	provider, err := d.Providers(cfg)
 	if err != nil {
 		return nil, err
@@ -155,10 +175,11 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 	if s.Agent.Input == "" {
 		return nil, fmt.Errorf("agent stage %q needs `input:` — executors receive concrete instructions, not persona musings", s.ID)
 	}
-	instruction, err := c.Interpolate(s.Agent.Input)
+	instruction, err := c.InterpolatePrompt(s.Agent.Input)
 	if err != nil {
 		return nil, fmt.Errorf("input template: %w", err)
 	}
+	logClippedValues(d, s.ID, c)
 
 	rm := modelCfg.Resolve()
 	task := executor.Task{
@@ -174,6 +195,7 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 		},
 		Tools:    s.Agent.Tools,
 		Approval: s.Agent.Approval,
+		MaxTurns: s.Agent.MaxIterations,
 	}
 	// API key resolution lives with the provider factory's conventions.
 	if key, err := resolveAPIKey(modelCfg); err == nil {

@@ -19,10 +19,11 @@ import (
 // label — stages.<id>.intent — so routers branch on what the user
 // meant, not on exact string matching of free text.
 func runHumanStage(ctx context.Context, s *config.Stage, c *Context, d *stageDeps) (*stageOutcome, error) {
-	prompt, err := c.Interpolate(s.Human.Prompt)
+	prompt, err := c.InterpolatePrompt(s.Human.Prompt)
 	if err != nil {
 		return nil, fmt.Errorf("prompt template: %w", err)
 	}
+	logClippedValues(d, s.ID, c)
 	if d.Narrator != nil {
 		if mediated := d.Narrator.MediateHuman(ctx, s, prompt); mediated != "" {
 			if d.Log != nil {
@@ -95,6 +96,13 @@ func classifyIntent(ctx context.Context, s *config.Stage, d *stageDeps, prompt, 
 		return "", "", fmt.Errorf("gate classification for %s: %w", s.ID, err)
 	}
 	provider = d.metered(provider, "gate:"+s.ID)
+	// The classifier reads intent, not content: the question's tail
+	// (where the actual ask lands) is enough even when the prompt
+	// embeds a huge artifact.
+	const maxGateQuestion = 8 << 10
+	if len(prompt) > maxGateQuestion {
+		prompt = "[… question head clipped …]\n" + prompt[len(prompt)-maxGateQuestion:]
+	}
 	req := llmRequest(s.Human.Model, gateClassifierSystem, []llm.Message{{
 		Role: llm.RoleUser,
 		Content: "The question the reviewer was asked:\n\n" + prompt +
