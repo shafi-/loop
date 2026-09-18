@@ -41,7 +41,7 @@ func TestReplyWithToolsOrientsOnWorkspace(t *testing.T) {
 func TestDecideSpeakFramesCEO(t *testing.T) {
 	m := llm.NewMock(&llm.Response{Text: `{"speak":true,"priority":5,"reason":"asked"}`})
 	a := &Agent{Persona: config.Persona{Name: "scout", Role: "scout"}, Provider: m}
-	d, err := a.DecideSpeak(context.Background(), []config.Persona{a.Persona}, "earlier talk", "should we pivot?")
+	d, err := a.DecideSpeak(context.Background(), []config.Persona{a.Persona}, "earlier talk\n[user] should we pivot?")
 	if err != nil {
 		t.Fatal(err)
 	}

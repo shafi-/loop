@@ -45,7 +45,7 @@ func TestTranscriptConcurrentAppend(t *testing.T) {
 	go func() {
 		defer close(done)
 		for i := 0; i < 100; i++ {
-			_ = tr.BuildConversation(10)
+			_ = tr.BuildConversation(10, 0)
 		}
 	}()
 	_ = tr.Append("user", "x")

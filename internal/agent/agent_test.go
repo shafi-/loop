@@ -66,7 +66,7 @@ func TestAgentModelResolution(t *testing.T) {
 		Persona:  config.Persona{Name: "cfo", Role: "CFO", Model: &config.ModelConfig{Provider: config.ProviderAnthropic}},
 		Provider: dMock,
 	}
-	if _, err := a.DecideSpeak(context.Background(), nil, "", "new message"); err != nil {
+	if _, err := a.DecideSpeak(context.Background(), nil, "[user] new message"); err != nil {
 		t.Fatal(err)
 	}
 	last := dMock.Requests()[0]

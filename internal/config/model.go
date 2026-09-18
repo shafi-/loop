@@ -271,6 +271,7 @@ type RoomSettings struct {
 	SpeakThreshold        float64 `yaml:"speak_threshold,omitempty"`         // 0..1; 0 = engine default
 	MaxSpontaneousReplies int     `yaml:"max_spontaneous_replies,omitempty"` // 0 = engine default
 	HistoryWindow         int     `yaml:"history_window,omitempty"`          // messages of transcript an observer sees
+	MaxContextBytes       int     `yaml:"max_context_bytes,omitempty"`       // byte budget of the rendered conversation sent to models; 0 = default (24 KiB)
 }
 
 // RoomPipeline is a pipeline a room can command: an in-room alias and

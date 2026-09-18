@@ -239,5 +239,8 @@ func (r *Room) Validate() ValidationErrors {
 	if r.Settings.HistoryWindow < 0 {
 		err("settings.history_window", "must not be negative")
 	}
+	if r.Settings.MaxContextBytes < 0 {
+		err("settings.max_context_bytes", "must not be negative")
+	}
 	return errs
 }

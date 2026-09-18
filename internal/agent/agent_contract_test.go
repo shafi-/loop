@@ -74,7 +74,7 @@ func TestReplyAndDecideSpeakErrorPaths(t *testing.T) {
 	if _, err := a.Reply(context.Background(), nil, "hi", nil); err == nil {
 		t.Error("Reply must surface provider errors")
 	}
-	if _, err := a.DecideSpeak(context.Background(), nil, "before", "new"); err == nil {
+	if _, err := a.DecideSpeak(context.Background(), nil, "before"); err == nil {
 		t.Error("DecideSpeak must surface provider errors")
 	}
 }
@@ -84,7 +84,7 @@ func TestDecideSpeakClampsAndRejectsBadJSON(t *testing.T) {
 
 	clamp := llm.NewMock(&llm.Response{Text: `{"speak":true,"priority":9,"reason":"urgent"}`, StopReason: llm.StopEndTurn})
 	a := &Agent{Persona: room[0], Provider: clamp}
-	d, err := a.DecideSpeak(context.Background(), room, "", "the roof is on fire")
+	d, err := a.DecideSpeak(context.Background(), room, "[user] the roof is on fire")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestDecideSpeakClampsAndRejectsBadJSON(t *testing.T) {
 
 	low := llm.NewMock(&llm.Response{Text: `{"speak":false,"priority":0,"reason":"not mine"}`, StopReason: llm.StopEndTurn})
 	a.Provider = low
-	d, err = a.DecideSpeak(context.Background(), room, "", "hello")
+	d, err = a.DecideSpeak(context.Background(), room, "[user] hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestDecideSpeakClampsAndRejectsBadJSON(t *testing.T) {
 
 	bad := llm.NewMock(&llm.Response{Text: "I would definitely speak", StopReason: llm.StopEndTurn})
 	a.Provider = bad
-	if _, err := a.DecideSpeak(context.Background(), room, "", "hello"); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+	if _, err := a.DecideSpeak(context.Background(), room, "[user] hello"); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 		t.Errorf("non-JSON decision must fail with the raw text: %v", err)
 	}
 }

@@ -139,8 +139,59 @@ func Render(msgs []Message) string {
 	return b.String()
 }
 
+// Context budget defaults and clips. The window counts messages; the
+// budget counts bytes — a window of 50 huge pastes would otherwise ride
+// at full size into every prompt.
+const (
+	// DefaultMaxContextBytes bounds the conversation string sent to any
+	// model (settings.max_context_bytes tunes it per room).
+	DefaultMaxContextBytes = 24 << 10
+	// PerMessageClip caps any single rendered message; the full text
+	// always stays in transcript.jsonl.
+	PerMessageClip = 8 << 10
+	// DecisionWindowMessages / DecisionContextBytes bound the
+	// speak-or-silent call: recency is what it needs, not depth.
+	DecisionWindowMessages = 10
+	DecisionContextBytes   = 6 << 10
+
+	omittedMarker   = "[earlier messages omitted]"
+	clippedSuffix   = "\n… [message clipped]"
+)
+
 // BuildConversation renders the windowed transcript as one attributed
-// conversation string for prompts.
-func (t *Transcript) BuildConversation(window int) string {
-	return Render(t.Window(window))
+// conversation string for prompts, newest-priority under a byte budget:
+// messages render from the newest backwards until maxBytes is spent
+// (any single message clips at PerMessageClip with a visible marker),
+// and dropped history is announced by one leading omittedMarker line.
+// Deterministic — same transcript and budget, same string.
+func (t *Transcript) BuildConversation(window, maxBytes int) string {
+	if maxBytes <= 0 {
+		maxBytes = DefaultMaxContextBytes
+	}
+	msgs := t.Window(window)
+	rendered := make([]string, len(msgs))
+	for i, m := range msgs {
+		text := m.Text
+		if len(text) > PerMessageClip {
+			text = text[:PerMessageClip] + clippedSuffix
+		}
+		rendered[i] = fmt.Sprintf("[%s] %s\n", m.From, text)
+	}
+	// Collect from the newest backwards while the budget holds.
+	var kept []string
+	budget := maxBytes
+	for i := len(rendered) - 1; i >= 0; i-- {
+		if budget-len(rendered[i]) < 0 && len(kept) > 0 {
+			kept = append([]string{omittedMarker + "\n"}, kept...)
+			break
+		}
+		if len(rendered[i]) > budget {
+			// A single message larger than the whole budget: clip it to
+			// what remains rather than dropping the turn entirely.
+			rendered[i] = rendered[i][:budget] + clippedSuffix + "\n"
+		}
+		budget -= len(rendered[i])
+		kept = append([]string{rendered[i]}, kept...)
+	}
+	return strings.Join(kept, "")
 }

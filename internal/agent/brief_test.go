@@ -58,7 +58,7 @@ func TestWorkspaceBriefReachesReplyPrompts(t *testing.T) {
 	// call that does not even carry the persona's system today.
 	md := llm.NewMock(&llm.Response{Text: `{"speak":true,"priority":3,"reason":"asked"}`})
 	ad := &Agent{Persona: room[0], Provider: md, Workspace: brief}
-	if _, err := ad.DecideSpeak(context.Background(), room, "", "hello?"); err != nil {
+	if _, err := ad.DecideSpeak(context.Background(), room, "[user] hello?"); err != nil {
 		t.Fatal(err)
 	}
 	if s := md.Requests()[0].System; strings.Contains(s, "Project context") {

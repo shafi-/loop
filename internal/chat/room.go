@@ -64,6 +64,9 @@ type Room struct {
 		SpeakThreshold        float64
 		MaxSpontaneousReplies int
 		HistoryWindow         int
+		// MaxContextBytes bounds the rendered conversation string sent
+		// to models (0 = DefaultMaxContextBytes).
+		MaxContextBytes int
 	}
 	Transcript *Transcript
 	// Usage is the session's token ledger; hosts set it when they wrap
@@ -91,6 +94,10 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 	r.Settings.HistoryWindow = cfg.Settings.HistoryWindow
 	if r.Settings.HistoryWindow <= 0 {
 		r.Settings.HistoryWindow = DefaultHistoryWindow
+	}
+	r.Settings.MaxContextBytes = cfg.Settings.MaxContextBytes
+	if r.Settings.MaxContextBytes <= 0 {
+		r.Settings.MaxContextBytes = DefaultMaxContextBytes
 	}
 	r.CustomCommands = append(r.rotationCommands(), r.costCommand())
 	return r
@@ -343,13 +350,20 @@ func (r *Room) decideAll(ctx context.Context, observers []*agent.Agent, ui UI) m
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	out := map[string]agent.Decision{}
-	conversation := r.Transcript.BuildConversation(r.Settings.HistoryWindow)
-	newMessage := lastUser(r.Transcript)
+	// The decision is a cheap structured call — it needs recency, not
+	// depth: a tighter window and byte budget than replies. The new
+	// message is the conversation's last line (appended before this
+	// runs), and the prompt points at it instead of re-embedding it.
+	window := r.Settings.HistoryWindow
+	if window > DecisionWindowMessages {
+		window = DecisionWindowMessages
+	}
+	conversation := r.Transcript.BuildConversation(window, DecisionContextBytes)
 	for _, a := range observers {
 		wg.Add(1)
 		go func(a *agent.Agent) {
 			defer wg.Done()
-			d, err := a.DecideSpeak(ctx, r.Personas, conversation, newMessage)
+			d, err := a.DecideSpeak(ctx, r.Personas, conversation)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -374,7 +388,7 @@ func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 		_ = r.Transcript.Append(a.Name(), "[tool] "+detail)
 	}
 	ui.AgentReplyStart(a.Name())
-	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow), func(delta string) {
+	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow, r.Settings.MaxContextBytes), func(delta string) {
 		ui.AgentTextDelta(a.Name(), delta)
 	})
 	if err != nil {
