@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"time"
 
 	"github.com/shafi-/loop/internal/config"
@@ -110,6 +111,14 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		if err != nil {
 			log.Close()
 			return nil, fmt.Errorf("snapshotted pipeline no longer parses: %w", err)
+		}
+		// The snapshot stores the pipeline as authored: persona entries may
+		// be library references, which stages resolve by name. Re-resolve
+		// against the libraries the run's workspace sees now.
+		lib := config.NewPersonaLibrary(config.PersonaDirsFor(filepath.Join(r.CWD, "pipeline.yaml"))...)
+		if err := pipeline.ResolvePersonas(lib); err != nil {
+			log.Close()
+			return nil, fmt.Errorf("snapshotted pipeline personas: %w", err)
 		}
 		r.Pipeline = pipeline
 		r.Source = snap

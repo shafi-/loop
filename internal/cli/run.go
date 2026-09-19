@@ -124,9 +124,13 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			pipeline, err := config.ParsePipeline(source)
+			// LoadPipeline, not ParsePipeline: personas may be library
+			// references (`persona: engineer`), and stages look them up by
+			// their resolved name — an unresolved reference fails every
+			// agent stage with "persona not found in pipeline".
+			pipeline, err := config.LoadPipeline(args[0])
 			if err != nil {
-				return fmt.Errorf("pipeline %s: %w", args[0], err)
+				return err
 			}
 			for _, kv := range vars {
 				k, v, ok := strings.Cut(kv, "=")
