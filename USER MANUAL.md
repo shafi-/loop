@@ -746,8 +746,13 @@ reference personas by name instead of restating the prompt:
 Six personas ship with the binary and are seeded into the global
 library on `loop init` / `loop setup`: **architect**, **engineer**,
 **reviewer** (the build side) and **product-owner**, **cfo**,
-**end-user** (the side that shapes features). Edit your copies in
-`~/.loop/personas/` freely — seeding never overwrites an edited file.
+**end-user** (the side that shapes features). The build-side personas
+ship their seat's tools — architect and engineer can read, write, and
+run checks, the reviewer is read-only on purpose, the business seats
+carry no tools — so any room that references them gets sensible powers
+for free; a room's `tools:` on the agent entry overrides. Edit your
+copies in `~/.loop/personas/` freely — seeding never overwrites an
+edited file.
 
 ```yaml
 # .loop/personas/architect.yaml

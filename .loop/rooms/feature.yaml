@@ -1,0 +1,34 @@
+# Feature shaping room
+#
+# The decision side of shipping: bring a feature idea and this room
+# shapes it before anything is built. @product-owner owns what and for
+# whom, @cfo reality-checks cost and risk, @end-user reacts as the
+# person who has to live with it, @architect keeps it buildable. You
+# are the founder — the call is yours.
+#
+# When the shape settles, build it: open .loop/rooms/dev.yaml with the
+# settled direction, or run .loop/pipelines/implement.yaml with the task.
+#
+# Tooling: this room argues, it doesn't build — the business seats
+# (product-owner, cfo, end-user) carry no tools. @architect keeps its
+# library defaults (read code, write plans, run checks) and may offer a
+# DEEP DIVE when feasibility needs real verification: /deepdive @architect.
+#
+# The personas come from the global library (~/.loop/personas/), so
+# every project on this machine shares them; edit them there.
+#
+# Validate it:  loop validate .loop/rooms/feature.yaml
+# Open it:      loop chat .loop/rooms/feature.yaml
+
+name: feature
+
+agents:
+  - persona: product-owner
+  - persona: cfo
+  - persona: end-user
+  - persona: architect
+
+settings:
+  speak_threshold: 0.6
+  max_spontaneous_replies: 2
+  history_window: 50

@@ -11,12 +11,12 @@
 # the room refines and approves it, then /run implement builds the
 # newest plan in .loop/plans/ — no variables to remember.
 #
-# Tooling: tool-granted personas (architect, engineer) may offer a
-# DEEP DIVE when a question needs real verification — the offer's
-# button (or: /deepdive @agent [topic]) runs it on the agent executor,
-# with shell commands asking the room first. The reviewer has no tools:
-# it checks the conversation, not the code — grant tools: if you want
-# it reading.
+# Tooling: the tools come from the persona library — architect and
+# engineer carry the full working set, the reviewer is read-only on
+# purpose. Override per agent here with tools:. Tool-granted personas
+# may offer a DEEP DIVE when a question needs real verification — the
+# offer's button (or: /deepdive @agent [topic]) runs it on the agent
+# executor, with shell commands asking the room first.
 #
 # The personas come from the global library (~/.loop/personas/), so
 # every project on this machine shares the same team; edit them there.
@@ -31,11 +31,9 @@ pipelines:
     file: ../pipelines/implement.yaml
 
 agents:
-  - persona: architect
-    tools: [read_file, write_file]   # reads code to plan; writes .loop/plans/<name>.md
-  - persona: engineer
-    tools: [read_file, write_file, run_command]
-  - persona: reviewer
+  - persona: architect   # tools from the library: read, write plans, run checks
+  - persona: engineer    # read, write, run checks
+  - persona: reviewer    # read-only, by design
 
 settings:
   speak_threshold: 0.6

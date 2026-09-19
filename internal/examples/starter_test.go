@@ -24,10 +24,26 @@ func TestStarterPersonasParse(t *testing.T) {
 		if p.Name != name {
 			t.Errorf("persona file for %q declares name %q", name, p.Name)
 		}
-		// Library personas are identity-only: tools are granted at the
-		// use site, so referencing them never forces a tool set.
-		if len(p.Tools) > 0 {
-			t.Errorf("persona %s ships with tools %v — grant tools in the room or pipeline instead", name, p.Tools)
+		// Personas ship their seat's tools: the code seats can act in
+		// any room that references them, the business seats never do —
+		// the CFO argues from judgment, it does not read code.
+		want := map[string][][]string{
+			"architect":     {{"read_file", "write_file", "run_command"}},
+			"engineer":      {{"read_file", "write_file", "run_command"}},
+			"reviewer":      {{"read_file"}},
+			"cfo":           {nil},
+			"product-owner": {nil},
+			"end-user":      {nil},
+		}
+		allowed := want[name]
+		ok := false
+		for _, w := range allowed {
+			if strings.Join(w, ",") == strings.Join(p.Tools, ",") {
+				ok = true
+			}
+		}
+		if !ok {
+			t.Errorf("persona %s ships with tools %v — want one of %v", name, p.Tools, allowed)
 		}
 	}
 }
@@ -65,29 +81,35 @@ func TestStarterDevRoomResolves(t *testing.T) {
 	if err := room.ResolvePersonas(lib); err != nil {
 		t.Fatalf("dev room persona references do not resolve: %v", err)
 	}
-	// The engineer must come out of the library with a system, and the
-	// room grants it the file tools; the architect gets read+write for
-	// plan files (.loop/plans/<name>.md), not a shell.
-	var engineer, architect *config.Persona
+	// Tools come from the library now, not the room: the engineer and
+	// architect resolve with the full working set, the reviewer stays
+	// read-only — a room that wants different powers overrides with
+	// tools: on the agent entry.
+	var engineer, architect, reviewer *config.Persona
 	for i := range room.Agents {
 		switch room.Agents[i].Name {
 		case "engineer":
 			engineer = &room.Agents[i]
 		case "architect":
 			architect = &room.Agents[i]
+		case "reviewer":
+			reviewer = &room.Agents[i]
 		}
 	}
-	if engineer == nil || architect == nil {
-		t.Fatal("engineer or architect missing after resolution")
+	if engineer == nil || architect == nil || reviewer == nil {
+		t.Fatal("a shipped seat missing after resolution")
 	}
 	if engineer.System == "" {
 		t.Fatal("engineer resolved without a system prompt")
 	}
 	if len(engineer.Tools) != 3 {
-		t.Fatalf("engineer tools = %v, want the room's read/write/run grant", engineer.Tools)
+		t.Fatalf("engineer tools = %v, want the library's read/write/run set", engineer.Tools)
 	}
-	if len(architect.Tools) != 2 {
-		t.Fatalf("architect tools = %v, want read+write for plan files", architect.Tools)
+	if len(architect.Tools) != 3 {
+		t.Fatalf("architect tools = %v, want the library's read/write/run set", architect.Tools)
+	}
+	if len(reviewer.Tools) != 1 || reviewer.Tools[0] != "read_file" {
+		t.Fatalf("reviewer tools = %v, want read-only", reviewer.Tools)
 	}
 }
 
@@ -103,15 +125,23 @@ func TestStarterFeatureRoomResolves(t *testing.T) {
 	if err := room.ResolvePersonas(lib); err != nil {
 		t.Fatalf("feature room persona references do not resolve: %v", err)
 	}
-	// The shaping council, not the build team: every seat is a
-	// decision-side persona or the architect, and none carries tools —
-	// shaping is talk, not file work.
+	// The shaping council, not the build team: the business seats carry
+	// no tools — shaping is talk, and the CFO never reads code. The
+	// architect keeps its library defaults (read/write/run) so
+	// feasibility can be verified or deep-dived on request.
 	want := map[string]bool{"product-owner": true, "cfo": true, "end-user": true, "architect": true}
 	got := map[string]bool{}
 	for i := range room.Agents {
 		got[room.Agents[i].Name] = true
+		name := room.Agents[i].Name
+		if name == "architect" {
+			if len(room.Agents[i].Tools) != 3 {
+				t.Errorf("feature room architect tools = %v, want the library defaults", room.Agents[i].Tools)
+			}
+			continue
+		}
 		if len(room.Agents[i].Tools) > 0 {
-			t.Errorf("feature room grants %v to %s — shaping seats carry no tools", room.Agents[i].Tools, room.Agents[i].Name)
+			t.Errorf("feature room grants %v to %s — business seats carry no tools", room.Agents[i].Tools, name)
 		}
 	}
 	for name := range want {

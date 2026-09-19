@@ -9,6 +9,11 @@
 # When the shape settles, build it: open .loop/rooms/dev.yaml with the
 # settled direction, or run .loop/pipelines/implement.yaml with the task.
 #
+# Tooling: this room argues, it doesn't build — the business seats
+# (product-owner, cfo, end-user) carry no tools. @architect keeps its
+# library defaults (read code, write plans, run checks) and may offer a
+# DEEP DIVE when feasibility needs real verification: /deepdive @architect.
+#
 # The personas come from the global library (~/.loop/personas/), so
 # every project on this machine shares them; edit them there.
 #

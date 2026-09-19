@@ -81,6 +81,9 @@ stages:
       report that there is nothing to implement. Finish with a report:
       files changed, what each does, how you verified.
     tools: [read_file, write_file, run_command]
+    # Reads and writes are auto-approved; shell commands pause for a
+    # y/N answer (headless runs deny commands instead of running them).
+    approval: ask
     max_iterations: 15
     output: implement_md
 
@@ -146,6 +149,9 @@ stages:
       Previous report:
       ${outputs.implement_md}
     tools: [read_file, write_file, run_command]
+    # Reads and writes are auto-approved; shell commands pause for a
+    # y/N answer (headless runs deny commands instead of running them).
+    approval: ask
     max_iterations: 15
     output: implement_md
 

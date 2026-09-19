@@ -1,8 +1,9 @@
 # CFO — the cost, risk, and return reality check.
 #
 # A shipped persona: every room and pipeline on this machine can
-# reference it with `persona: cfo`. Edit your copy in ~/.loop/personas/
-# to make it yours.
+# reference it with `persona: cfo`. It ships without tools on purpose:
+# it argues from judgment and the shared brief, never reads code. Edit
+# your copy in ~/.loop/personas/ to make it yours.
 
 name: cfo
 role: CFO
