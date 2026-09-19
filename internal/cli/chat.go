@@ -10,13 +10,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/counters"
-	"github.com/shafi-/loop/internal/engine"
+
+	"github.com/shafi-/loop/internal/roomkit"
 	"github.com/shafi-/loop/internal/usage"
-	"github.com/shafi-/loop/internal/workspace"
 )
 
 func newChatCmd() *cobra.Command {
@@ -62,7 +61,7 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	// The session's token ledger: every agent call records into it and
 	// /cost reports from it.
 	meter := usage.NewMeter()
-	agents, err := buildRoomAgents(room, meter)
+	agents, err := roomkit.Agents(room, meter)
 	if err != nil {
 		return err
 	}
@@ -83,7 +82,7 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	// reads it for zero tokens. The layer only describes landed work —
 	// completed pipeline runs refresh it in their own process; session
 	// open reconciles it below. Unresolvable provider = off, one notice.
-	if err := attachKnowledge(r, agents, meter); err != nil {
+	if err := roomkit.AttachKnowledge(r, agents, meter); err != nil {
 		fmt.Fprintf(out, "· knowledge layer off: %v\n", err)
 	}
 
@@ -170,34 +169,6 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 // (rooms re-exec the real CLI). A variable so end-to-end tests can
 // point it at a freshly built binary.
 var executablePath = os.Executable
-
-// buildRoomAgents resolves a provider per agent. An agent without a
-// model block is env-driven: whatever family the environment configures
-// (ModelConfig.Resolve fills in provider, model id, and key var).
-// Agents with tools get the workspace as their working directory, and
-// every agent carries the workspace brief so replies are about THIS
-// project, not a generic one. When meter is non-nil, every provider is
-// wrapped into it under the agent's name — /cost's per-agent numbers.
-func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, error) {
-	factory := engine.DefaultProviderFactory()
-	cwd, _ := os.Getwd()
-	brief := workspace.Brief(cwd)
-	agents := make([]*agent.Agent, 0, len(room.Agents))
-	for i := range room.Agents {
-		p := room.Agents[i]
-		model := p.Model
-		if model == nil {
-			model = &config.ModelConfig{}
-		}
-		provider, err := factory(model)
-		if err != nil {
-			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
-		}
-		provider = usage.Wrap(provider, meter, p.Name)
-		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
-	}
-	return agents, nil
-}
 
 // printRunnable lists what /run accepts, one per line, marked by kind.
 func printRunnable(out io.Writer, names []string) {

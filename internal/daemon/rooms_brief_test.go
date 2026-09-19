@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/roomkit"
 	"github.com/shafi-/loop/internal/usage"
 )
 
@@ -27,7 +28,7 @@ func TestBuildRoomAgentsCarriesWorkspaceBrief(t *testing.T) {
 	}
 
 	room := &config.Room{Name: "demo", Agents: []config.Persona{{Name: "scout", System: "You scout."}}}
-	agents, err := buildRoomAgents(room, usage.NewMeter())
+	agents, err := roomkit.Agents(room, usage.NewMeter())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,58 +3,19 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
-	"github.com/shafi-/loop/internal/agent"
-	"github.com/shafi-/loop/internal/chat"
-	"github.com/shafi-/loop/internal/config"
-	"github.com/shafi-/loop/internal/engine"
-	"github.com/shafi-/loop/internal/knowledge"
+	"github.com/shafi-/loop/internal/roomkit"
 	"github.com/shafi-/loop/internal/usage"
 )
-
-// newKnowledgeManager builds the workspace's knowledge maintainer: the
-// env-default model (the same fallback any persona without a model
-// block uses), metered under the "knowledge" label so /cost shows what
-// maintenance spent.
-func newKnowledgeManager(meter *usage.Meter) (*knowledge.Manager, error) {
-	cwd, _ := os.Getwd()
-	mc := &config.ModelConfig{}
-	p, err := engine.DefaultProviderFactory()(mc)
-	if err != nil {
-		return nil, err
-	}
-	return &knowledge.Manager{WS: cwd, Provider: p, Model: mc.Resolve().Model, Meter: meter}, nil
-}
-
-// attachKnowledge wires the knowledge layer into a room: the /notes
-// verb reads .loop/knowledge/, and every agent carries the digest
-// block, re-read per reply so a refresh (a completed pipeline run, or
-// session-open reconciliation) is seen by the next turn. An
-// unresolvable provider returns an error — the knowledge layer is off,
-// not fatal.
-func attachKnowledge(r *chat.Room, agents []*agent.Agent, meter *usage.Meter) error {
-	cwd, _ := os.Getwd()
-	r.Workspace = cwd
-	km, err := newKnowledgeManager(meter)
-	if err != nil {
-		return err
-	}
-	r.SetKnowledge(km)
-	for _, a := range agents {
-		a.Knowledge = func() string { return knowledge.DigestBlock(cwd) }
-	}
-	return nil
-}
 
 // maintainWorkspaceKnowledge refreshes the knowledge layer after a
 // pipeline run — the auto-maintained briefs catching up with an
 // implementation the run just landed. Incremental: an unchanged
 // workspace costs zero model calls and stays silent.
 func maintainWorkspaceKnowledge(ctx context.Context, logf func(string, ...any)) {
-	km, err := newKnowledgeManager(usage.NewMeter())
+	km, err := roomkit.KnowledgeManager(usage.NewMeter())
 	if err != nil {
 		return // no provider configured — silently off
 	}
@@ -77,7 +38,7 @@ it at session open. This command does it headless (from scripts, or any
 time you want the summaries now).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			km, err := newKnowledgeManager(usage.NewMeter())
+			km, err := roomkit.KnowledgeManager(usage.NewMeter())
 			if err != nil {
 				return fmt.Errorf("the knowledge layer needs a provider: %w", err)
 			}

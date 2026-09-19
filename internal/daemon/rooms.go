@@ -20,13 +20,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/config"
-	"github.com/shafi-/loop/internal/engine"
+	"github.com/shafi-/loop/internal/roomkit"
+
 	"github.com/shafi-/loop/internal/runctl"
 	"github.com/shafi-/loop/internal/usage"
-	"github.com/shafi-/loop/internal/workspace"
 )
 
 // errRoomBusy is returned when a turn is already in flight: a room
@@ -100,7 +99,7 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	// The session's token ledger rides the room: agent calls record
 	// into it, /cost and the API report from it.
 	meter := usage.NewMeter()
-	agents, err := buildRoomAgents(cfg, meter)
+	agents, err := roomkit.Agents(cfg, meter)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +124,7 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	// reads it for zero tokens. Completed pipeline runs refresh it in
 	// their own process; session open (below) reconciles it. An
 	// unresolvable provider leaves it off — hosting is not held hostage.
-	if err := attachKnowledge(rs.room, agents, meter); err != nil {
+	if err := roomkit.AttachKnowledge(rs.room, agents, meter); err != nil {
 		_ = tr.Append("system", "knowledge layer off: "+err.Error())
 	}
 	// Session-open maintenance in the background: first seed or external
@@ -478,27 +477,4 @@ func hasVar(vars []string, key string) bool {
 		}
 	}
 	return false
-}
-
-// buildRoomAgents resolves a provider per agent — the same rule as the
-// chat command: a persona without a model block is env-driven.
-func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, error) {
-	factory := engine.DefaultProviderFactory()
-	cwd, _ := os.Getwd()
-	brief := workspace.Brief(cwd)
-	agents := make([]*agent.Agent, 0, len(room.Agents))
-	for i := range room.Agents {
-		p := room.Agents[i]
-		model := p.Model
-		if model == nil {
-			model = &config.ModelConfig{}
-		}
-		provider, err := factory(model)
-		if err != nil {
-			return nil, fmt.Errorf("agent %s: %w", p.Name, err)
-		}
-		provider = usage.Wrap(provider, meter, p.Name)
-		agents = append(agents, &agent.Agent{Persona: p, Provider: provider, CWD: cwd, Workspace: brief})
-	}
-	return agents, nil
 }
