@@ -102,16 +102,12 @@ var kindSpecs = map[string]kindSpec{
 // envGenerator resolves the environment's provider (the grand rule, no
 // flags) and returns a generator bound to it.
 func envGenerator() (*generator.Generator, error) {
-	rm := (&config.ModelConfig{}).Resolve()
-	opts := llm.Options{BaseURL: rm.BaseURL, MaxAttempts: 3}
-	opts.APIKey = os.Getenv(rm.APIKeyEnv)
-	if opts.APIKey == "" && rm.BaseURL == "" {
-		return nil, fmt.Errorf("no API key configured — set %s (or its base URL for a local server)", rm.APIKeyEnv)
-	}
-	p, err := llm.New(rm.Provider, opts)
+	cfg := &config.ModelConfig{}
+	p, err := llm.Build(cfg, 3, 500)
 	if err != nil {
 		return nil, err
 	}
+	rm := cfg.Resolve()
 	return &generator.Generator{Provider: p, ProviderName: rm.Provider, Model: rm.Model}, nil
 }
 
