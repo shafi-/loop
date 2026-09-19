@@ -10,6 +10,7 @@ import (
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/llm"
 	"github.com/shafi-/loop/internal/usage"
 )
@@ -56,6 +57,7 @@ func TestCostLifetimeAndPipelines(t *testing.T) {
 	p := config.Persona{Name: "eng", Role: "Eng", System: "s"}
 	mock := llm.NewMock(&llm.Response{Text: "ok"})
 	r := NewRoom(config.Room{Name: "demo", Agents: []config.Persona{p}}, []*agent.Agent{{Persona: p, Provider: mock}}, tr)
+	r.RunUsage = engine.ReadRunUsage
 	r.Workspace = ws
 	meter := usage.NewMeter()
 	meter.Record("eng", llm.Usage{InputTokens: 412, OutputTokens: 38})
@@ -89,6 +91,7 @@ func TestCostLifetimeAndPipelines(t *testing.T) {
 	tr2, _ := OpenTranscript(dir)
 	r2 := NewRoom(config.Room{Name: "demo", Agents: []config.Persona{p}}, nil, tr2)
 	r2.Workspace = ws
+	r2.RunUsage = engine.ReadRunUsage
 	r2.Usage = usage.NewMeter()
 	if rep := r2.CostReport(); !strings.Contains(rep, "all sessions — 86 calls") {
 		t.Errorf("fresh session should still know the lifetime:\n%s", rep)

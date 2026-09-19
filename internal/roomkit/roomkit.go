@@ -6,6 +6,7 @@
 package roomkit
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/knowledge"
+	"github.com/shafi-/loop/internal/llm"
 	"github.com/shafi-/loop/internal/usage"
 	"github.com/shafi-/loop/internal/workspace"
 )
@@ -62,7 +64,7 @@ func KnowledgeManager(meter *usage.Meter) (*knowledge.Manager, error) {
 // verb reads .loop/knowledge/, and every agent carries the digest
 // block, re-read per reply so a refresh (a completed pipeline run, or
 // a session-open reconcile) is seen by the next turn.
-func AttachKnowledge(r *chat.Room, agents []*agent.Agent, meter *usage.Meter) error {
+func AttachKnowledge(r *chat.Room, meter *usage.Meter) error {
 	cwd, _ := os.Getwd()
 	r.Workspace = cwd
 	km, err := KnowledgeManager(meter)
@@ -70,8 +72,54 @@ func AttachKnowledge(r *chat.Room, agents []*agent.Agent, meter *usage.Meter) er
 		return err
 	}
 	r.SetKnowledge(km)
-	for _, a := range agents {
+	for _, a := range r.Agents {
 		a.Knowledge = func() string { return knowledge.DigestBlock(cwd) }
 	}
 	return nil
+}
+
+// Room assembles a hosted room end to end: agents on metered providers,
+// the session ledger, and the host ports — /cost reads pipeline spend
+// through the engine's run records, /compact summarizes through the
+// lead agent. The one assembly every hosting surface shares.
+func Room(cfg *config.Room, tr *chat.Transcript, meter *usage.Meter) (*chat.Room, error) {
+	agents, err := Agents(cfg, meter)
+	if err != nil {
+		return nil, err
+	}
+	r := chat.NewRoom(*cfg, agents, tr)
+	r.Usage = meter
+	r.RunUsage = engine.ReadRunUsage
+	if len(agents) > 0 {
+		r.Summarizer = summarizer(agents[0], meter)
+	}
+	return r, nil
+}
+
+// compactVoice is /compact's summarizer brief: one tight paragraph,
+// no ceremony.
+const compactVoice = `You summarize a strategy-room session for its participants.
+One tight paragraph: what was decided, what is open, facts established,
+and what remains. No preamble, no bullet-point ceremony.`
+
+// summarizer binds /compact's one model call to an agent: its provider
+// (already metered per agent), re-labeled so the summary shows up as
+// its own line in /cost.
+func summarizer(a *agent.Agent, meter *usage.Meter) func(context.Context, string) (string, error) {
+	return func(ctx context.Context, text string) (string, error) {
+		provider := a.Provider
+		if meter != nil {
+			provider = usage.Wrap(provider, meter, "compact")
+		}
+		resp, err := provider.Complete(ctx, llm.Request{
+			Model:     a.Model(),
+			System:    compactVoice,
+			Messages:  []llm.Message{{Role: llm.RoleUser, Content: text + "\n\nSummarize this session so far."}},
+			MaxTokens: 700,
+		})
+		if err != nil {
+			return "", err
+		}
+		return resp.Text, nil
+	}
 }

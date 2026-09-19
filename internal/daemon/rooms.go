@@ -99,10 +99,6 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	// The session's token ledger rides the room: agent calls record
 	// into it, /cost and the API report from it.
 	meter := usage.NewMeter()
-	agents, err := roomkit.Agents(cfg, meter)
-	if err != nil {
-		return nil, err
-	}
 	tr, err := chat.OpenTranscript(filepath.Join(".loop", "rooms", cfg.Name))
 	if err != nil {
 		return nil, err
@@ -113,18 +109,21 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	if rs, ok := h.rooms[cfg.Name]; ok {
 		return rs, nil // live room: hosting again attaches
 	}
+	room, err := roomkit.Room(cfg, tr, meter)
+	if err != nil {
+		return nil, err
+	}
 	rs := &roomSession{
 		cfg:      *cfg,
 		roomPath: abs,
-		room:     chat.NewRoom(*cfg, agents, tr),
+		room:     room,
 		tr:       tr,
 	}
-	rs.room.Usage = meter
 	// The knowledge layer: agents carry the maintained digest, /notes
 	// reads it for zero tokens. Completed pipeline runs refresh it in
 	// their own process; session open (below) reconciles it. An
 	// unresolvable provider leaves it off — hosting is not held hostage.
-	if err := roomkit.AttachKnowledge(rs.room, agents, meter); err != nil {
+	if err := roomkit.AttachKnowledge(room, meter); err != nil {
 		_ = tr.Append("system", "knowledge layer off: "+err.Error())
 	}
 	// Session-open maintenance in the background: first seed or external

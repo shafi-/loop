@@ -15,9 +15,7 @@ import (
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
-	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/knowledge"
-	"github.com/shafi-/loop/internal/llm"
 	"github.com/shafi-/loop/internal/usage"
 )
 
@@ -112,6 +110,17 @@ type Room struct {
 	// the agents' providers. The /cost command and the hosting surface
 	// read it. nil = this room's cost is not tracked.
 	Usage *usage.Meter
+	// RunUsage reads one pipeline run's token spend from the
+	// workspace's run records — the on-disk layout is the engine's, so
+	// the room only asks for a number. /cost's pipeline line reads
+	// through it; hosts set it at assembly. nil = pipeline spend
+	// unreported.
+	RunUsage func(runsDir, id string) (usage.Total, bool)
+	// Summarizer condenses a transcript prefix into a "session so
+	// far" summary — /compact's one model call. Hosts bind it to the
+	// room's lead agent (metered under its own /cost label); nil =
+	// /compact declines.
+	Summarizer func(ctx context.Context, text string) (string, error)
 	// usageBase is every PAST session's spend, loaded from the room's
 	// persisted usage.json at open — /cost's "all sessions" line adds
 	// it to the live meter, and FlushUsage persists the sum for the
@@ -266,29 +275,18 @@ func (r *Room) compactCommand() CustomCommand {
 				return r.Transcript.Append("system",
 					"◈ nothing to compact — the whole session still fits in the live window")
 			}
-			if len(r.Agents) == 0 {
-				return r.Transcript.Append("system", "◈ /compact needs at least one agent")
+			if r.Summarizer == nil {
+				return r.Transcript.Append("system", "◈ /compact needs an agent to summarize with")
 			}
 			prefix := Render(msgs[:len(msgs)-window])
 			if len(prefix) > maxCompactInput {
 				prefix = "[… older turns clipped …]\n" + prefix[len(prefix)-maxCompactInput:]
 			}
-			provider := r.Agents[0].Provider
-			if r.Usage != nil {
-				provider = usage.Wrap(provider, r.Usage, "compact")
-			}
-			resp, err := provider.Complete(ctx, llm.Request{
-				Model: r.Agents[0].Model(),
-				System: `You summarize a strategy-room session for its participants.
-One tight paragraph: what was decided, what is open, facts established,
-and what remains. No preamble, no bullet-point ceremony.`,
-				Messages:  []llm.Message{{Role: llm.RoleUser, Content: prefix + "\n\nSummarize this session so far."}},
-				MaxTokens: 700,
-			})
+			summary, err := r.Summarizer(ctx, prefix)
 			if err != nil {
 				return r.Transcript.Append("system", "◈ /compact failed: "+err.Error())
 			}
-			summary := strings.TrimSpace(resp.Text)
+			summary = strings.TrimSpace(summary)
 			if summary == "" {
 				return r.Transcript.Append("system", "◈ /compact produced no summary — transcript unchanged")
 			}
@@ -374,10 +372,13 @@ func (r *Room) pipelineUsage() (usage.Total, int) {
 		}
 	}
 	runsDir := filepath.Join(r.Workspace, ".loop", "runs")
+	if r.RunUsage == nil {
+		return usage.Total{}, 0
+	}
 	var tot usage.Total
 	n := 0
 	for id := range seen {
-		if u, ok := engine.ReadRunUsage(runsDir, id); ok {
+		if u, ok := r.RunUsage(runsDir, id); ok {
 			tot = tot.Add(u)
 			n++
 		}

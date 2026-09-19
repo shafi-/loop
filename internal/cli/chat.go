@@ -61,10 +61,6 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	// The session's token ledger: every agent call records into it and
 	// /cost reports from it.
 	meter := usage.NewMeter()
-	agents, err := roomkit.Agents(room, meter)
-	if err != nil {
-		return err
-	}
 	if roomsDir == "" {
 		roomsDir = config.RoomsDir
 	}
@@ -75,14 +71,16 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	// Opt-in, anonymous, local (internal/counters): one count
 	// per opened session, keyed by room name.
 	counters.BumpKey("room_sessions", room.Name)
-	r := chat.NewRoom(*room, agents, transcript)
-	r.Usage = meter
+	r, err := roomkit.Room(room, transcript, meter)
+	if err != nil {
+		return err
+	}
 	out := cmd.OutOrStdout()
 	// The knowledge layer: agents carry the maintained digest, /notes
 	// reads it for zero tokens. The layer only describes landed work —
 	// completed pipeline runs refresh it in their own process; session
 	// open reconciles it below. Unresolvable provider = off, one notice.
-	if err := roomkit.AttachKnowledge(r, agents, meter); err != nil {
+	if err := roomkit.AttachKnowledge(r, meter); err != nil {
 		fmt.Fprintf(out, "· knowledge layer off: %v\n", err)
 	}
 
