@@ -136,7 +136,7 @@ func llmFailure(err error, cfg *config.ModelConfig) error {
 	if d := llm.AuthEnvDetail(err, cfg.APIKeyEnv); d != "" {
 		detail = detail + " — " + d
 	}
-	model := llm.ResolveModel(string(cfg.Provider), cfg.Model)
+	model := config.ResolveModel(cfg.Provider, cfg.Model)
 	if detail != "" {
 		return fmt.Errorf("model %s: %w (hint: %s)", model, err, detail)
 	}

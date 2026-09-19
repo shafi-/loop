@@ -1,7 +1,5 @@
 package config
 
-import "github.com/shafi-/loop/internal/llm"
-
 // ResolvedModel is a ModelConfig with every optional piece filled in.
 // Nothing here is "" for a valid provider, so callers never re-derive
 // defaults. Secrets are deliberately absent: API keys are read from the
@@ -38,21 +36,21 @@ func (m *ModelConfig) Resolve() ResolvedModel {
 		// provider family, its env model, its default key var.
 		m = &ModelConfig{}
 	}
-	provider := string(m.Provider)
+	provider := m.Provider
 	if provider == "" {
 		// Provider not named anywhere: follow whatever the environment
-		// configures (llm.InferProvider). This is the env-first rule the
+		// configures (InferProvider). This is the env-first rule the
 		// whole file exists for — YAML names a family only to override it.
-		provider = llm.InferProvider()
+		provider = InferProvider()
 	}
 	apiKeyEnv := m.APIKeyEnv
 	if apiKeyEnv == "" {
-		apiKeyEnv = DefaultAPIKeyEnv[Provider(provider)]
+		apiKeyEnv = DefaultAPIKeyEnv[provider]
 	}
 	return ResolvedModel{
-		Provider:  provider,
-		Model:     llm.ResolveModel(provider, m.Model),
-		BaseURL:   llm.ResolveBaseURL(provider, m.BaseURL),
+		Provider:  string(provider),
+		Model:     ResolveModel(provider, m.Model),
+		BaseURL:   ResolveBaseURL(provider, m.BaseURL),
 		APIKeyEnv: apiKeyEnv,
 	}
 }

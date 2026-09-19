@@ -1,4 +1,4 @@
-package llm
+package config
 
 import "testing"
 
@@ -35,7 +35,7 @@ func TestResolveModelDefaultFallback(t *testing.T) {
 		t.Errorf("built-in default must apply without YAML or env: got %q", got)
 	}
 	// Known providers always resolve to something usable.
-	for _, prov := range []string{"anthropic", "openai"} {
+	for _, prov := range []Provider{"anthropic", "openai"} {
 		if got := ResolveModel(prov, ""); got == "" {
 			t.Errorf("%s resolution must never return an empty model id", prov)
 		}

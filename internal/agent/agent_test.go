@@ -55,7 +55,7 @@ func TestAgentModelResolution(t *testing.T) {
 	if _, err := a.Reply(context.Background(), nil, "hello", nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.Provider.(*llm.Mock).Requests()[0].Model; got != llm.DefaultModel["anthropic"] {
+	if got := a.Provider.(*llm.Mock).Requests()[0].Model; got != config.DefaultModel["anthropic"] {
 		t.Errorf("anthropic persona without ANTHROPIC_MODEL must use the built-in default, got %q", got)
 	}
 
@@ -70,7 +70,7 @@ func TestAgentModelResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := dMock.Requests()[0]
-	if last.Model != llm.DefaultModel["anthropic"] {
+	if last.Model != config.DefaultModel["anthropic"] {
 		t.Errorf("DecideSpeak must use the same resolved model, got %q", last.Model)
 	}
 	if last.ResponseSchema == nil {

@@ -13,20 +13,6 @@ type Options struct {
 	BackoffMs   int
 }
 
-// DefaultAPIKeyEnvName is the fallback env var per provider, consulted
-// when a caller does not name one explicitly.
-var DefaultAPIKeyEnvName = map[string]string{
-	"anthropic": "ANTHROPIC_API_KEY",
-	"openai":    "OPENAI_API_KEY",
-}
-
-// DefaultModel is the fallback model id per provider for commands that
-// don't insist on one.
-var DefaultModel = map[string]string{
-	"anthropic": "claude-sonnet-4-5",
-	"openai":    "gpt-5",
-}
-
 // New builds the named provider and wraps it with retry middleware.
 func New(name string, opts Options) (Provider, error) {
 	var p Provider

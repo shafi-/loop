@@ -8,7 +8,6 @@ import (
 
 	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/executor/cline"
-	"github.com/shafi-/loop/internal/llm"
 )
 
 // newSetupCmd is the onboarding command: make this installation ready
@@ -110,7 +109,7 @@ func configuredFamily() string {
 	case oKey && !aKey:
 		return "openai"
 	case aKey && oKey:
-		if p := llm.InferProvider(); p == "openai" {
+		if p := config.InferProvider(); p == "openai" {
 			return "openai"
 		}
 		return "anthropic"

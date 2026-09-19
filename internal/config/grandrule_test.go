@@ -1,10 +1,6 @@
 package config
 
-import (
-	"testing"
-
-	"github.com/shafi-/loop/internal/llm"
-)
+import "testing"
 
 // The grand rule, pinned: .env/env configures the baseline, and any
 // pipeline, room, or command may override any piece of it — or run fully
@@ -72,7 +68,7 @@ stages:
 		// here, so it must land on the built-in default (checked next).
 		t.Errorf("family-only stage: provider must be explicit anthropic: %+v", m)
 	}
-	if m := model("family-only"); m.Model != llm.DefaultModel["anthropic"] {
+	if m := model("family-only"); m.Model != DefaultModel["anthropic"] {
 		t.Errorf("family-only stage model must fall to the built-in default: %+v", m)
 	}
 	if m := model("bare"); m.Provider != "openai" || m.Model != "env-model" || m.BaseURL != "https://gw-env.example/v1" {
