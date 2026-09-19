@@ -6,9 +6,9 @@
 # it runs in any workspace, CI included.
 #
 # Run it:
-#   loop run pipelines/review.yaml
+#   loop run .loop/pipelines/review.yaml
 # Scoped:
-#   loop run pipelines/review.yaml --var scope=internal/api
+#   loop run .loop/pipelines/review.yaml --var scope=internal/api
 
 name: review
 description: Review the working tree's uncommitted changes

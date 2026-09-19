@@ -30,7 +30,7 @@ type Agent struct {
 	// layer; the decision prompt deliberately never sees it.
 	Knowledge func() string
 	// ToolHook, when set, is called once per executed tool with a
-	// compact human-readable line ("wrote plans/x.md (120 bytes)") —
+	// compact human-readable line ("wrote .loop/plans/x.md (120 bytes)") —
 	// the room wires it to a UI notice and a transcript line.
 	ToolHook func(name, detail string)
 }
@@ -149,7 +149,10 @@ prefix your reply with your own name.`)
 // reads the real files instead of guessing filenames until it exhausts
 // its tool budget.
 const workspaceOrientation = `
-Workspace orientation: pipeline runs keep their records under
+Workspace orientation: everything loop keeps lives under .loop/ —
+pipeline and room YAML in .loop/pipelines/ and .loop/rooms/, this
+project's persona library in .loop/personas/, approved plans in
+.loop/plans/. Pipeline runs keep their records under
 .loop/runs/<run-id>/ — state.json (the run's status: done, failed, or
 paused), events.jsonl (everything that happened, in order), and
 context.json (every stage's output text). To report a run's status,

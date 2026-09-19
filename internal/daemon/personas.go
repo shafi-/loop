@@ -43,7 +43,7 @@ func (s *Server) handlePersonas(w http.ResponseWriter, r *http.Request) {
 			out = append(out, personaJSON{Name: f.Name, Role: f.Role, Scope: scope, Path: f.Path})
 		}
 	}
-	add("project", "personas")
+	add("project", config.PersonasDir)
 	if dir, ok := globalPersonaDirOr(w); ok {
 		add("global", dir)
 	}
@@ -55,7 +55,7 @@ func personaFileOf(scope, name string) (string, bool) {
 	var dir string
 	switch scope {
 	case "project":
-		dir = "personas"
+		dir = config.PersonasDir
 	case "global":
 		g, err := config.GlobalPersonaDir()
 		if err != nil {
@@ -121,7 +121,7 @@ func (s *Server) handlePersonaDelete(w http.ResponseWriter, r *http.Request) {
 	// pickers which prefer the conventional dirs anyway.
 	refRe := personaRefRe(req.Name)
 	var referencing []string
-	for _, dir := range []string{"rooms", "pipelines"} {
+	for _, dir := range []string{config.RoomsDir, config.PipelinesDir} {
 		for _, f := range scanYAMLDir(dir) {
 			data, err := os.ReadFile(f.Path)
 			if err != nil {

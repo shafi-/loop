@@ -51,21 +51,21 @@ and the feature-shaping side (`product-owner`, `cfo`, `end-user`):
 
 ```bash
 loop init
-loop chat rooms/feature.yaml "shape: one-off invoices for freelancers"   # decide the shape
-loop chat rooms/dev.yaml "plan: add a health endpoint"                   # then build it
-loop run pipelines/review.yaml                                           # review your working tree
+loop chat .loop/rooms/feature.yaml "shape: one-off invoices for freelancers"   # decide the shape
+loop chat .loop/rooms/dev.yaml "plan: add a health endpoint"                   # then build it
+loop run .loop/pipelines/review.yaml                                           # review your working tree
 ```
 
-`pipelines/implement.yaml` goes further: the engineer agent works
+`.loop/pipelines/implement.yaml` goes further: the engineer agent works
 directly in your repository behind a reviewed, gated loop (that one
 needs `loop setup`'s agent executor). The hand-off is a file — the dev
-room's `@architect` writes agreed plans to `plans/<name>.md`, and
+room's `@architect` writes agreed plans to `.loop/plans/<name>.md`, and
 `/run implement` from the room builds the newest one, nothing to
 memorize. The room's context travels with the run: `/run` writes a
 task brief (your asks verbatim, the plan files, the digest pointer)
 and passes it as the `room_context` var. The classic examples are
-still there — `pipelines/feature-delivery.yaml` and
-`rooms/leadership.yaml`.
+still there — `.loop/pipelines/feature-delivery.yaml` and
+`.loop/rooms/leadership.yaml`.
 
 ## One engine, three doors
 
@@ -134,10 +134,13 @@ debate around a gated mitigation pipeline.
 A loop workspace is just a directory:
 
 ```
-pipelines/   deterministic stage workflows   (loop run <file>)
-rooms/       multi-agent chat rooms          (loop chat <file>)
-.loop/       run logs, transcripts, resume state (created on demand)
-.env         keys and provider config; never committed
+.loop/            everything loop keeps, all in one folder:
+.loop/pipelines/    deterministic stage workflows   (loop run <file>)
+.loop/rooms/        multi-agent chat rooms          (loop chat <file>)
+.loop/personas/     this project's persona library
+.loop/plans/        the plans the architect writes
+.loop/runs/         run logs, transcripts, resume state (generated)
+.env              keys and provider config; never committed
 ```
 
 ## Documentation

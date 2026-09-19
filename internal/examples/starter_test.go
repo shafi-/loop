@@ -27,7 +27,7 @@ func TestStarterPersonasParse(t *testing.T) {
 		// Library personas are identity-only: tools are granted at the
 		// use site, so referencing them never forces a tool set.
 		if len(p.Tools) > 0 {
-			t.Errorf("persona %s ships with tools %v — grant tools in rooms/pipelines instead", name, p.Tools)
+			t.Errorf("persona %s ships with tools %v — grant tools in the room or pipeline instead", name, p.Tools)
 		}
 	}
 }
@@ -67,7 +67,7 @@ func TestStarterDevRoomResolves(t *testing.T) {
 	}
 	// The engineer must come out of the library with a system, and the
 	// room grants it the file tools; the architect gets read+write for
-	// plan files (plans/<name>.md), not a shell.
+	// plan files (.loop/plans/<name>.md), not a shell.
 	var engineer, architect *config.Persona
 	for i := range room.Agents {
 		switch room.Agents[i].Name {
@@ -142,7 +142,7 @@ func TestStarterPipelinesValidateAndResolve(t *testing.T) {
 }
 
 // The implement pipeline consumes the room's approved plan: a tool
-// stage discovers the newest plans/*.md, the engineer agent treats it
+// stage discovers the newest .loop/plans/*.md, the engineer agent treats it
 // as the source of truth, and the gated revise loop listens.
 func TestStarterImplementPipelineShape(t *testing.T) {
 	p, err := config.ParsePipeline([]byte(ImplementPipeline))

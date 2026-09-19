@@ -66,12 +66,12 @@ func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{
-		filepath.Join("pipelines", "feature-delivery.yaml"),
-		filepath.Join("pipelines", "implement.yaml"),
-		filepath.Join("pipelines", "review.yaml"),
-		filepath.Join("rooms", "leadership.yaml"),
-		filepath.Join("rooms", "feature.yaml"),
-		filepath.Join("rooms", "dev.yaml"),
+		filepath.Join(".loop/pipelines", "feature-delivery.yaml"),
+		filepath.Join(".loop/pipelines", "implement.yaml"),
+		filepath.Join(".loop/pipelines", "review.yaml"),
+		filepath.Join(".loop/rooms", "leadership.yaml"),
+		filepath.Join(".loop/rooms", "feature.yaml"),
+		filepath.Join(".loop/rooms", "dev.yaml"),
 		"README.md",
 	} {
 		if _, err := os.Stat(path); err != nil {
@@ -105,6 +105,30 @@ func TestInitScaffoldsSkipsAndForces(t *testing.T) {
 	}
 	if !strings.Contains(out, "Workspace ready (7 file(s))") {
 		t.Errorf("forced init out = %q", out)
+	}
+}
+
+// loop keeps every artifact under .loop/ now; a workspace scaffolded
+// before that move has root-level rooms/ pipelines/ — init must point
+// at the one-line migration instead of letting the files sit unseen.
+func TestInitHintsAtLegacyDirs(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+
+	for _, d := range []string{"rooms", "pipelines", "personas"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "x.yaml"), []byte("name: x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, errOut, err := runCLI(t, "", "init")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errOut, "old root-level layout") || !strings.Contains(errOut, "mv rooms pipelines personas .loop/") {
+		t.Errorf("init did not hint at the legacy dirs: %q", errOut)
 	}
 }
 

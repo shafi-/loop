@@ -29,7 +29,7 @@ func TestRoomPageRendersCommandPaletteData(t *testing.T) {
 			},
 			Runnable: []daemon.PipelineOption{
 				{Name: "implement", File: "../pipelines/implement.yaml"},
-				{Name: "pipelines/review.yaml", File: "pipelines/review.yaml"},
+				{Name: ".loop/pipelines/review.yaml", File: ".loop/pipelines/review.yaml"},
 			},
 		},
 	}
@@ -49,7 +49,7 @@ func TestRoomPageRendersCommandPaletteData(t *testing.T) {
 	}
 	// The /run second level reads data-pipelines; the sidecar dropdown
 	// offers the same list.
-	if !strings.Contains(out, `data-pipelines=`) || !strings.Contains(out, "pipelines/review.yaml") {
+	if !strings.Contains(out, `data-pipelines=`) || !strings.Contains(out, ".loop/pipelines/review.yaml") {
 		t.Error("runnable pipelines not rendered into the composer/sidecar")
 	}
 	if !strings.Contains(out, `<option value="implement">implement</option>`) {

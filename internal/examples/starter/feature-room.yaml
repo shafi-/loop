@@ -6,14 +6,14 @@
 # person who has to live with it, @architect keeps it buildable. You
 # are the founder — the call is yours.
 #
-# When the shape settles, build it: open rooms/dev.yaml with the
-# settled direction, or run pipelines/implement.yaml with the task.
+# When the shape settles, build it: open .loop/rooms/dev.yaml with the
+# settled direction, or run .loop/pipelines/implement.yaml with the task.
 #
 # The personas come from the global library (~/.loop/personas/), so
 # every project on this machine shares them; edit them there.
 #
-# Validate it:  loop validate rooms/feature.yaml
-# Open it:      loop chat rooms/feature.yaml
+# Validate it:  loop validate .loop/rooms/feature.yaml
+# Open it:      loop chat .loop/rooms/feature.yaml
 
 name: feature
 

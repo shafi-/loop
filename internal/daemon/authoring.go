@@ -34,9 +34,9 @@ type kindSpec struct {
 }
 
 // authoringLibrary is the persona library in scope order: the daemon
-// workspace's personas/ first, then the user-wide ~/.loop/personas.
+// workspace's .loop/personas/ first, then the user-wide ~/.loop/personas.
 func authoringLibrary() *config.PersonaLibrary {
-	dirs := []string{"personas"}
+	dirs := []string{config.PersonasDir}
 	if g, err := config.GlobalPersonaDir(); err == nil {
 		dirs = append(dirs, g)
 	}
@@ -45,7 +45,7 @@ func authoringLibrary() *config.PersonaLibrary {
 
 var kindSpecs = map[string]kindSpec{
 	"pipeline": {
-		dir:  "pipelines",
+		dir:  config.PipelinesDir,
 		noun: "pipeline",
 		parse: func(b []byte, lib *config.PersonaLibrary) (string, error) {
 			p, err := config.ParsePipeline(b)
@@ -66,7 +66,7 @@ var kindSpecs = map[string]kindSpec{
 		},
 	},
 	"room": {
-		dir:  "rooms",
+		dir:  config.RoomsDir,
 		noun: "room",
 		parse: func(b []byte, lib *config.PersonaLibrary) (string, error) {
 			r, err := config.ParseRoom(b)
@@ -87,7 +87,7 @@ var kindSpecs = map[string]kindSpec{
 		},
 	},
 	"persona": {
-		dir:  "personas",
+		dir:  config.PersonasDir,
 		noun: "persona",
 		parse: func(b []byte, _ *config.PersonaLibrary) (string, error) {
 			p, err := config.ParsePersona(b)

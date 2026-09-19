@@ -19,7 +19,7 @@
       {{if $t.File}}<form class="thread-open" method="post" action="/rooms/host">
         <input type="hidden" name="file" value="{{$t.File}}">
         <button type="submit" class="linklike" title="reopen — hosting {{$t.File}} attaches to this conversation">{{$t.Name}}</button>
-      </form>{{else}}<span class="muted" title="no rooms/*.yaml with this name — the thread is kept, but cannot be reopened without its room file">{{$t.Name}}</span>{{end}}
+      </form>{{else}}<span class="muted" title="no .loop/rooms/*.yaml with this name — the thread is kept, but cannot be reopened without its room file">{{$t.Name}}</span>{{end}}
     </td>
     <td class="muted">last active {{shortdate $t.LastActive}} · {{$t.Lines}} lines</td>
     <td><span class="badge">past</span></td>

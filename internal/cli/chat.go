@@ -67,7 +67,7 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 		return err
 	}
 	if roomsDir == "" {
-		roomsDir = filepath.Join(".loop", "rooms")
+		roomsDir = config.RoomsDir
 	}
 	transcript, err := chat.OpenTranscript(filepath.Join(roomsDir, room.Name))
 	if err != nil {
@@ -202,7 +202,7 @@ func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, err
 // printRunnable lists what /run accepts, one per line, marked by kind.
 func printRunnable(out io.Writer, names []string) {
 	if len(names) == 0 {
-		fmt.Fprintln(out, "nothing runnable — add a pipelines: section to the room or create pipelines/*.yaml")
+		fmt.Fprintln(out, "nothing runnable — add a pipelines: section to the room or create .loop/pipelines/*.yaml")
 		return
 	}
 	for _, n := range names {
@@ -238,7 +238,7 @@ func printChatHelp(out io.Writer) {
   /            list available commands
   /agents      list participants
   /pipelines   list the pipelines this room owns
-  /run <name> [--var k=v]…   run a pipeline — room alias or pipelines/*.yaml path
+  /run <name> [--var k=v]…   run a pipeline — room alias or .loop/pipelines/*.yaml path
   /approve <yes|no|words>    answer a pipeline asking for approval
   /status      active runs and where their output lives
   /halt [name] stop a run cleanly (resumable with /run <name> --resume <id>)

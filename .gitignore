@@ -2,8 +2,11 @@
 /loop
 /dist/
 
-# run artifacts produced by the engine
-.loop/
+# loop: the generated parts of .loop/ — the documents (rooms, pipelines,
+# personas, plans) are tracked
+.loop/runs/
+.loop/knowledge/
+.loop/rooms/*/
 
 # go
 *.test

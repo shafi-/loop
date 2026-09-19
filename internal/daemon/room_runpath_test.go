@@ -30,10 +30,10 @@ func TestDaemonRoomTypedRunByPath(t *testing.T) {
 	}
 	// The pipeline the user wants: a plain workspace file this room
 	// does not own under any alias.
-	if err := os.MkdirAll(filepath.Join(dir, "pipelines"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".loop/pipelines"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pipelines", "adhoc.yaml"),
+	if err := os.WriteFile(filepath.Join(dir, ".loop/pipelines", "adhoc.yaml"),
 		[]byte("name: adhoc\nstages:\n  - id: only\n    type: tool\n    run: echo hi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestDaemonRoomTypedRunByPath(t *testing.T) {
 		t.Fatalf("say: %v", err)
 	}
 	waitFor(t, 10*time.Second, func() bool {
-		return cl.Say("path-room", "/run pipelines/adhoc.yaml") == nil
+		return cl.Say("path-room", "/run .loop/pipelines/adhoc.yaml") == nil
 	}, "the room to accept the /run (the requirement's turn to finish)")
 
 	// The start line lands in the transcript, then the run's own lines
@@ -88,7 +88,7 @@ func TestDaemonRoomTypedRunByPath(t *testing.T) {
 	}
 
 	// An unknown alias/path is a visible system line, never silence.
-	if err := cl.Say("path-room", "/run pipelines/nope.yaml"); err != nil {
+	if err := cl.Say("path-room", "/run .loop/pipelines/nope.yaml"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, 5*time.Second, func() bool {
@@ -115,7 +115,7 @@ func TestDaemonRoomTypedRunByPath(t *testing.T) {
 		}
 	}
 	for _, p := range info.Runnable {
-		if p.Name == "pipelines/adhoc.yaml" && p.File == "pipelines/adhoc.yaml" {
+		if p.Name == ".loop/pipelines/adhoc.yaml" && p.File == ".loop/pipelines/adhoc.yaml" {
 			runnable = true
 		}
 	}
@@ -148,15 +148,15 @@ func TestDaemonRoomHaltStopsRoomRun(t *testing.T) {
 	}
 	// A workspace pipeline the room can run by path; the fake child then
 	// parks at its gate, giving the halt something to stop.
-	if err := os.MkdirAll(filepath.Join(dir, "pipelines"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".loop/pipelines"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pipelines", "demo.yaml"),
+	if err := os.WriteFile(filepath.Join(dir, ".loop/pipelines", "demo.yaml"),
 		[]byte("name: demo\nstages:\n  - id: only\n    type: tool\n    run: echo hi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := cl.RoomRun("halt-room", "pipelines/demo.yaml", "", nil); err != nil {
+	if _, err := cl.RoomRun("halt-room", ".loop/pipelines/demo.yaml", "", nil); err != nil {
 		t.Fatalf("room run: %v", err)
 	}
 	// The fake child parks at its gate (waiting on stdin).

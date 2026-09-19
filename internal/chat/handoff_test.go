@@ -31,14 +31,14 @@ func TestWriteHandoff(t *testing.T) {
 	r := &Room{Name: "dev", Transcript: tr, Workspace: ws}
 
 	// Plans: b.md is newer than a.md and must be listed first.
-	if err := os.MkdirAll(filepath.Join(ws, "plans"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(ws, ".loop/plans"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for name, mod := range map[string]time.Time{
 		"a.md": time.Now().Add(-2 * time.Hour),
 		"b.md": time.Now().Add(-1 * time.Hour),
 	} {
-		p := filepath.Join(ws, "plans", name)
+		p := filepath.Join(ws, ".loop/plans", name)
 		if err := os.WriteFile(p, []byte("# "+name), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -66,8 +66,8 @@ func TestWriteHandoff(t *testing.T) {
 		"ship it today",
 		"- add rate limiting to the API",
 		"- keep it under 50 lines and no new dependencies",
-		"plans/b.md",
-		"plans/a.md",
+		".loop/plans/b.md",
+		".loop/plans/a.md",
 		"no knowledge digest yet",
 	} {
 		if !strings.Contains(doc, want) {
@@ -79,7 +79,7 @@ func TestWriteHandoff(t *testing.T) {
 		t.Errorf("hand-off quotes agent chatter:\n%s", doc)
 	}
 	// Newest plan first.
-	if i, j := strings.Index(doc, "plans/b.md"), strings.Index(doc, "plans/a.md"); i > j {
+	if i, j := strings.Index(doc, ".loop/plans/b.md"), strings.Index(doc, ".loop/plans/a.md"); i > j {
 		t.Errorf("plans out of order (newest first):\n%s", doc)
 	}
 

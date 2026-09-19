@@ -24,24 +24,24 @@ func TestScanYAMLDir(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("pipelines/alpha.yaml", "name: alpha\nstages: []\n")
-	write("pipelines/zebra.yml", "stages: []\n") // no name line
-	write("pipelines/notes.txt", "name: not-a-pipeline\n")
-	write("pipelines/sub/nested.yaml", "name: nested\n") // dirs skipped
-	write("rooms/ops.yaml", "name: ops\nagents: []\n")
+	write(".loop/pipelines/alpha.yaml", "name: alpha\nstages: []\n")
+	write(".loop/pipelines/zebra.yml", "stages: []\n") // no name line
+	write(".loop/pipelines/notes.txt", "name: not-a-pipeline\n")
+	write(".loop/pipelines/sub/nested.yaml", "name: nested\n") // dirs skipped
+	write(".loop/rooms/ops.yaml", "name: ops\nagents: []\n")
 	write("top.yaml", "name: top\n") // outside the conventional dirs
 
-	pipes := scanYAMLDir("pipelines")
+	pipes := scanYAMLDir(".loop/pipelines")
 	if len(pipes) != 2 {
 		t.Fatalf("pipelines = %d entries, want 2: %+v", len(pipes), pipes)
 	}
-	if pipes[0].Path != filepath.Join("pipelines", "alpha.yaml") || pipes[0].Name != "alpha" {
+	if pipes[0].Path != filepath.Join(".loop/pipelines", "alpha.yaml") || pipes[0].Name != "alpha" {
 		t.Errorf("pipes[0] = %+v", pipes[0])
 	}
-	if pipes[1].Path != filepath.Join("pipelines", "zebra.yml") || pipes[1].Name != "" {
+	if pipes[1].Path != filepath.Join(".loop/pipelines", "zebra.yml") || pipes[1].Name != "" {
 		t.Errorf("pipes[1] = %+v", pipes[1])
 	}
-	rooms := scanYAMLDir("rooms")
+	rooms := scanYAMLDir(".loop/rooms")
 	if len(rooms) != 1 || rooms[0].Name != "ops" {
 		t.Errorf("rooms = %+v", rooms)
 	}
@@ -82,8 +82,8 @@ func TestWorkspaceEndpoint(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	for rel, content := range map[string]string{
-		"pipelines/deliver.yaml": "name: deliver\n",
-		"rooms/war.yaml":         "name: war\n",
+		".loop/pipelines/deliver.yaml": "name: deliver\n",
+		".loop/rooms/war.yaml":         "name: war\n",
 	} {
 		p := filepath.Join(dir, rel)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -125,7 +125,7 @@ func TestWorkspaceEndpoint(t *testing.T) {
 	if len(wk.Pipelines) != 1 || wk.Pipelines[0].Name != "deliver" {
 		t.Errorf("pipelines = %+v", wk.Pipelines)
 	}
-	if len(wk.Rooms) != 1 || wk.Rooms[0].Path != filepath.Join("rooms", "war.yaml") {
+	if len(wk.Rooms) != 1 || wk.Rooms[0].Path != filepath.Join(".loop/rooms", "war.yaml") {
 		t.Errorf("rooms = %+v", wk.Rooms)
 	}
 }

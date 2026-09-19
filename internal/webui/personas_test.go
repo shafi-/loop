@@ -37,7 +37,7 @@ func TestPersonaUIFlow(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(body, "saved") {
 		t.Fatalf("save = %d %q", resp.StatusCode, body)
 	}
-	if _, err := os.Stat(filepath.Join("personas", "architect.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(".loop/personas", "architect.yaml")); err != nil {
 		t.Fatalf("missing: %v", err)
 	}
 
@@ -82,10 +82,10 @@ func TestPersonaUIFlow(t *testing.T) {
 	if resp, body = postForm(t, ts.URL+"/new/validate", "kind=room&yaml="+queryEscape(roomYAML)); resp.StatusCode != 200 || !strings.Contains(body, "✓ valid") {
 		t.Fatalf("room with ref = %d %q", resp.StatusCode, body)
 	}
-	if err := os.MkdirAll("rooms", 0o755); err != nil {
+	if err := os.MkdirAll(".loop/rooms", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join("rooms", "uses.yaml"), []byte(roomYAML), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(".loop/rooms", "uses.yaml"), []byte(roomYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if resp, body = postForm(t, ts.URL+"/personas/delete", "scope=project&name=architect"); resp.StatusCode != http.StatusConflict {

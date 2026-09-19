@@ -34,7 +34,7 @@ func TestTimelineClassification(t *testing.T) {
 		ev("human_intent", `{"stage":"approval","intent":"yes","via":"vocabulary"}`),
 		ev("stage_failed", `{"stage":"compile","error":"boom"}`),
 		ev("narration", `{"text":"almost there"}`),
-		ev("executor_event", `{"kind":"tool_call","tool":"write_file","detail":"plans/x.md"}`),
+		ev("executor_event", `{"kind":"tool_call","tool":"write_file","detail":".loop/plans/x.md"}`),
 		ev("run_completed", `{"steps":3}`),
 		ev("provider_detail", `{"detail":"not shown"}`), // unknown kinds are skipped
 	}
@@ -102,7 +102,7 @@ func TestChatViewClassification(t *testing.T) {
 	lines := []daemon.RoomLine{
 		{Seq: 1, From: "user", Text: "@scout report"},
 		{Seq: 2, From: "scout", Text: "on it"},
-		{Seq: 3, From: "scout", Text: "[tool] wrote plans/x.md"},
+		{Seq: 3, From: "scout", Text: "[tool] wrote .loop/plans/x.md"},
 		{Seq: 4, From: "deliver", Text: "▸ run 99 starting: demo (2 stages)"},
 		{Seq: 5, From: "deliver", Text: "[approval needed] Ship it? — reply yes, no, or your change requests"},
 		{Seq: 6, From: "system", Text: "turn failed: scout: context canceled"},
@@ -197,6 +197,9 @@ func waitFor(t *testing.T, cond func() bool, what string) {
 // child received the answer. The /api proxy passes through to the daemon.
 func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 	dir := t.TempDir()
+	// The in-process daemon writes room transcripts under the relative
+	// .loop/rooms/ — run from the test's workspace, not the package dir.
+	t.Chdir(dir)
 	cl, handler := newUI(t, dir)
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)
@@ -251,9 +254,17 @@ func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 	// Rooms are not part of the runs poll anymore: they preload once
 	// via their own fragment, and the workspace pickers re-render on
 	// demand for the refresh buttons. The fragment lists hosted rooms
-	// AND persisted threads — the demo room hosted earlier in this flow
-	// must remain reachable even though no daemon session is hosting it
-	// right now.
+	// AND persisted threads — this flow hosts its own demo room so the
+	// assertion never leans on threads left behind by other tests.
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:1") // hosting never calls it
+	roomYAML := filepath.Join(dir, "room.yaml")
+	if err := os.WriteFile(roomYAML, []byte("name: demo\nagents:\n  - name: scout\n    role: scout\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.HostRoom(roomYAML); err != nil {
+		t.Fatalf("host: %v", err)
+	}
 	if _, b := get(t, ts.URL+"/frag/rooms"); !strings.Contains(b, "<th>room</th>") || !strings.Contains(b, "demo") {
 		t.Errorf("frag/rooms = %q", b)
 	}
@@ -410,6 +421,9 @@ func TestComposerResetCommand(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:1") // hosting never calls it
 	dir := t.TempDir()
+	// The in-process daemon writes room transcripts under the relative
+	// .loop/rooms/ — run from the test's workspace, not the package dir.
+	t.Chdir(dir)
 	cl, handler := newUI(t, dir)
 	ts := httptest.NewServer(handler)
 	t.Cleanup(ts.Close)

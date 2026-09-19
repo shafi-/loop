@@ -76,7 +76,7 @@ func TestBriefReadmeExcerpt(t *testing.T) {
 func TestBriefLayoutSkipsNoise(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "go.mod", "module x\n")
-	for _, d := range []string{".git", "node_modules", ".loop", "vendor", "dist", "src", "rooms"} {
+	for _, d := range []string{".git", "node_modules", ".loop", "vendor", "dist", "src", "scripts"} {
 		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestBriefLayoutSkipsNoise(t *testing.T) {
 			t.Errorf("layout leaked noise %q:\n%s", noise, b)
 		}
 	}
-	if !strings.Contains(b, "src/") || !strings.Contains(b, "rooms/") {
+	if !strings.Contains(b, "src/") || !strings.Contains(b, "scripts/") {
 		t.Errorf("layout missing real entries:\n%s", b)
 	}
 }

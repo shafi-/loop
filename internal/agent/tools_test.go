@@ -19,8 +19,8 @@ func toolCall(id, name, args string) *llm.Response {
 func TestReplyWithToolsWritesFileThenAnswers(t *testing.T) {
 	dir := t.TempDir()
 	m := llm.NewMock(
-		toolCall("t1", "write_file", `{"path":"plans/feature-x.md","content":"# Feature X\nthe plan"}`),
-		&llm.Response{Text: "Plan persisted to plans/feature-x.md — ready to implement.", StopReason: llm.StopEndTurn},
+		toolCall("t1", "write_file", `{"path":".loop/plans/feature-x.md","content":"# Feature X\nthe plan"}`),
+		&llm.Response{Text: "Plan persisted to .loop/plans/feature-x.md — ready to implement.", StopReason: llm.StopEndTurn},
 	)
 	a := &Agent{
 		Persona:  config.Persona{Name: "architect", Role: "Architect", System: "terse", Tools: []string{"read_file", "write_file"}},
@@ -35,15 +35,15 @@ func TestReplyWithToolsWritesFileThenAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if text != "Plan persisted to plans/feature-x.md — ready to implement." || streamed != text {
+	if text != "Plan persisted to .loop/plans/feature-x.md — ready to implement." || streamed != text {
 		t.Errorf("text=%q streamed=%q", text, streamed)
 	}
 	// The file landed inside the workspace, content intact.
-	got, err := os.ReadFile(filepath.Join(dir, "plans", "feature-x.md"))
+	got, err := os.ReadFile(filepath.Join(dir, ".loop/plans", "feature-x.md"))
 	if err != nil || string(got) != "# Feature X\nthe plan" {
 		t.Errorf("file = %q (%v)", got, err)
 	}
-	if len(notices) != 1 || !strings.Contains(notices[0], "wrote plans/feature-x.md") {
+	if len(notices) != 1 || !strings.Contains(notices[0], "wrote .loop/plans/feature-x.md") {
 		t.Errorf("notices = %v", notices)
 	}
 	// The round-trip reached the provider: round 2 saw the tool result.
@@ -58,7 +58,7 @@ func TestReplyWithToolsWritesFileThenAnswers(t *testing.T) {
 	if second[1].ToolCalls[0].Name != "write_file" || second[2].Role != llm.RoleTool || second[2].ToolCallID != "t1" {
 		t.Errorf("round-2 history = %+v", second)
 	}
-	if !strings.Contains(second[2].Content, "wrote plans/feature-x.md") {
+	if !strings.Contains(second[2].Content, "wrote .loop/plans/feature-x.md") {
 		t.Errorf("tool result content = %q", second[2].Content)
 	}
 	// Tools were offered on every round — read_file and write_file
@@ -176,7 +176,7 @@ func TestSafePath(t *testing.T) {
 		p    string
 		want string // "" = rejected
 	}{
-		{"plans/x.md", filepath.Join("wd", "plans", "x.md")},
+		{".loop/plans/x.md", filepath.Join("wd", ".loop/plans", "x.md")},
 		{"./plans/../x.md", filepath.Join("wd", "x.md")},
 		{"", ""},
 		{"/abs/x", ""},

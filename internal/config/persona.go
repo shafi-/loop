@@ -12,8 +12,8 @@ import (
 // per file, referenceable from rooms (agents) and pipelines (personas)
 // with a `persona: <name>` entry. Two scopes exist:
 //
-//   - project:  <workspace>/personas/   — available in this project only
-//   - global:   ~/.loop/personas/       — available in every project
+//   - project:  <workspace>/.loop/personas/ — available in this project only
+//   - global:   ~/.loop/personas/           — available in every project
 //
 // Project personas shadow global ones with the same name.
 
@@ -161,13 +161,18 @@ func GlobalPersonaDir() (string, error) {
 
 // PersonaDirsFor returns the library directories for a document at
 // path, in precedence order: personas/ next to the document, personas/
-// in its parent directory (the workspace root for rooms/x.yaml), then
-// the global library.
+// in its parent directory, the workspace's .loop/personas, then the
+// global library. The first two resolve the conventional placements —
+// a room at .loop/rooms/x.yaml or pipeline at .loop/pipelines/x.yaml
+// has its parent-directory entry land on .loop/personas; the explicit
+// entry keeps documents kept anywhere else in the workspace wired to
+// the same library.
 func PersonaDirsFor(documentPath string) []string {
 	dir := filepath.Dir(documentPath)
 	dirs := []string{
 		filepath.Join(dir, "personas"),
 		filepath.Join(filepath.Dir(dir), "personas"),
+		PersonasDir,
 	}
 	if g, err := GlobalPersonaDir(); err == nil {
 		dirs = append(dirs, g)

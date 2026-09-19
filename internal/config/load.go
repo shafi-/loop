@@ -114,7 +114,7 @@ func ParseRoom(data []byte) (*Room, error) {
 
 // LoadPipeline reads, strictly decodes, normalizes, validates, and
 // resolves a pipeline file: persona references fill from the persona
-// library (project personas/, then the global library).
+// library (project .loop/personas/, then the global library).
 func LoadPipeline(path string) (*Pipeline, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -132,7 +132,7 @@ func LoadPipeline(path string) (*Pipeline, error) {
 
 // LoadRoom reads, strictly decodes, normalizes, validates, and resolves
 // a room file: persona references fill from the persona library
-// (project personas/, then the global library).
+// (project .loop/personas/, then the global library).
 func LoadRoom(path string) (*Room, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

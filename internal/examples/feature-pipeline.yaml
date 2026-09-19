@@ -10,8 +10,8 @@
 # the whole pipeline — your words feed a revise stage and you are asked
 # again.
 #
-# Validate it:   loop validate pipelines/feature-delivery.yaml
-# Run it:        loop run pipelines/feature-delivery.yaml
+# Validate it:   loop validate .loop/pipelines/feature-delivery.yaml
+# Run it:        loop run .loop/pipelines/feature-delivery.yaml
 
 name: feature-delivery
 description: Turn an idea into a reviewed implementation plan

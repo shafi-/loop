@@ -33,12 +33,13 @@ stages:
 
 	t.Run("project persona library resolves", func(t *testing.T) {
 		ws := t.TempDir()
-		dir := filepath.Join(ws, "personas")
+		dir := filepath.Join(ws, ".loop/personas")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		writeFile(t, filepath.Join(dir, "engineer.yaml"), engineer)
-		file := filepath.Join(ws, "ref-check.yaml")
+		// The pipeline sits under .loop/ with the library it references.
+		file := filepath.Join(ws, ".loop", "ref-check.yaml")
 		writeFile(t, file, pipeline)
 		if _, _, err := runCLI(t, "", "run", file, "--quiet", "--runs-dir", filepath.Join(ws, ".loop", "runs")); err != nil {
 			t.Fatalf("run with the persona available: %v", err)
@@ -56,7 +57,10 @@ stages:
 		}
 		home := filepath.Dir(filepath.Dir(gdir))
 		t.Setenv("HOME", home)
-		file := filepath.Join(ws, "ref-check.yaml")
+		if err := os.MkdirAll(filepath.Join(ws, ".loop"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		file := filepath.Join(ws, ".loop", "ref-check.yaml")
 		writeFile(t, file, pipeline)
 		if _, _, err := runCLI(t, "", "run", file, "--quiet", "--runs-dir", filepath.Join(ws, ".loop", "runs")); err != nil {
 			t.Fatalf("run with the persona in the global library: %v", err)
@@ -65,7 +69,10 @@ stages:
 
 	t.Run("missing persona fails at load", func(t *testing.T) {
 		ws := t.TempDir()
-		file := filepath.Join(ws, "ref-check.yaml")
+		if err := os.MkdirAll(filepath.Join(ws, ".loop"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		file := filepath.Join(ws, ".loop", "ref-check.yaml")
 		writeFile(t, file, pipeline)
 		_, _, err := runCLI(t, "", "run", file, "--quiet", "--runs-dir", filepath.Join(ws, ".loop", "runs"))
 		if err == nil || !strings.Contains(err.Error(), `unknown persona "engineer"`) {

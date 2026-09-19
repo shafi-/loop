@@ -60,10 +60,10 @@ func TestSaveEndpoint(t *testing.T) {
 
 	resp, out := postJSON(t, ts, "/api/workspace/save",
 		map[string]any{"kind": "pipeline", "content": testPipelineYAML})
-	if resp.StatusCode != 200 || out["path"] != filepath.Join("pipelines", "my-pipe.yaml") {
+	if resp.StatusCode != 200 || out["path"] != filepath.Join(".loop/pipelines", "my-pipe.yaml") {
 		t.Fatalf("save = %d %v", resp.StatusCode, out)
 	}
-	onDisk, err := os.ReadFile(filepath.Join("pipelines", "my-pipe.yaml"))
+	onDisk, err := os.ReadFile(filepath.Join(".loop/pipelines", "my-pipe.yaml"))
 	if err != nil || string(onDisk) != testPipelineYAML {
 		t.Fatalf("saved file = %q, %v", onDisk, err)
 	}
@@ -88,14 +88,14 @@ func TestSaveDerivesFilenameFromDocument(t *testing.T) {
 	content := strings.Replace(testPipelineYAML, "my-pipe", "My Great Pipe!!", 1)
 	resp, out := postJSON(t, ts, "/api/workspace/save",
 		map[string]any{"kind": "pipeline", "content": content})
-	if resp.StatusCode != 200 || out["path"] != filepath.Join("pipelines", "my-great-pipe.yaml") {
+	if resp.StatusCode != 200 || out["path"] != filepath.Join(".loop/pipelines", "my-great-pipe.yaml") {
 		t.Fatalf("sanitized save = %d %v", resp.StatusCode, out)
 	}
 
-	// A room saves into rooms/.
+	// A room saves into .loop/rooms/.
 	resp, out = postJSON(t, ts, "/api/workspace/save",
 		map[string]any{"kind": "room", "content": testRoomYAML})
-	if resp.StatusCode != 200 || out["path"] != filepath.Join("rooms", "my-room.yaml") {
+	if resp.StatusCode != 200 || out["path"] != filepath.Join(".loop/rooms", "my-room.yaml") {
 		t.Fatalf("room save = %d %v", resp.StatusCode, out)
 	}
 }
@@ -126,13 +126,13 @@ func TestSavePersonaScope(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 
-	// Project scope lands in the workspace's personas/.
+	// Project scope lands in the workspace's .loop/personas/.
 	resp, out := postJSON(t, ts, "/api/workspace/save",
 		map[string]any{"kind": "persona", "scope": "project", "content": testPersonaYAML})
-	if resp.StatusCode != 200 || out["path"] != filepath.Join("personas", "architect.yaml") {
+	if resp.StatusCode != 200 || out["path"] != filepath.Join(".loop/personas", "architect.yaml") {
 		t.Fatalf("project persona save = %d %v", resp.StatusCode, out)
 	}
-	if _, err := os.Stat(filepath.Join("personas", "architect.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(".loop/personas", "architect.yaml")); err != nil {
 		t.Fatalf("missing: %v", err)
 	}
 }
@@ -207,8 +207,8 @@ func TestPersonasListDetailDelete(t *testing.T) {
 	}
 
 	// A room referencing the persona blocks its deletion...
-	room := filepath.Join("rooms", "uses-architect.yaml")
-	if err := os.MkdirAll("rooms", 0o755); err != nil {
+	room := filepath.Join(".loop/rooms", "uses-architect.yaml")
+	if err := os.MkdirAll(".loop/rooms", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(room, []byte("name: uses-architect\nagents:\n  - persona: architect\n"), 0o644); err != nil {
@@ -241,7 +241,7 @@ func TestValidateRoomChecksPersonaReferences(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join("personas", "architect.yaml"), testPersonaYAML)
+	write(filepath.Join(".loop/personas", "architect.yaml"), testPersonaYAML)
 
 	room := "name: demo\nagents:\n  - persona: architect\n"
 	resp, out := postJSON(t, ts, "/api/workspace/validate", map[string]any{"kind": "room", "content": room})

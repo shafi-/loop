@@ -46,7 +46,7 @@ stages:
 		if !withPersona {
 			return ws
 		}
-		dir := filepath.Join(ws, "personas")
+		dir := filepath.Join(ws, ".loop/personas")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}

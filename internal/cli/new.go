@@ -31,7 +31,7 @@ func newNewCmd() *cobra.Command {
 pipeline and loop's own validator checks it. Validation errors are fed
 back to the model for repair. You always get validated YAML — or an
 honest failure. Hand-written pipelines are equally first-class.`,
-		Example: `  loop new "triage GitHub issues daily: label bugs, draft fixes, PR for review" -o pipelines/triage.yaml`,
+		Example: `  loop new "triage GitHub issues daily: label bugs, draft fixes, PR for review" -o .loop/pipelines/triage.yaml`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p, provName, model, err := resolveProvider(provider, model, baseURL, apiKeyEnv, 3)

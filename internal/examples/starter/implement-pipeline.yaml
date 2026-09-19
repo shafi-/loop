@@ -1,7 +1,7 @@
 # Implement pipeline
 #
 # The room's approved plan, built. The architect writes plans to
-# plans/<name>.md; this pipeline's first stage finds the newest one
+# .loop/plans/<name>.md; this pipeline's first stage finds the newest one
 # and the engineer agent implements it — so from the dev room the
 # whole command is just:
 #
@@ -14,16 +14,16 @@
 # Prerequisite: `loop setup` once (installs the agent executor).
 #
 # Run it (outside a room):
-#   loop run pipelines/implement.yaml
+#   loop run .loop/pipelines/implement.yaml
 # With an explicit task:
-#   loop run pipelines/implement.yaml --var task="add rate limiting to the API"
+#   loop run .loop/pipelines/implement.yaml --var task="add rate limiting to the API"
 # Started from a room (/run implement), the room's context travels
 # automatically: the task brief (the asks as stated there, the plan
 # files, the knowledge digest pointer) is written to the room's
 # handoff.md and arrives as the room_context var.
 
 name: implement
-description: Implement the newest approved plan in plans/ (or a task) with a reviewed, gated loop
+description: Implement the newest approved plan in .loop/plans/ (or a task) with a reviewed, gated loop
 
 vars:
   task: ""
@@ -39,11 +39,11 @@ personas:
   - persona: engineer
 
 stages:
-  # The hand-off: the newest plan the room approved. Empty when plans/
+  # The hand-off: the newest plan the room approved. Empty when .loop/plans/
   # has nothing — the engineer then works from the task below.
   - id: plan-file
     type: tool
-    run: ls -t plans/*.md 2>/dev/null | head -1 || true
+    run: ls -t .loop/plans/*.md 2>/dev/null | head -1 || true
     output: plan_file
 
   # What the room handed over when it started this run: the task, the
@@ -162,4 +162,4 @@ stages:
   - id: rejected
     type: tool
     terminal: true
-    run: echo "rejected — the workspace keeps the changes; review them with 'loop run pipelines/review.yaml'"
+    run: echo "rejected — the workspace keeps the changes; review them with 'loop run .loop/pipelines/review.yaml'"

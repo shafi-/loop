@@ -114,8 +114,10 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		}
 		// The snapshot stores the pipeline as authored: persona entries may
 		// be library references, which stages resolve by name. Re-resolve
-		// against the libraries the run's workspace sees now.
-		lib := config.NewPersonaLibrary(config.PersonaDirsFor(filepath.Join(r.CWD, "pipeline.yaml"))...)
+		// against the libraries the run's workspace sees now — anchored at
+		// the workspace's .loop/, where the library lives.
+		doc := filepath.Join(r.CWD, config.LoopDir, "pipeline.yaml")
+		lib := config.NewPersonaLibrary(config.PersonaDirsFor(doc)...)
 		if err := pipeline.ResolvePersonas(lib); err != nil {
 			log.Close()
 			return nil, fmt.Errorf("snapshotted pipeline personas: %w", err)

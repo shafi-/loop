@@ -316,7 +316,7 @@ func (rs *roomSession) runsGuard() error {
 func (rs *roomSession) run(alias, resumeID string, vars []string) (string, error) {
 	file, label, ok := resolveRoomPipeline(rs.roomPath, &rs.cfg, alias)
 	if !ok {
-		return "", fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a pipelines/*.yaml path", alias)
+		return "", fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a .loop/pipelines/*.yaml path", alias)
 	}
 	return rs.sup.Start(runctl.Spec{Alias: label, File: file, ResumeID: resumeID, Extra: vars})
 }
@@ -355,7 +355,7 @@ func existingPipelinePath(arg string) (string, bool) {
 }
 
 // pipelineLabel derives a run's in-room name from a path: the base file
-// name without extension ("pipelines/review.yaml" → "review").
+// name without extension (".loop/pipelines/review.yaml" → "review").
 func pipelineLabel(path string) string {
 	base := filepath.Base(path)
 	return strings.TrimSuffix(strings.TrimSuffix(base, ".yml"), ".yaml")
@@ -395,11 +395,11 @@ func (rs *roomSession) runnablePipelines() []PipelineOption {
 }
 
 // scanPipelineFiles returns the workspace's conventionally placed
-// pipeline files: pipelines/*.yaml plus root-level YAML with a stages:
-// block (the same classification the dashboard's picker uses).
+// pipeline files: .loop/pipelines/*.yaml plus root-level YAML with a
+// stages: block (the same classification the dashboard's picker uses).
 func scanPipelineFiles() []string {
 	var out []string
-	pipes := scanYAMLDir("pipelines")
+	pipes := scanYAMLDir(config.PipelinesDir)
 	root, _ := classifyRoot(".")
 	for _, p := range append(pipes, root...) {
 		out = append(out, p.Path)
@@ -423,7 +423,7 @@ func (rs *roomSession) runCommand() chat.CustomCommand {
 					names = append(names, p.Name)
 				}
 				if len(names) == 0 {
-					return fmt.Errorf("nothing to run — add a pipelines: section to the room or create pipelines/*.yaml")
+					return fmt.Errorf("nothing to run — add a pipelines: section to the room or create .loop/pipelines/*.yaml")
 				}
 				return fmt.Errorf("runnable here: %s", strings.Join(names, " · "))
 			}

@@ -4,8 +4,8 @@
 # (@architect ...) must reply. Untagged agents read the room and decide
 # for themselves whether to speak — like real senior people in a meeting.
 #
-# Validate it:  loop validate rooms/leadership.yaml
-# Open it:      loop chat rooms/leadership.yaml
+# Validate it:  loop validate .loop/rooms/leadership.yaml
+# Open it:      loop chat .loop/rooms/leadership.yaml
 
 name: leadership
 

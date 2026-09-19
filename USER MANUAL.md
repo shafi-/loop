@@ -103,15 +103,15 @@ whether counters are on.
 ## 2. Quickstart
 
 ```bash
-loop init                      # scaffold rooms/ + pipelines/ + shipped personas
-loop chat rooms/feature.yaml "shape: one-off invoices for freelancers"
-loop chat rooms/dev.yaml "plan: add a health endpoint"
+loop init                      # scaffold .loop/rooms/ + .loop/pipelines/ + shipped personas
+loop chat .loop/rooms/feature.yaml "shape: one-off invoices for freelancers"
+loop chat .loop/rooms/dev.yaml "plan: add a health endpoint"
 ```
 
 `loop init` scaffolds a workspace built for regular development. Two
-rooms share one team of shipped personas: **`rooms/feature.yaml`** is
+rooms share one team of shipped personas: **`.loop/rooms/feature.yaml`** is
 the decision side — `@product-owner`, `@cfo`, `@end-user`, and
-`@architect` shape a feature before it exists — and **`rooms/dev.yaml`**
+`@architect` shape a feature before it exists — and **`.loop/rooms/dev.yaml`**
 is the build side — `@architect` plans, `@engineer` writes files and
 runs commands in your workspace, `@reviewer` checks. Shape first, then
 build; tag who you need (`@engineer add a retry to the client`), and
@@ -120,7 +120,7 @@ untagged agents speak when their seat has something to add.
 The classic demo pipeline is still scaffolded:
 
 ```bash
-loop run pipelines/feature-delivery.yaml
+loop run .loop/pipelines/feature-delivery.yaml
 ```
 
 an `llm` stage writes requirements, an `agent` stage (the `architect`
@@ -154,17 +154,27 @@ committed.
 
 Loop is directory-scoped: the directory you run it from *is* the
 workspace. In an existing repo, `loop init` is safe — it only adds
-example files under `pipelines/` and `rooms/`, skipping anything that
+example files under `.loop/pipelines/` and `.loop/rooms/`, skipping anything that
 exists. Delete them when you don't want them, or skip init and create
-`pipelines/` yourself.
+`.loop/pipelines/` yourself.
 
 ```bash
 cd ~/work/webapp
-loop init && rm pipelines/feature-delivery.yaml rooms/leadership.yaml README.md
+loop init && rm .loop/pipelines/feature-delivery.yaml .loop/rooms/leadership.yaml README.md
 ```
 
-Add `.loop/` and `.env` to `.gitignore`; commit `pipelines/` and
-`rooms/`.
+Commit the documents — `.loop/pipelines/`, `.loop/rooms/`,
+`.loop/personas/`, `.loop/plans/` — and ignore the generated parts by
+adding these lines to `.gitignore`:
+
+```
+.loop/runs/
+.loop/knowledge/
+.loop/rooms/*/
+```
+
+(`.loop/rooms/*/` keeps the transcript directories out while the room
+YAML files next to them stay tracked; `.env` stays ignored as always.)
 
 ### A first pipeline against your real commands
 
@@ -199,7 +209,7 @@ stages:
     run: ./scripts/release.sh
 ```
 
-Run it with `loop run pipelines/release-check.yaml`. Ctrl-c pauses
+Run it with `loop run .loop/pipelines/release-check.yaml`. Ctrl-c pauses
 mid-run; `loop run --resume <id>` picks up where it stopped (§8).
 
 ### What the agents can touch
@@ -249,12 +259,12 @@ collectively — you see every problem at once. `--type` forces
 
 ### `loop init [dir] [--force]`
 
-Scaffold a workspace: `rooms/feature.yaml` and `rooms/dev.yaml`
+Scaffold a workspace: `.loop/rooms/feature.yaml` and `.loop/rooms/dev.yaml`
 (the shipped shaping council and dev team — the dev room owns the
 `implement` pipeline, see "the plan-to-build flow" below),
-`pipelines/implement.yaml`
-and `pipelines/review.yaml` (regular-development pipelines), the
-classic `pipelines/feature-delivery.yaml` and `rooms/leadership.yaml`,
+`.loop/pipelines/implement.yaml`
+and `.loop/pipelines/review.yaml` (regular-development pipelines), the
+classic `.loop/pipelines/feature-delivery.yaml` and `.loop/rooms/leadership.yaml`,
 and a `README.md`. The six shipped personas (`architect`, `engineer`,
 `reviewer`, `product-owner`, `cfo`, `end-user`) are seeded into the
 global library (`~/.loop/personas/`) so every project can reference
@@ -347,7 +357,7 @@ the same places: the dashboard's active-runs table and the run page
 have a **stop** button (pause — the run keeps its resume point), and a
 room's pipeline sidecar stops the room's own runs the same way. Its
 run and room forms offer
-pickers of what the workspace holds: the `pipelines/` and `rooms/`
+pickers of what the workspace holds: the `.loop/pipelines/` and `.loop/rooms/`
 directories, plus root-level files recognized by their schema (typed
 paths still work for anything else). The UI binds
 `127.0.0.1:8787`
@@ -384,7 +394,7 @@ or write the YAML yourself. The editor is the source of truth either
 way: **validate** runs loop's strict parser and reports every problem
 with its place in the document (`stages[2].prompt: is required`), and
 **save** re-validates server-side before writing into the workspace's
-`pipelines/` or `rooms/` — a file that already exists is overwritten
+`.loop/pipelines/` or `.loop/rooms/` — a file that already exists is overwritten
 only after you confirm. Drafting uses the daemon's provider
 environment (the grand rule), so your keys never reach the browser.
 
@@ -690,7 +700,7 @@ replies: `read_file`, `write_file`, `run_command` (the fixed set).
 File paths are **confined to the workspace** — absolute paths and `..`
 escapes are refused; tool output is capped; commands run via `sh -c`
 with a 60s timeout; the loop is bounded (8 rounds). Every executed tool
-is noticed in the room (`🔧 @architect wrote plans/x.md`) and recorded
+is noticed in the room (`🔧 @architect wrote .loop/plans/x.md`) and recorded
 in the transcript, so the other agents learn the file exists. Tool
 errors go back to the model as results — a bad path is a correction,
 not a dead turn. Caveat worth knowing: `run_command` executes what the
@@ -709,7 +719,7 @@ library on `loop init` / `loop setup`: **architect**, **engineer**,
 `~/.loop/personas/` freely — seeding never overwrites an edited file.
 
 ```yaml
-# personas/architect.yaml
+# .loop/personas/architect.yaml
 name: architect
 role: Software architect
 system: |
@@ -720,7 +730,7 @@ tools: [read_file]        # optional
 ```
 
 ```yaml
-# rooms/demo.yaml — reference it (project scope or global)
+# .loop/rooms/demo.yaml — reference it (project scope or global)
 agents:
   - persona: architect                  # everything comes from the library
   - persona: architect
@@ -742,10 +752,10 @@ Personas live in two scopes:
 
 | Scope | Location | Available |
 |---|---|---|
-| project | `<workspace>/personas/` | this project only |
+| project | `<workspace>/.loop/personas/` | this project only |
 | global | `~/.loop/personas/` | every project on the machine |
 
-Project personas shadow global ones with the same name. The `personas/`
+Project personas shadow global ones with the same name. The `.loop/personas/`
 directory is looked up next to the document and in the workspace root.
 
 The dashboard manages the library (**new persona** / **manage
@@ -769,7 +779,7 @@ no argument lists them in the terminal too.
 | Command | What it does |
 |---|---|
 | `/pipelines` | list owned pipelines |
-| `/run <alias-or-path> [--var k=v]…` | run one as a **real `loop run` subprocess**, in the background. Room aliases come from the `pipelines:` block; any workspace pipeline also runs by path (`/run pipelines/review.yaml`) |
+| `/run <alias-or-path> [--var k=v]…` | run one as a **real `loop run` subprocess**, in the background. Room aliases come from the `pipelines:` block; any workspace pipeline also runs by path (`/run .loop/pipelines/review.yaml`) |
 | `/approve <yes\|no\|words>` | answer a pipeline asking for approval (free words understood — the gate contract) |
 | `/cost` | the token ledger at three depths: this session (per-agent breakdown), every session since the room began (persisted in the room's `usage.json`), and the pipeline runs this room commanded (their spend lives in their run records) |
 | `/compact` | summarize everything before the live window into one "session so far" line; the summarized turns archive (never destroyed). One model call, metered under `compact` |
@@ -779,14 +789,14 @@ no argument lists them in the terminal too.
 **The plan-to-build flow (shipped).** The dev room owns the
 `implement` pipeline, and its architect has file tools for one
 purpose: when a plan is agreed, `@architect` writes the full plan to
-`plans/<short-name>.md` and posts only a summary plus the path (whole
+`.loop/plans/<short-name>.md` and posts only a summary plus the path (whole
 plans pasted into chat bloat every later prompt). The implement
-pipeline's first stage finds the **newest** file in `plans/`, and the
+pipeline's first stage finds the **newest** file in `.loop/plans/`, and the
 engineer agent treats it as the approved plan. So the entire hand-off
 from conversation to code is:
 
 ```
-@architect plan the OAuth login            → architect writes plans/oauth.md
+@architect plan the OAuth login            → architect writes .loop/plans/oauth.md
 (approval happens in the conversation)
 /run implement                             → the newest plan gets built
 ```
@@ -804,7 +814,7 @@ user messages), the plan files newest-first, and the knowledge digest
 pointer. The shipped `implement` pipeline reads it in a deterministic
 `room-context` stage and folds it into the implement, review, and
 revise prompts — so requirements discussed in the room reach the
-engineer and the reviewer even when nothing was written to `plans/`.
+engineer and the reviewer even when nothing was written to `.loop/plans/`.
 Pipelines that don't reference the var are unaffected; a run started
 outside a room simply has no `room_context`, and the stage degrades to
 empty (the starter pipeline declares it for exactly that case).
@@ -959,10 +969,12 @@ with file:line warnings.
 
 | Path | Contents |
 |---|---|
+| `.loop/pipelines/`, `.loop/rooms/` | pipeline and room YAML — the workspace's documents |
+| `.loop/personas/` | this project's persona library |
+| `.loop/plans/` | the plans the architect writes |
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
 | `.loop/rooms/<room>/` | chat transcripts, usage.json (the room's lifetime ledger) |
 | `.loop/knowledge/` | the maintained project knowledge layer: `digest.md`, `notes/`, `index.json` |
-| `personas/` | this project's persona library |
 | `~/.loop/personas/` | the global persona library (every project; seeded with the six shipped personas) |
 | `~/.loop/daemon.sock` | the daemon's control socket (`loop serve`; `LOOP_DAEMON_SOCK` to override) |
 | `~/.loop/daemon-<port>.sock` | control socket of a `loop serve --port N` daemon (derived from the port) |

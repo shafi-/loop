@@ -2,11 +2,14 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shafi-/loop/internal/config"
 	"github.com/shafi-/loop/internal/counters"
 	"github.com/shafi-/loop/internal/examples"
 )
@@ -23,13 +26,13 @@ func newInitCmd() *cobra.Command {
 				dir = args[0]
 			}
 			files := map[string]string{
-				filepath.Join(dir, "pipelines", "feature-delivery.yaml"): examples.FeaturePipeline,
-				filepath.Join(dir, "pipelines", "implement.yaml"):        examples.ImplementPipeline,
-				filepath.Join(dir, "pipelines", "review.yaml"):           examples.ReviewPipeline,
-				filepath.Join(dir, "rooms", "leadership.yaml"):           assetRoom,
-				filepath.Join(dir, "rooms", "feature.yaml"):              examples.FeatureRoom,
-				filepath.Join(dir, "rooms", "dev.yaml"):                  examples.DevRoom,
-				filepath.Join(dir, "README.md"):                          assetReadme,
+				filepath.Join(dir, config.PipelinesDir, "feature-delivery.yaml"): examples.FeaturePipeline,
+				filepath.Join(dir, config.PipelinesDir, "implement.yaml"):        examples.ImplementPipeline,
+				filepath.Join(dir, config.PipelinesDir, "review.yaml"):           examples.ReviewPipeline,
+				filepath.Join(dir, config.RoomsDir, "leadership.yaml"):           assetRoom,
+				filepath.Join(dir, config.RoomsDir, "feature.yaml"):              examples.FeatureRoom,
+				filepath.Join(dir, config.RoomsDir, "dev.yaml"):                  examples.DevRoom,
+				filepath.Join(dir, "README.md"):                                  assetReadme,
 			}
 			written := 0
 			for path, content := range files {
@@ -48,12 +51,13 @@ func newInitCmd() *cobra.Command {
 				written++
 			}
 			// The shipped dev team: global personas every project can
-			// reference (rooms/dev.yaml and the pipelines do).
+			// reference (.loop/rooms/dev.yaml and the pipelines do).
 			seedGlobalPersonas(cmd.OutOrStdout(), cmd.ErrOrStderr())
+			hintLegacyDirs(cmd.ErrOrStderr(), dir)
 			fmt.Fprintf(cmd.OutOrStdout(), "\nWorkspace ready (%d file(s)). Next:\n"+
-				"  loop chat rooms/feature.yaml \"shape: one-off invoices for freelancers\"\n"+
-				"  loop chat rooms/dev.yaml \"plan: add a health endpoint\"\n"+
-				"  loop run pipelines/review.yaml\n", written)
+				"  loop chat .loop/rooms/feature.yaml \"shape: one-off invoices for freelancers\"\n"+
+				"  loop chat .loop/rooms/dev.yaml \"plan: add a health endpoint\"\n"+
+				"  loop run .loop/pipelines/review.yaml\n", written)
 			// Opt-in, anonymous, local (internal/counters).
 			counters.Bump("workspaces_initialized")
 			return nil
@@ -61,4 +65,27 @@ func newInitCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	return cmd
+}
+
+// hintLegacyDirs warns about pre-.loop workspaces: loop now keeps every
+// artifact under .loop/, and files in the old root-level directories
+// are simply not seen anymore. A workspace scaffolded before the move
+// needs its directories moved once.
+func hintLegacyDirs(errOut io.Writer, dir string) {
+	var legacy []string
+	for _, d := range []string{"rooms", "pipelines", "personas", "plans"} {
+		entries, err := os.ReadDir(filepath.Join(dir, d))
+		if err != nil || len(entries) == 0 {
+			continue
+		}
+		legacy = append(legacy, d)
+	}
+	if len(legacy) == 0 {
+		return
+	}
+	fmt.Fprintf(errOut, "! %s holds loop artifacts in the old root-level layout: %s\n"+
+		"  move them once and everything picks them up:\n"+
+		"  mkdir -p %s && mv %s %s/\n",
+		dir, strings.Join(legacy, ", "),
+		filepath.Join(dir, config.LoopDir), strings.Join(legacy, " "), filepath.Join(dir, config.LoopDir))
 }

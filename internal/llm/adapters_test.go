@@ -336,7 +336,7 @@ func TestOpenAIToolRoundTrip(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"choices": [{"message": {"role": "assistant", "content": "",
 				"tool_calls": [{"id": "call_1", "type": "function",
-					"function": {"name": "write_file", "arguments": "{\"path\":\"plans/x.md\",\"content\":\"# x\"}"}}]},
+					"function": {"name": "write_file", "arguments": "{\"path\":\".loop/plans/x.md\",\"content\":\"# x\"}"}}]},
 				"finish_reason": "tool_calls"}]
 		}`))
 	}))
@@ -400,7 +400,7 @@ func TestOpenAIToolRoundTrip(t *testing.T) {
 		t.Errorf("tool call = %+v", tc)
 	}
 	var args map[string]any
-	if err := json.Unmarshal([]byte(tc.Args), &args); err != nil || args["path"] != "plans/x.md" {
+	if err := json.Unmarshal([]byte(tc.Args), &args); err != nil || args["path"] != ".loop/plans/x.md" {
 		t.Errorf("args = %q (%v)", tc.Args, err)
 	}
 	if resp.StopReason != StopToolUse {

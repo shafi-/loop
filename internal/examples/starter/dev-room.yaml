@@ -7,15 +7,15 @@
 # lists the area summaries.
 #
 # The flow this room is shaped for: @architect drafts a plan and
-# writes it to plans/<name>.md (a summary + path lands in the chat),
+# writes it to .loop/plans/<name>.md (a summary + path lands in the chat),
 # the room refines and approves it, then /run implement builds the
-# newest plan in plans/ — no variables to remember.
+# newest plan in .loop/plans/ — no variables to remember.
 #
 # The personas come from the global library (~/.loop/personas/), so
 # every project on this machine shares the same team; edit them there.
 #
-# Validate it:  loop validate rooms/dev.yaml
-# Open it:      loop chat rooms/dev.yaml
+# Validate it:  loop validate .loop/rooms/dev.yaml
+# Open it:      loop chat .loop/rooms/dev.yaml
 
 name: dev
 
@@ -25,7 +25,7 @@ pipelines:
 
 agents:
   - persona: architect
-    tools: [read_file, write_file]   # reads code to plan; writes plans/<name>.md
+    tools: [read_file, write_file]   # reads code to plan; writes .loop/plans/<name>.md
   - persona: engineer
     tools: [read_file, write_file, run_command]
   - persona: reviewer

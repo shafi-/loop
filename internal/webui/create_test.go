@@ -53,7 +53,7 @@ func TestCreatePageAndFlow(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(body, "saved") {
 		t.Fatalf("save = %d %q", resp.StatusCode, body)
 	}
-	if _, err := os.Stat(filepath.Join("pipelines", "drafted-pipe.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(".loop/pipelines", "drafted-pipe.yaml")); err != nil {
 		t.Fatalf("saved file missing: %v", err)
 	}
 	if resp, _ = postForm(t, ts.URL+"/new/save",

@@ -52,7 +52,7 @@ func TestParsePersona(t *testing.T) {
 
 func TestPersonaLibraryPrecedence(t *testing.T) {
 	dir := t.TempDir()
-	project := filepath.Join(dir, "personas")
+	project := filepath.Join(dir, ".loop/personas")
 	global := filepath.Join(dir, "global-personas")
 	writePersona(t, project, "architect.yaml", architectYAML)
 	writePersona(t, global, "architect.yaml",
@@ -82,7 +82,7 @@ func TestPersonaLibraryPrecedence(t *testing.T) {
 
 func TestPersonaLibraryBrokenFile(t *testing.T) {
 	dir := t.TempDir()
-	personas := filepath.Join(dir, "personas")
+	personas := filepath.Join(dir, ".loop/personas")
 	writePersona(t, personas, "broken.yaml", "name: broken\nrole: no system prompt\n")
 
 	lib := NewPersonaLibrary(personas)
@@ -100,7 +100,7 @@ func TestPersonaLibraryBrokenFile(t *testing.T) {
 
 func TestRoomResolvePersonas(t *testing.T) {
 	dir := t.TempDir()
-	personas := filepath.Join(dir, "personas")
+	personas := filepath.Join(dir, ".loop/personas")
 	writePersona(t, personas, "architect.yaml", architectYAML)
 
 	roomYAML := `name: demo
@@ -151,13 +151,13 @@ agents:
 	}
 }
 
-// LoadRoom resolves automatically: the personas/ directory next to the
+// LoadRoom resolves automatically: the .loop/personas/ directory next to the
 // room file (and the workspace root's, then the global one) fills refs.
 func TestLoadRoomResolvesFromLibrary(t *testing.T) {
 	dir := t.TempDir()
-	writePersona(t, filepath.Join(dir, "personas"), "reviewer.yaml", reviewerYAML)
-	room := filepath.Join(dir, "rooms", "demo.yaml")
-	writePersona(t, filepath.Join(dir, "rooms"), "demo.yaml",
+	writePersona(t, filepath.Join(dir, ".loop/personas"), "reviewer.yaml", reviewerYAML)
+	room := filepath.Join(dir, ".loop/rooms", "demo.yaml")
+	writePersona(t, filepath.Join(dir, ".loop/rooms"), "demo.yaml",
 		"name: demo\nagents:\n  - persona: reviewer\n")
 
 	r, err := LoadRoom(room)
@@ -170,9 +170,9 @@ func TestLoadRoomResolvesFromLibrary(t *testing.T) {
 
 	// Missing persona: a load error that says which persona and where
 	// it looked.
-	writePersona(t, filepath.Join(dir, "rooms"), "sad.yaml",
+	writePersona(t, filepath.Join(dir, ".loop/rooms"), "sad.yaml",
 		"name: sad\nagents:\n  - persona: ghost\n")
-	_, err = LoadRoom(filepath.Join(dir, "rooms", "sad.yaml"))
+	_, err = LoadRoom(filepath.Join(dir, ".loop/rooms", "sad.yaml"))
 	if err == nil || !strings.Contains(err.Error(), "unknown persona") {
 		t.Fatalf("missing persona = %v", err)
 	}

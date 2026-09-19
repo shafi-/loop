@@ -113,7 +113,7 @@ func (s *roomRunSession) resolveFile(alias string) (file, label string, ok bool)
 func (s *roomRunSession) Start(alias, resumeID string, extra []string) error {
 	file, label, ok := s.resolveFile(alias)
 	if !ok {
-		return fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a pipelines/*.yaml path", alias)
+		return fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a .loop/pipelines/*.yaml path", alias)
 	}
 	if s.room != nil {
 		if p, err := s.room.WriteHandoff(taskVar(extra)); err == nil && !hasVarArg(extra, "room_context") {
@@ -148,7 +148,7 @@ func hasVarArg(extra []string, key string) bool {
 }
 
 // Runnable lists everything /run accepts by short name here: the room's
-// owned aliases, then pipelines/*.yaml files not already behind an
+// owned aliases, then .loop/pipelines/*.yaml files not already behind an
 // alias. The "/run with no args" listing and /pipelines print it.
 func (s *roomRunSession) Runnable() []string {
 	var names []string
@@ -169,7 +169,7 @@ func (s *roomRunSession) Runnable() []string {
 		names = append(names, p.Name)
 	}
 	var paths []string
-	for _, pat := range []string{"pipelines/*.yaml", "pipelines/*.yml"} {
+	for _, pat := range []string{config.PipelinesDir + "/*.yaml", config.PipelinesDir + "/*.yml"} {
 		matches, _ := filepath.Glob(pat)
 		paths = append(paths, matches...)
 	}

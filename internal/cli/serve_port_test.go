@@ -177,7 +177,7 @@ func TestServePortTakenIsFriendly(t *testing.T) {
 }
 
 // TestDashboardPickersOffersWorkspaceFiles: with conventional
-// pipelines/ and rooms/ directories present, the dashboard offers
+// .loop/pipelines/ and .loop/rooms/ directories present, the dashboard offers
 // pickers (labeled, prefilled) instead of a bare typed path.
 func TestDashboardPickersOffersWorkspaceFiles(t *testing.T) {
 	bin := loopBinary(t)
@@ -193,8 +193,8 @@ func TestDashboardPickersOffersWorkspaceFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("pipelines/release-check.yaml", "name: release-check\nstages: []\n")
-	write("rooms/ops.yaml", "name: ops\nagents: []\n")
+	write(".loop/pipelines/release-check.yaml", "name: release-check\nstages: []\n")
+	write(".loop/rooms/ops.yaml", "name: ops\nagents: []\n")
 
 	startPortedServe(t, bin, ws, home, port)
 	waitPing(t, port)
@@ -208,11 +208,11 @@ func TestDashboardPickersOffersWorkspaceFiles(t *testing.T) {
 	page := string(body)
 	for _, want := range []string{
 		`<select class="picker" data-fills="run-file"`,
-		`release-check · pipelines/release-check.yaml`,
+		`release-check · .loop/pipelines/release-check.yaml`,
 		`<select class="picker" data-fills="host-file"`,
-		`ops · rooms/ops.yaml`,
-		`value="pipelines/release-check.yaml"`,
-		`value="rooms/ops.yaml"`,
+		`ops · .loop/rooms/ops.yaml`,
+		`value=".loop/pipelines/release-check.yaml"`,
+		`value=".loop/rooms/ops.yaml"`,
 		`custom path…`,
 		// lists are preloaded once and refreshed on demand, not polled
 		`hx-get="/frag/workspace?kind=pipelines"`,

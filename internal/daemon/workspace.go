@@ -20,13 +20,13 @@ type WorkspaceFile struct {
 }
 
 // handleWorkspace lists candidate pipeline and room files: the
-// conventional pipelines/ and rooms/ directories, plus root-level YAML
-// classified by its top-level schema (`stages:` → pipeline,
-// `agents:` → room). Files that match neither still work — typed
-// paths remain the fallback.
+// conventional .loop/pipelines/ and .loop/rooms/ directories, plus
+// root-level YAML classified by its top-level schema (`stages:` →
+// pipeline, `agents:` → room). Files that match neither still work —
+// typed paths remain the fallback.
 func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
-	pipes := scanYAMLDir("pipelines")
-	rooms := scanYAMLDir("rooms")
+	pipes := scanYAMLDir(config.PipelinesDir)
+	rooms := scanYAMLDir(config.RoomsDir)
 	rp, rr := classifyRoot(".")
 	pipes = append(pipes, rp...)
 	rooms = append(rooms, rr...)

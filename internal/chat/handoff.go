@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/shafi-/loop/internal/config"
 )
 
 // The room→pipeline hand-off. Starting a pipeline from a room must hand
@@ -79,7 +81,7 @@ func (r *Room) WriteHandoff(task string) (string, error) {
 	b.WriteString("\n## plan files (newest first)\n\n")
 	plans := planFiles(r.Workspace)
 	if len(plans) == 0 {
-		b.WriteString("(no plans/*.md — the plan may live entirely in the asks above)\n")
+		b.WriteString("(no " + config.PlansDir + "/*.md — the plan may live entirely in the asks above)\n")
 	}
 	for _, p := range plans {
 		fmt.Fprintf(&b, "- %s\n", p)
@@ -105,13 +107,13 @@ func (r *Room) WriteHandoff(task string) (string, error) {
 	return rel, nil
 }
 
-// planFiles lists the workspace's plans/*.md, newest first (mtime,
+// planFiles lists the workspace's .loop/plans/*.md, newest first (mtime,
 // then path, so equal mtimes stay deterministic).
 func planFiles(ws string) []string {
 	if ws == "" {
 		return nil
 	}
-	matches, _ := filepath.Glob(filepath.Join(ws, "plans", "*.md"))
+	matches, _ := filepath.Glob(filepath.Join(ws, config.PlansDir, "*.md"))
 	type plan struct {
 		path string
 		mod  time.Time
