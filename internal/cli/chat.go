@@ -101,13 +101,14 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 	if line := r.EnsureKnowledge(cmd.Context()); line != "" {
 		fmt.Fprintln(out, line)
 	}
+	r.FlushUsage() // the knowledge spend lands in the lifetime ledger too
 	// Pipelines this room owns: /run commands real `loop run`
 	// subprocesses from inside the conversation.
 	bin, err := executablePath()
 	if err != nil {
 		bin = "loop"
 	}
-	sess := newRoomRunSession(bin, args[0], room.Pipelines, ui, out, transcript)
+	sess := newRoomRunSession(bin, args[0], room.Pipelines, r, ui, out, transcript)
 	// An optional opening message is delivered exactly as if the
 	// user had typed it; the session stays interactive afterwards.
 	// Like typed input, a failed delivery never ends the session.
@@ -126,6 +127,12 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 		}
 		text := strings.TrimSpace(line)
 		if text == "" {
+			continue
+		}
+		if text == "/" {
+			// The discoverability affordance: a bare slash lists every
+			// command this surface understands.
+			printSlashCommands(out, r, sess)
 			continue
 		}
 		switch text {
@@ -192,12 +199,46 @@ func buildRoomAgents(room *config.Room, meter *usage.Meter) ([]*agent.Agent, err
 	return agents, nil
 }
 
+// printRunnable lists what /run accepts, one per line, marked by kind.
+func printRunnable(out io.Writer, names []string) {
+	if len(names) == 0 {
+		fmt.Fprintln(out, "nothing runnable — add a pipelines: section to the room or create pipelines/*.yaml")
+		return
+	}
+	for _, n := range names {
+		kind := "room alias"
+		if strings.Contains(n, "/") {
+			kind = "workspace pipeline"
+		}
+		fmt.Fprintf(out, "  %s (%s)\n", n, kind)
+	}
+}
+
+// printSlashCommands lists what the user can type after "/": the room
+// engine's verbs (every surface shares them), this session's pipeline
+// commands (when the room owns pipelines), and the REPL's own verbs.
+func printSlashCommands(out io.Writer, r *chat.Room, sess *roomRunSession) {
+	fmt.Fprintln(out, "commands:")
+	for _, c := range r.CommandList() {
+		fmt.Fprintf(out, "  /%-10s %s\n", c.Name, c.Desc)
+	}
+	if len(sess.pipelines) > 0 {
+		fmt.Fprintln(out, "  /run <name> [--var k=v]…   run a pipeline — room alias or path")
+		fmt.Fprintln(out, "  /approve <yes|no|words>    answer a pipeline asking for approval")
+		fmt.Fprintln(out, "  /status      active runs · /halt [name] stop one resumably")
+		fmt.Fprintln(out, "  /pipelines   list this room's pipelines")
+	}
+	fmt.Fprintln(out, "  /help        the full cheat sheet · /agents  who is in the room")
+	fmt.Fprintln(out, "  /quit        end the session (running pipelines are halted resumably)")
+}
+
 func printChatHelp(out io.Writer) {
 	fmt.Fprintln(out, `  just type    everyone reads it; tagged agents reply, others may join
   @name text   force a reply from @name (multiple tags allowed)
+  /            list available commands
   /agents      list participants
   /pipelines   list the pipelines this room owns
-  /run <name> [--var k=v]…   run an owned pipeline in the background
+  /run <name> [--var k=v]…   run a pipeline — room alias or pipelines/*.yaml path
   /approve <yes|no|words>    answer a pipeline asking for approval
   /status      active runs and where their output lives
   /halt [name] stop a run cleanly (resumable with /run <name> --resume <id>)
@@ -217,18 +258,13 @@ func handleRoomRunCommand(text string, sess *roomRunSession, out io.Writer) bool
 	}
 	switch fields[0] {
 	case "/pipelines":
-		if len(sess.pipelines) == 0 {
-			fmt.Fprintln(out, "this room owns no pipelines — add a `pipelines:` section to the room YAML")
-			return true
-		}
-		for _, p := range sess.pipelines {
-			fmt.Fprintf(out, "  %s — %s\n", p.Name, p.File)
-		}
+		printRunnable(out, sess.Runnable())
 		fmt.Fprintln(out, "run one with: /run <name> [--var k=v]…")
 
 	case "/run":
 		if len(fields) < 2 {
-			fmt.Fprintln(out, "usage: /run <name> [--resume <id>] [--var k=v]…")
+			fmt.Fprintln(out, "usage: /run <alias-or-path> [--resume <id>] [--var k=v]…")
+			printRunnable(out, sess.Runnable())
 			return true
 		}
 		name := fields[1]
@@ -257,7 +293,7 @@ func handleRoomRunCommand(text string, sess *roomRunSession, out io.Writer) bool
 		rest := fields[1:]
 		alias := ""
 		if len(rest) > 1 {
-			if _, known := sess.resolveFile(rest[0]); known {
+			if _, _, known := sess.resolveFile(rest[0]); known {
 				alias, rest = rest[0], rest[1:]
 			}
 		}

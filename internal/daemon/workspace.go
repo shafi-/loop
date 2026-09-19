@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/shafi-/loop/internal/config"
 )
 
 // WorkspaceFile is one discoverable YAML in the workspace: its path
@@ -34,7 +36,46 @@ func (s *Server) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		"workspace": s.workspace,
 		"pipelines": pipes,
 		"rooms":     rooms,
+		"threads":   scanRoomThreads(rooms),
 	})
+}
+
+// scanRoomThreads walks .loop/rooms/ and matches each thread to a room
+// YAML by declared name, so old conversations stay one click away.
+func scanRoomThreads(roomYamls []WorkspaceFile) []RoomThread {
+	byName := map[string]string{}
+	for _, rf := range roomYamls {
+		if data, err := os.ReadFile(rf.Path); err == nil {
+			if room, err := config.ParseRoom(data); err == nil && room.Name != "" {
+				if _, taken := byName[room.Name]; !taken {
+					byName[room.Name] = rf.Path
+				}
+			}
+		}
+	}
+	entries, err := os.ReadDir(".loop/rooms")
+	if err != nil {
+		return nil
+	}
+	var out []RoomThread
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		transcript := filepath.Join(".loop", "rooms", e.Name(), "transcript.jsonl")
+		st, err := os.Stat(transcript)
+		if err != nil {
+			continue // never hosted for real, or rotated away
+		}
+		out = append(out, RoomThread{
+			Name:       e.Name(),
+			Lines:      countLines(transcript),
+			LastActive: st.ModTime(),
+			File:       byName[e.Name()],
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LastActive.After(out[j].LastActive) })
+	return out
 }
 
 var (

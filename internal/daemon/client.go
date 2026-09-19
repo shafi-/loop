@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/usage"
 )
 
@@ -87,6 +88,16 @@ type Workspace struct {
 	Workspace string          `json:"workspace"`
 	Pipelines []WorkspaceFile `json:"pipelines"`
 	Rooms     []WorkspaceFile `json:"rooms"`
+	Threads   []RoomThread    `json:"threads"` // every persisted room conversation, hosted or not
+}
+
+// RoomThread is a room's persisted conversation on disk; File, when
+// set, is the workspace room YAML that reopens it.
+type RoomThread struct {
+	Name       string    `json:"name"`
+	Lines      int       `json:"lines"`
+	LastActive time.Time `json:"last_active"`
+	File       string    `json:"file,omitempty"`
 }
 
 // Workspace asks the daemon which pipeline and room files its
@@ -261,15 +272,24 @@ func (c *Client) Events(id string, after int) ([]EventLine, error) {
 
 // RoomInfo describes a hosted room.
 type RoomInfo struct {
-	Name      string            `json:"name"`
-	Path      string            `json:"path"`
-	Agents    []string          `json:"agents"`
-	Roles     map[string]string `json:"roles"` // agent name -> role, when set
-	Pipelines []string          `json:"pipelines"`
-	Busy      bool              `json:"busy"`
-	Lines     int               `json:"transcript_lines"`
-	Runs      []RunInfo         `json:"runs"`  // the room's own pipeline runs
-	Usage     *usage.Total      `json:"usage"` // the session's token ledger, when calls were made
+	Name      string             `json:"name"`
+	Path      string             `json:"path"`
+	Agents    []string           `json:"agents"`
+	Roles     map[string]string  `json:"roles"` // agent name -> role, when set
+	Pipelines []string           `json:"pipelines"`
+	Runnable  []PipelineOption   `json:"runnable"` // everything /run accepts by name — pickers and "/run" listings build from it
+	Commands  []chat.CommandInfo `json:"commands"` // room verbs, for "/" menus
+	Busy      bool               `json:"busy"`
+	Lines     int                `json:"transcript_lines"`
+	Runs      []RunInfo          `json:"runs"`        // the room's own pipeline runs
+	Usage     *usage.Total       `json:"usage"`       // the session's token ledger, when calls were made
+	UsageAll  *usage.Total       `json:"usage_total"` // every session since the room began
+}
+
+// PipelineOption is one thing /run accepts by short name in a room.
+type PipelineOption struct {
+	Name string `json:"name"` // what the user types after /run
+	File string `json:"file"` // the pipeline YAML behind it
 }
 
 // HostRoom hosts (or attaches to) a room session on the daemon.

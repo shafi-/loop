@@ -56,6 +56,15 @@ func OpenTranscript(dir string) (*Transcript, error) {
 	return t, sc.Err()
 }
 
+// Dir is the directory the transcript lives in ("" when in-memory
+// only) — where the room's other per-room records live too.
+func (t *Transcript) Dir() string {
+	if t.path == "" {
+		return ""
+	}
+	return filepath.Dir(t.path)
+}
+
 // Append records a message and persists it immediately.
 func (t *Transcript) Append(from, text string) error {
 	m := Message{TS: time.Now().UTC(), From: from, Text: text}

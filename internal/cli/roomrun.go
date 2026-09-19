@@ -8,8 +8,10 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/config"
@@ -23,15 +25,17 @@ type roomRunSession struct {
 	sup        *runctl.Supervisor
 	pipelines  []config.RoomPipeline
 	roomPath   string
+	room       *chat.Room // the conversation whose context runs receive
 	ui         chat.UI
 	out        io.Writer
 	transcript *chat.Transcript
 }
 
-func newRoomRunSession(bin, roomPath string, pipelines []config.RoomPipeline, ui chat.UI, out io.Writer, transcript *chat.Transcript) *roomRunSession {
+func newRoomRunSession(bin, roomPath string, pipelines []config.RoomPipeline, room *chat.Room, ui chat.UI, out io.Writer, transcript *chat.Transcript) *roomRunSession {
 	s := &roomRunSession{
 		pipelines:  pipelines,
 		roomPath:   roomPath,
+		room:       room,
 		ui:         ui,
 		out:        out,
 		transcript: transcript,
@@ -77,27 +81,107 @@ func (s *roomRunSession) onRunEnded(d *runctl.Driver, kind, headline string) {
 }
 
 // resolveFile maps an in-room alias to its pipeline file, relative to the
-// room file, so a room and its pipelines travel together.
-func (s *roomRunSession) resolveFile(alias string) (string, bool) {
+// room file, so a room and its pipelines travel together. When no alias
+// matches, the argument is accepted as a pipeline path — an existing
+// .yaml/.yml in the workspace — and the run's label becomes the file's
+// base name without extension.
+func (s *roomRunSession) resolveFile(alias string) (file, label string, ok bool) {
 	for _, p := range s.pipelines {
 		if p.Name == alias {
 			if filepath.IsAbs(p.File) {
-				return p.File, true
+				return p.File, alias, true
 			}
-			return filepath.Join(filepath.Dir(s.roomPath), p.File), true
+			return filepath.Join(filepath.Dir(s.roomPath), p.File), alias, true
 		}
 	}
-	return "", false
+	if !strings.HasSuffix(alias, ".yaml") && !strings.HasSuffix(alias, ".yml") {
+		return "", "", false
+	}
+	clean := filepath.Clean(alias)
+	if _, err := os.Stat(clean); err != nil {
+		return "", "", false
+	}
+	base := filepath.Base(clean)
+	return clean, strings.TrimSuffix(strings.TrimSuffix(base, ".yml"), ".yaml"), true
 }
 
-// Start launches one run under the room's alias.
+// Start launches one run under the room's alias or pipeline path. The
+// run receives the room's context: the hand-off brief (task, the asks
+// as stated, plan files, digest pointer) travels as the room_context
+// var — pipelines that don't read the var ignore it, and a user-provided
+// room_context wins.
 func (s *roomRunSession) Start(alias, resumeID string, extra []string) error {
-	file, ok := s.resolveFile(alias)
+	file, label, ok := s.resolveFile(alias)
 	if !ok {
-		return fmt.Errorf("no pipeline %q in this room — /pipelines lists what it owns", alias)
+		return fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a pipelines/*.yaml path", alias)
 	}
-	_, err := s.sup.Start(runctl.Spec{Alias: alias, File: file, ResumeID: resumeID, Extra: extra})
+	if s.room != nil {
+		if p, err := s.room.WriteHandoff(taskVar(extra)); err == nil && !hasVarArg(extra, "room_context") {
+			extra = append(extra, "--var", "room_context="+p, "--var", "room="+s.room.Name)
+		}
+	}
+	_, err := s.sup.Start(runctl.Spec{Alias: label, File: file, ResumeID: resumeID, Extra: extra})
 	return err
+}
+
+// taskVar extracts the user's --var task=… value from the raw argument
+// list; "" when none was given.
+func taskVar(extra []string) string {
+	for i := 0; i+1 < len(extra); i++ {
+		if extra[i] == "--var" {
+			if t, ok := strings.CutPrefix(extra[i+1], "task="); ok {
+				return t
+			}
+		}
+	}
+	return ""
+}
+
+// hasVarArg reports whether the raw argument list already sets key.
+func hasVarArg(extra []string, key string) bool {
+	for i := 0; i+1 < len(extra); i++ {
+		if extra[i] == "--var" && strings.HasPrefix(extra[i+1], key+"=") {
+			return true
+		}
+	}
+	return false
+}
+
+// Runnable lists everything /run accepts by short name here: the room's
+// owned aliases, then pipelines/*.yaml files not already behind an
+// alias. The "/run with no args" listing and /pipelines print it.
+func (s *roomRunSession) Runnable() []string {
+	var names []string
+	seen := map[string]bool{}
+	cover := func(file string) string {
+		abs, err := filepath.Abs(file)
+		if err != nil {
+			return file
+		}
+		return abs
+	}
+	for _, p := range s.pipelines {
+		file := p.File
+		if !filepath.IsAbs(file) {
+			file = filepath.Join(filepath.Dir(s.roomPath), file)
+		}
+		seen[cover(file)] = true
+		names = append(names, p.Name)
+	}
+	var paths []string
+	for _, pat := range []string{"pipelines/*.yaml", "pipelines/*.yml"} {
+		matches, _ := filepath.Glob(pat)
+		paths = append(paths, matches...)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if seen[cover(path)] {
+			continue
+		}
+		seen[cover(path)] = true
+		names = append(names, filepath.ToSlash(path))
+	}
+	return names
 }
 
 // Approve answers a waiting gate (see runctl.Supervisor.Approve).

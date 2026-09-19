@@ -2,9 +2,11 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/shafi-/loop/internal/agent"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/knowledge"
 	"github.com/shafi-/loop/internal/llm"
 	"github.com/shafi-/loop/internal/usage"
@@ -50,11 +53,32 @@ type UI interface {
 // attached CLI, web composer via the daemon — behaves identically.
 // Guard, when set, can veto the command before Handle runs; both a veto
 // and a Handle error land in the transcript as a system line, the one
-// surface every client shares.
+// surface every client shares. Desc is one line for command menus
+// (the web composer's "/" palette, the terminal's "/" listing).
 type CustomCommand struct {
 	Name   string                    // the verb, without the slash
+	Desc   string                    // one line, for menus
 	Guard  func(args []string) error // optional veto
 	Handle func(ctx context.Context, args []string, ui UI) error
+}
+
+// CommandInfo is one entry of the room's verb menu.
+type CommandInfo struct {
+	Name string `json:"name"`
+	Desc string `json:"desc"`
+}
+
+// CommandList returns the room's verbs with their one-line descriptions,
+// in registration order — what "/" surfaces to the user.
+func (r *Room) CommandList() []CommandInfo {
+	out := make([]CommandInfo, 0, len(r.CustomCommands))
+	for _, c := range r.CustomCommands {
+		if c.Handle == nil {
+			continue
+		}
+		out = append(out, CommandInfo{Name: c.Name, Desc: c.Desc})
+	}
+	return out
 }
 
 // Room is one configured multi-agent channel.
@@ -88,6 +112,11 @@ type Room struct {
 	// the agents' providers. The /cost command and the hosting surface
 	// read it. nil = this room's cost is not tracked.
 	Usage *usage.Meter
+	// usageBase is every PAST session's spend, loaded from the room's
+	// persisted usage.json at open — /cost's "all sessions" line adds
+	// it to the live meter, and FlushUsage persists the sum for the
+	// next session.
+	usageBase usage.Total
 	// CustomCommands are the room's verbs; NewRoom seeds the built-in
 	// rotation commands (/reset, /fork <n>) and /cost, and hosts may
 	// adjust their guards or add their own via Command.
@@ -116,7 +145,59 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 	}
 	r.Settings.KnowledgeDisabled = cfg.Settings.Knowledge != nil && !*cfg.Settings.Knowledge
 	r.CustomCommands = append(r.rotationCommands(), r.costCommand(), r.compactCommand(), r.notesCommand())
+	r.usageBase = loadUsageBase(t.Dir())
 	return r
+}
+
+// usageFile is the room's lifetime spend of past sessions, one JSON
+// usage.Total, next to the transcript.
+func usageFile(dir string) string { return filepath.Join(dir, "usage.json") }
+
+func loadUsageBase(dir string) usage.Total {
+	if dir == "" {
+		return usage.Total{}
+	}
+	data, err := os.ReadFile(usageFile(dir))
+	if err != nil {
+		return usage.Total{} // first session, or unreadable: start at zero
+	}
+	var t usage.Total
+	if json.Unmarshal(data, &t) != nil {
+		return usage.Total{} // corrupt: a ledger must never break the room
+	}
+	return t
+}
+
+// FlushUsage persists the room's lifetime spend (past sessions + this
+// one so far) as usage.json next to the transcript, atomically. Called
+// at the end of every turn; hosts also call it after out-of-turn spend
+// (the knowledge layer). Best-effort: a flush failure never fails a turn.
+func (r *Room) FlushUsage() {
+	if r.Usage == nil {
+		return
+	}
+	dir := r.Transcript.Dir()
+	if dir == "" {
+		return // in-memory transcript (tests): nothing to persist
+	}
+	data, err := json.Marshal(r.usageBase.Add(r.Usage.Totals()))
+	if err != nil {
+		return
+	}
+	tmp := usageFile(dir) + ".tmp"
+	if os.WriteFile(tmp, data, 0o644) != nil {
+		return
+	}
+	_ = os.Rename(tmp, usageFile(dir))
+}
+
+// UsageAll is the room's lifetime conversation spend: every past
+// session plus this one so far.
+func (r *Room) UsageAll() usage.Total {
+	if r.Usage == nil {
+		return r.usageBase
+	}
+	return r.usageBase.Add(r.Usage.Totals())
 }
 
 // SetKnowledge attaches the knowledge layer; a room whose settings say
@@ -135,6 +216,7 @@ func (r *Room) SetKnowledge(m *knowledge.Manager) {
 func (r *Room) notesCommand() CustomCommand {
 	return CustomCommand{
 		Name: "notes",
+		Desc: "project knowledge: list the area notes, or read one (/notes <slug>)",
 		Handle: func(_ context.Context, args []string, ui UI) error {
 			line := knowledge.NotesReport(r.Workspace, args)
 			if err := r.Transcript.Append("system", line); err != nil {
@@ -152,6 +234,7 @@ func (r *Room) notesCommand() CustomCommand {
 func (r *Room) costCommand() CustomCommand {
 	return CustomCommand{
 		Name: "cost",
+		Desc: "this session's token ledger, per agent when several spoke",
 		Handle: func(_ context.Context, args []string, ui UI) error {
 			line := r.CostReport()
 			if err := r.Transcript.Append("system", line); err != nil {
@@ -175,6 +258,7 @@ const maxCompactInput = 32 << 10
 func (r *Room) compactCommand() CustomCommand {
 	return CustomCommand{
 		Name: "compact",
+		Desc: "one model call: older turns become a \"session so far\" summary",
 		Handle: func(ctx context.Context, _ []string, ui UI) error {
 			window := r.Settings.HistoryWindow
 			msgs := r.Transcript.Window(0)
@@ -218,26 +302,87 @@ and what remains. No preamble, no bullet-point ceremony.`,
 	}
 }
 
-// CostReport renders the session's usage: the total plus per-agent
-// attribution when the ledger knows more than one contributor.
+// CostReport renders what this room has spent, at three depths: this
+// session (with per-agent attribution), every session since the room
+// began, and the pipeline runs it commanded (their spend happens in
+// child `loop run` processes, so it is read back from their run
+// records — any session, current and archived transcripts alike).
 func (r *Room) CostReport() string {
 	if r.Usage == nil {
 		return "◈ usage: not tracked for this session"
 	}
 	tot := r.Usage.Totals()
+	var b strings.Builder
 	if tot.Calls == 0 {
-		return "◈ usage: no model calls recorded yet"
-	}
-	report := fmt.Sprintf("◈ session usage — %s", tot.FormatTotal())
-	if entries := r.Usage.Snapshot(); len(entries) > 1 {
-		var parts []string
-		for _, e := range entries {
-			parts = append(parts, fmt.Sprintf("%s: %d calls · in %s · out %s",
-				e.Label, e.Calls, usage.Human(e.InputTokens), usage.Human(e.OutputTokens)))
+		b.WriteString("◈ session usage: no model calls recorded yet")
+	} else {
+		fmt.Fprintf(&b, "◈ session usage — %s", tot.FormatTotal())
+		if entries := r.Usage.Snapshot(); len(entries) > 1 {
+			var parts []string
+			for _, e := range entries {
+				parts = append(parts, fmt.Sprintf("%s: %d calls · in %s · out %s",
+					e.Label, e.Calls, usage.Human(e.InputTokens), usage.Human(e.OutputTokens)))
+			}
+			b.WriteString("\n" + strings.Join(parts, "\n"))
 		}
-		report += "\n" + strings.Join(parts, "\n")
 	}
-	return report
+	if r.usageBase.Calls > 0 {
+		fmt.Fprintf(&b, "\n◈ all sessions — %s (this room's conversations, since the beginning)",
+			r.UsageAll().FormatTotal())
+	}
+	if pu, runs := r.pipelineUsage(); runs > 0 {
+		fmt.Fprintf(&b, "\n◈ pipelines — %s (%d run%s commanded from this room; spend lives in their run records)",
+			pu.FormatTotal(), runs, plural(runs))
+	}
+	return b.String()
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// roomRunIDRe matches loop's generated run ids as they appear in
+// transcript text (progress lines, completion lines, resume hints) —
+// the record of which runs this room commanded.
+var roomRunIDRe = regexp.MustCompile(`\b\d{8}-\d{6}-[0-9a-f]{4}\b`)
+
+// pipelineUsage sums the spend of every run this room's transcripts
+// mention — current and archived — from .loop/runs/<id>/state.json.
+func (r *Room) pipelineUsage() (usage.Total, int) {
+	if r.Workspace == "" {
+		return usage.Total{}, 0
+	}
+	seen := map[string]bool{}
+	collect := func(text string) {
+		for _, id := range roomRunIDRe.FindAllString(text, -1) {
+			seen[id] = true
+		}
+	}
+	for _, m := range r.Transcript.Window(0) {
+		collect(m.Text)
+	}
+	if dir := r.Transcript.Dir(); dir != "" {
+		if archives, err := filepath.Glob(filepath.Join(dir, "transcript-*.jsonl")); err == nil {
+			for _, path := range archives {
+				if data, err := os.ReadFile(path); err == nil {
+					collect(string(data))
+				}
+			}
+		}
+	}
+	runsDir := filepath.Join(r.Workspace, ".loop", "runs")
+	var tot usage.Total
+	n := 0
+	for id := range seen {
+		if u, ok := engine.ReadRunUsage(runsDir, id); ok {
+			tot = tot.Add(u)
+			n++
+		}
+	}
+	return tot, n
 }
 
 // rotationCommands seeds the engine's built-in room verbs.
@@ -245,6 +390,7 @@ func (r *Room) rotationCommands() []CustomCommand {
 	return []CustomCommand{
 		{
 			Name: "reset",
+			Desc: "archive this conversation and start a fresh one",
 			Handle: func(_ context.Context, args []string, ui UI) error {
 				archive, err := r.Rotate(0, "reset")
 				if err != nil {
@@ -256,6 +402,7 @@ func (r *Room) rotationCommands() []CustomCommand {
 		},
 		{
 			Name: "fork",
+			Desc: "keep the first n lines, archive the rest (/fork <n>)",
 			Handle: func(_ context.Context, args []string, ui UI) error {
 				if len(args) != 1 {
 					return fmt.Errorf("usage: /fork <n> — keep the first n transcript lines")
@@ -353,6 +500,9 @@ func (r *Room) EnsureKnowledge(ctx context.Context) string {
 // is still in motion, and the tagged replies often settle the question.
 // With no tags, decisions run immediately.
 func (r *Room) Say(ctx context.Context, text string, ui UI) error {
+	// Whatever this turn spends (replies, decisions, /compact) lands in
+	// the room's lifetime ledger on the way out.
+	defer r.FlushUsage()
 	// Room verbs parse once here, in the engine — the one interface
 	// every client drives (local CLI, attached CLI, web composer via
 	// the daemon) — so a command means the same thing everywhere. A

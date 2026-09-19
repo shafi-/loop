@@ -81,6 +81,10 @@ func chatViaDaemon(cmd *cobra.Command, file, opening, socket string) error {
 		if text == "" {
 			continue
 		}
+		if text == "/" {
+			printAttachCommands(out, info)
+			continue
+		}
 		fields := strings.Fields(text)
 		switch {
 		case text == "/detach" || text == "/quit" || text == "/exit":
@@ -107,7 +111,14 @@ func chatViaDaemon(cmd *cobra.Command, file, opening, socket string) error {
 			}
 		case fields[0] == "/run":
 			if len(fields) < 2 {
-				fmt.Fprintln(out, "usage: /run <pipeline> [--resume <id>] [--var k=v]…")
+				fmt.Fprintln(out, "usage: /run <alias-or-path> [--resume <id>] [--var k=v]…")
+				if cur, ok, _ := cl.Room(info.Name); ok {
+					var names []string
+					for _, p := range cur.Runnable {
+						names = append(names, p.Name)
+					}
+					printRunnable(out, names)
+				}
 				continue
 			}
 			alias := fields[1]
@@ -157,11 +168,27 @@ func chatViaDaemon(cmd *cobra.Command, file, opening, socket string) error {
 	}
 }
 
+// printAttachCommands lists what "/" can do here: the hosted room's
+// verbs (they run in the room engine on the daemon, so every attached
+// client shares them) plus this attach session's own commands.
+func printAttachCommands(out io.Writer, info daemon.RoomInfo) {
+	fmt.Fprintln(out, "commands:")
+	for _, c := range info.Commands {
+		fmt.Fprintf(out, "  /%-10s %s\n", c.Name, c.Desc)
+	}
+	fmt.Fprintln(out, "  /run <name> [--var k=v]…   run a pipeline — room alias or path")
+	fmt.Fprintln(out, "  /approve <yes|no|words>    answer a pipeline asking for approval")
+	fmt.Fprintln(out, "  /status      active runs · /halt [name] pause one resumably")
+	fmt.Fprintln(out, "  /agents      who is in the room · /help  the full cheat sheet")
+	fmt.Fprintln(out, "  /detach      leave — the room keeps living on the daemon")
+}
+
 func printAttachHelp(out io.Writer) {
 	fmt.Fprintln(out, `  just type    the room hears it; tagged agents reply, others may join
   @name text   force a reply from @name
+  /            list available commands
   /agents      list participants
-  /run <name> [--var k=v]…   run one of the room's pipelines
+  /run <name> [--var k=v]…   run a pipeline — room alias or path
   /approve <yes|no|words>    answer a pipeline asking for approval
   /status      the room's active runs
   /halt [name] pause a run (resumable)

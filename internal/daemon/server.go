@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/engine"
 	"github.com/shafi-/loop/internal/generator"
 	"github.com/shafi-/loop/internal/runctl"
@@ -489,23 +490,28 @@ func (s *Server) handleHalt(w http.ResponseWriter, r *http.Request) {
 
 // roomJSON is the wire form of a hosted room.
 type roomJSON struct {
-	Name      string            `json:"name"`
-	Path      string            `json:"path"`
-	Agents    []string          `json:"agents"`
-	Roles     map[string]string `json:"roles,omitempty"` // agent name -> role, when set
-	Pipelines []string          `json:"pipelines"`
-	Busy      bool              `json:"busy"`
-	Lines     int               `json:"transcript_lines"`
-	Runs      []runJSON         `json:"runs"` // the room's own pipeline runs
-	Usage     *usage.Total      `json:"usage,omitempty"`
+	Name      string             `json:"name"`
+	Path      string             `json:"path"`
+	Agents    []string           `json:"agents"`
+	Roles     map[string]string  `json:"roles,omitempty"` // agent name -> role, when set
+	Pipelines []string           `json:"pipelines"`
+	Runnable  []PipelineOption   `json:"runnable"` // everything /run accepts by name — pickers and "/run" listings build from it
+	Commands  []chat.CommandInfo `json:"commands"` // room verbs, for "/" menus
+	Busy      bool               `json:"busy"`
+	Lines     int                `json:"transcript_lines"`
+	Runs      []runJSON          `json:"runs"` // the room's own pipeline runs
+	Usage     *usage.Total       `json:"usage,omitempty"`
+	UsageAll  *usage.Total       `json:"usage_total,omitempty"` // every session since the room began
 }
 
 func (s *Server) roomJSON(rs *roomSession) roomJSON {
 	out := roomJSON{
-		Name:  rs.cfg.Name,
-		Path:  rs.roomPath,
-		Busy:  rs.busyNow(),
-		Roles: map[string]string{},
+		Name:     rs.cfg.Name,
+		Path:     rs.roomPath,
+		Runnable: rs.runnablePipelines(),
+		Commands: rs.room.CommandList(),
+		Busy:     rs.busyNow(),
+		Roles:    map[string]string{},
 	}
 	for _, a := range rs.cfg.Agents {
 		out.Agents = append(out.Agents, a.Name)
@@ -522,6 +528,9 @@ func (s *Server) roomJSON(rs *roomSession) roomJSON {
 		if t.Calls > 0 {
 			out.Usage = &t
 		}
+	}
+	if all := rs.room.UsageAll(); all.Calls > 0 {
+		out.UsageAll = &all
 	}
 	for _, ru := range rs.sup.Runs() {
 		out.Runs = append(out.Runs, s.toRunJSON(ru))

@@ -121,6 +121,17 @@ func LoadState(runsDir, runID string) (*runState, error) {
 	return &s, nil
 }
 
+// ReadRunUsage reports a run's accumulated usage from its persisted
+// state — every session the run lived through, resumes included. ok is
+// false for unknown runs or ones that predate the ledger.
+func ReadRunUsage(runsDir, runID string) (usage.Total, bool) {
+	s, err := LoadState(runsDir, runID)
+	if err != nil || s == nil || s.Usage == nil {
+		return usage.Total{}, false
+	}
+	return *s.Usage, true
+}
+
 // Event appends one structured event to events.jsonl.
 func (l *RunLog) Event(eventType, stage string, data map[string]any) {
 	entry := map[string]any{

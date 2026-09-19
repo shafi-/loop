@@ -153,13 +153,16 @@ func TestStarterImplementPipelineShape(t *testing.T) {
 	for i := range p.Stages {
 		ids[p.Stages[i].ID] = p.Stages[i].Type
 	}
-	for _, id := range []string{"plan-file", "implement", "review", "approval", "revise"} {
+	for _, id := range []string{"plan-file", "room-context", "implement", "review", "approval", "revise"} {
 		if _, ok := ids[id]; !ok {
 			t.Errorf("implement pipeline lost its %q stage", id)
 		}
 	}
 	if ids["plan-file"] != config.StageTool {
 		t.Errorf("plan-file stage is %v, want a deterministic tool stage", ids["plan-file"])
+	}
+	if ids["room-context"] != config.StageTool {
+		t.Errorf("room-context stage is %v, want a deterministic tool stage", ids["room-context"])
 	}
 	// Every agent stage references the shipped engineer, and the
 	// implement input carries the discovered plan file.
@@ -177,5 +180,8 @@ func TestStarterImplementPipelineShape(t *testing.T) {
 	}
 	if !strings.Contains(input, "${stages.plan-file.output}") {
 		t.Errorf("implement input does not consume the discovered plan file:\n%s", input)
+	}
+	if !strings.Contains(input, "${stages.room-context.output}") {
+		t.Errorf("implement input does not consume the room's hand-off:\n%s", input)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -129,8 +130,12 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	}
 	// Session-open maintenance in the background: first seed or external
 	// edits are caught here; fresh costs zero calls, a refresh lands in
-	// the transcript where every client sees it.
-	go rs.room.EnsureKnowledge(context.Background())
+	// the transcript where every client sees it. Its spend is flushed
+	// to the room's lifetime ledger on the way out.
+	go func() {
+		rs.room.EnsureKnowledge(context.Background())
+		rs.room.FlushUsage()
+	}()
 	// Typed /reset and /fork meet the same veto as the endpoints: no
 	// rotating under a live pipeline run. The verbs live in the room's
 	// command registry; the daemon attaches its guard to them by name.
@@ -138,6 +143,12 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 		if cmd := rs.room.Command(verb); cmd != nil {
 			cmd.Guard = func([]string) error { return rs.runsGuard() }
 		}
+	}
+	// Typed /run reaches the room engine too — the web composer and any
+	// attached client can start a pipeline without surface-specific
+	// commands (the CLI's own /run intercepts earlier, same semantics).
+	if rs.room.Command("run") == nil {
+		rs.room.CustomCommands = append(rs.room.CustomCommands, rs.runCommand())
 	}
 	rs.sup = runctl.NewSupervisor(h.bin, runctl.Handlers{
 		// Run status lands in the room transcript: every attached
@@ -297,27 +308,176 @@ func (rs *roomSession) runsGuard() error {
 }
 
 // run starts one of the room's owned pipelines in the room's own
-// supervisor — the same aliasing the chat surface uses. Files resolve
-// relative to the room file's directory, so the room travels with its
-// pipelines.
+// supervisor — the same aliasing the chat surface uses. The name may be
+// a room alias OR a workspace-relative/absolute pipeline path: a room
+// without a `pipelines:` block can still run any pipeline by file.
+// Files resolve relative to the room file's directory for aliases; paths
+// resolve relative to the workspace (the daemon's cwd).
 func (rs *roomSession) run(alias, resumeID string, vars []string) (string, error) {
-	file, ok := resolveRoomPipeline(rs.roomPath, &rs.cfg, alias)
+	file, label, ok := resolveRoomPipeline(rs.roomPath, &rs.cfg, alias)
 	if !ok {
-		return "", fmt.Errorf("no pipeline %q in this room", alias)
+		return "", fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a pipelines/*.yaml path", alias)
 	}
-	return rs.sup.Start(runctl.Spec{Alias: alias, File: file, ResumeID: resumeID, Extra: vars})
+	return rs.sup.Start(runctl.Spec{Alias: label, File: file, ResumeID: resumeID, Extra: vars})
 }
 
-func resolveRoomPipeline(roomPath string, cfg *config.Room, alias string) (string, bool) {
+// resolveRoomPipeline maps a room-owned alias to its pipeline file
+// (paths relative to the room file). When no alias matches, the argument
+// is accepted as a pipeline path — an existing .yaml/.yml in the
+// workspace — and the run's in-room label becomes the file's base name
+// without extension.
+func resolveRoomPipeline(roomPath string, cfg *config.Room, alias string) (file, label string, ok bool) {
 	for _, p := range cfg.Pipelines {
 		if p.Name == alias {
 			if filepath.IsAbs(p.File) {
-				return p.File, true
+				return p.File, alias, true
 			}
-			return filepath.Join(filepath.Dir(roomPath), p.File), true
+			return filepath.Join(filepath.Dir(roomPath), p.File), alias, true
 		}
 	}
-	return "", false
+	if path, exists := existingPipelinePath(alias); exists {
+		return path, pipelineLabel(path), true
+	}
+	return "", "", false
+}
+
+// existingPipelinePath accepts arg as a pipeline file when it names an
+// existing .yaml/.yml, relative to the workspace or absolute.
+func existingPipelinePath(arg string) (string, bool) {
+	if !strings.HasSuffix(arg, ".yaml") && !strings.HasSuffix(arg, ".yml") {
+		return "", false
+	}
+	clean := filepath.Clean(arg)
+	if _, err := os.Stat(clean); err != nil {
+		return "", false
+	}
+	return clean, true
+}
+
+// pipelineLabel derives a run's in-room name from a path: the base file
+// name without extension ("pipelines/review.yaml" → "review").
+func pipelineLabel(path string) string {
+	base := filepath.Base(path)
+	return strings.TrimSuffix(strings.TrimSuffix(base, ".yml"), ".yaml")
+}
+
+// runnablePipelines lists everything /run can start from this room: the
+// owned aliases first, then every workspace pipeline file not already
+// behind an alias — the same set the composers' pickers and the typed
+// "/run" listings show.
+func (rs *roomSession) runnablePipelines() []PipelineOption {
+	var out []PipelineOption
+	seen := map[string]bool{}
+	cover := func(file string) string {
+		abs, err := filepath.Abs(file)
+		if err != nil {
+			return file
+		}
+		return abs
+	}
+	for _, p := range rs.cfg.Pipelines {
+		file := p.File
+		if !filepath.IsAbs(file) {
+			file = filepath.Join(filepath.Dir(rs.roomPath), file)
+		}
+		seen[cover(file)] = true
+		out = append(out, PipelineOption{Name: p.Name, File: p.File})
+	}
+	for _, path := range scanPipelineFiles() {
+		abs := cover(path)
+		if seen[abs] {
+			continue
+		}
+		seen[abs] = true
+		out = append(out, PipelineOption{Name: path, File: path})
+	}
+	return out
+}
+
+// scanPipelineFiles returns the workspace's conventionally placed
+// pipeline files: pipelines/*.yaml plus root-level YAML with a stages:
+// block (the same classification the dashboard's picker uses).
+func scanPipelineFiles() []string {
+	var out []string
+	pipes := scanYAMLDir("pipelines")
+	root, _ := classifyRoot(".")
+	for _, p := range append(pipes, root...) {
+		out = append(out, p.Path)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// runCommand seeds the typed /run for hosted rooms: a room-engine verb,
+// so every client that types into the composer — the web UI, attached
+// CLIs — can start a pipeline without a surface-specific command path.
+// With no argument it lists what is runnable here.
+func (rs *roomSession) runCommand() chat.CustomCommand {
+	return chat.CustomCommand{
+		Name: "run",
+		Desc: "run a pipeline by room alias or path (/run <name> [--var k=v]…)",
+		Handle: func(ctx context.Context, args []string, _ chat.UI) error {
+			if len(args) == 0 {
+				var names []string
+				for _, p := range rs.runnablePipelines() {
+					names = append(names, p.Name)
+				}
+				if len(names) == 0 {
+					return fmt.Errorf("nothing to run — add a pipelines: section to the room or create pipelines/*.yaml")
+				}
+				return fmt.Errorf("runnable here: %s", strings.Join(names, " · "))
+			}
+			alias := args[0]
+			var resume string
+			var vars []string
+			task := ""
+			for i := 1; i < len(args); i++ {
+				switch {
+				case args[i] == "--resume" && i+1 < len(args):
+					i++
+					resume = args[i]
+				case args[i] == "--var" && i+1 < len(args):
+					i++
+					if t, ok := strings.CutPrefix(args[i], "task="); ok {
+						task = t
+					}
+					vars = append(vars, "--var", args[i])
+				}
+			}
+			// Hand the run the room's context: the brief (task, the asks
+			// as stated, plan files, digest pointer) lands next to the
+			// transcript and travels as the room_context var. Pipelines
+			// that don't read the var ignore it.
+			var handoff string
+			if p, err := rs.room.WriteHandoff(task); err != nil {
+				_ = rs.tr.Append("system", fmt.Sprintf("! context hand-off failed: %v — the run starts without it", err))
+			} else if !hasVar(vars, "room_context") {
+				handoff = p
+				vars = append(vars, "--var", "room_context="+handoff, "--var", "room="+rs.room.Name)
+			}
+			id, err := rs.run(alias, resume, vars)
+			if err != nil {
+				return err
+			}
+			_ = ctx // the run outlives the turn; nothing to await here
+			line := fmt.Sprintf("▶ %s started — run %s; records in .loop/runs/%s/", alias, id, id)
+			if handoff != "" {
+				line += fmt.Sprintf("; context: %s", handoff)
+			}
+			return rs.tr.Append("system", line)
+		},
+	}
+}
+
+// hasVar reports whether the var list (the values that follow --var)
+// already carries key: user-provided vars win over the ones /run adds.
+func hasVar(vars []string, key string) bool {
+	for _, v := range vars {
+		if strings.HasPrefix(v, key+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 // buildRoomAgents resolves a provider per agent — the same rule as the

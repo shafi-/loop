@@ -151,6 +151,11 @@ func LoadRoom(path string) (*Room, error) {
 // normalize fills provider-dependent defaults. It is separate from Validate
 // so validation sees the post-default document, not the raw YAML.
 func (p *Pipeline) normalize() {
+	// Vars are written after load (--var overrides, room hand-off), so an
+	// omitted vars: section must still yield a writable map, not nil.
+	if p.Vars == nil {
+		p.Vars = map[string]any{}
+	}
 	for i := range p.Stages {
 		p.Stages[i].normalize()
 	}

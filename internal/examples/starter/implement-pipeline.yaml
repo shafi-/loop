@@ -17,12 +17,21 @@
 #   loop run pipelines/implement.yaml
 # With an explicit task:
 #   loop run pipelines/implement.yaml --var task="add rate limiting to the API"
+# Started from a room (/run implement), the room's context travels
+# automatically: the task brief (the asks as stated there, the plan
+# files, the knowledge digest pointer) is written to the room's
+# handoff.md and arrives as the room_context var.
 
 name: implement
 description: Implement the newest approved plan in plans/ (or a task) with a reviewed, gated loop
 
 vars:
-  task: describe the task here
+  task: ""
+  # Declared so a standalone run (outside a room) interpolates these to
+  # empty instead of failing on an unknown var — the room-context stage
+  # then degrades to no context, by design.
+  room_context: ""
+  room: ""
 
 # The engineer comes from the global persona library (~/.loop/personas/);
 # every project shares it. The model resolves from your environment.
@@ -37,6 +46,14 @@ stages:
     run: ls -t plans/*.md 2>/dev/null | head -1 || true
     output: plan_file
 
+  # What the room handed over when it started this run: the task, the
+  # requirements as stated there, the plan files, the digest pointer.
+  # Empty when the pipeline was started outside a room.
+  - id: room-context
+    type: tool
+    run: 'if [ -f "${vars.room_context}" ]; then cat "${vars.room_context}"; fi'
+    output: room_context
+
   - id: implement
     type: agent
     persona: engineer
@@ -44,15 +61,24 @@ stages:
       Implement this task in the current workspace.
 
       Task: {{ vars.task }}
+      The task may be empty — the room context or the plan file below
+      then carries the requirements.
+
+      Context from the room that started this run:
+      ${stages.room-context.output}
+      If non-empty, this is the task brief: what was asked in the room,
+      which plan files exist, where the project digest lives.
 
       Approved plan file: ${stages.plan-file.output}
       If the plan file above is non-empty, read it first and treat it
       as the approved plan — follow it or improve it, reporting any
       deviation. If it is empty, draft a short plan yourself from the
-      task before writing code.
+      task or the room context before writing code.
 
       Make the smallest coherent change, match the project's style,
-      and run its tests or build if available. Finish with a report:
+      and run its tests or build if available. If the task, the room
+      context, and the plan file are all empty, do not invent work —
+      report that there is nothing to implement. Finish with a report:
       files changed, what each does, how you verified.
     tools: [read_file, write_file, run_command]
     max_iterations: 15
@@ -68,6 +94,9 @@ stages:
       blocking list.
 
       Task: {{ vars.task }}
+
+      Room context (may be empty — the asks there are the requirements):
+      ${stages.room-context.output}
 
       Implementation report:
       ${outputs.implement_md}
@@ -110,6 +139,9 @@ stages:
       ${stages.approval.answer}
 
       Original task: {{ vars.task }}
+
+      Room context (may be empty):
+      ${stages.room-context.output}
 
       Previous report:
       ${outputs.implement_md}

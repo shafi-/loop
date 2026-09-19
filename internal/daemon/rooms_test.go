@@ -74,6 +74,19 @@ agents:
 	if info.Name != "demo-room" || len(info.Agents) != 1 || info.Agents[0] != "scout" {
 		t.Fatalf("hosted = %+v", info)
 	}
+	// The room's verbs ride the JSON — the "/" menus are built from them.
+	verbs := map[string]bool{}
+	for _, c := range info.Commands {
+		if c.Desc == "" {
+			t.Errorf("verb %q has no description — menus would show a bare word", c.Name)
+		}
+		verbs[c.Name] = true
+	}
+	for _, want := range []string{"cost", "compact", "notes", "reset", "fork"} {
+		if !verbs[want] {
+			t.Errorf("verb %q missing from room JSON: %+v", want, info.Commands)
+		}
+	}
 
 	// Hosting the same file again attaches to the live session, and the
 	// transcript persists across attaches.
