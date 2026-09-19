@@ -11,6 +11,13 @@
 # the room refines and approves it, then /run implement builds the
 # newest plan in .loop/plans/ — no variables to remember.
 #
+# Tooling: tool-granted personas (architect, engineer) may offer a
+# DEEP DIVE when a question needs real verification — the offer's
+# button (or: /deepdive @agent [topic]) runs it on the agent executor,
+# with shell commands asking the room first. The reviewer has no tools:
+# it checks the conversation, not the code — grant tools: if you want
+# it reading.
+#
 # The personas come from the global library (~/.loop/personas/), so
 # every project on this machine shares the same team; edit them there.
 #

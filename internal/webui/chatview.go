@@ -41,11 +41,19 @@ type ChatMsg struct {
 	// fork affordance (the group's tail, so forking keeps the whole
 	// message).
 	Fork bool
+	// Detail carries a dive offer's command ("…/deepdive @agent") — the
+	// offer card's button posts it to the say endpoint.
+	Detail string
 }
 
 // runStartRe matches the child's machine banner ("run <id> starting:
 // <pipeline> (N stages)") — the view rephrases it as a sentence.
 var runStartRe = regexp.MustCompile(`^run \S+ starting: (.+?)(?: \(\d+ stages?\))?$`)
+
+// diveOfferRe matches the room engine's deep-dive offer marker line
+// ("◈ deep-dive offer @agent — topic: … — run: /deepdive @agent") — the
+// view renders it as an offer card whose button sends the command.
+var diveOfferRe = regexp.MustCompile(`^◈ deep-dive offer @(\S+) — topic: (.+) — run: (/deepdive @\S+)$`)
 
 // ChatView turns transcript lines into chat-view messages: the user's
 // lines as their own bubbles, persona lines as agent bubbles (markdown
@@ -68,7 +76,13 @@ func ChatView(lines []daemon.RoomLine, agents []string, runs []daemon.RunInfo) [
 				Line: ln.Seq,
 			})
 		case ln.From == "system":
-			out = append(out, ChatMsg{Kind: "system", Text: ln.Text, At: ln.At})
+			if m := diveOfferRe.FindStringSubmatch(ln.Text); m != nil {
+				// The CTA is cosmetic: the button just sends the command
+				// text through the ordinary say endpoint.
+				out = append(out, ChatMsg{Kind: "offer", From: m[1], Text: m[2], At: ln.At, Detail: m[3]})
+			} else {
+				out = append(out, ChatMsg{Kind: "system", Text: ln.Text, At: ln.At})
+			}
 		case isAgent[ln.From]:
 			if text, ok := strings.CutPrefix(ln.Text, "[tool] "); ok {
 				// Consecutive tool notices collapse into the newest one:

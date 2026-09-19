@@ -39,6 +39,12 @@ type roomSession struct {
 	room     *chat.Room
 	sup      *runctl.Supervisor
 	tr       *chat.Transcript
+	// dives maps deep-dive aliases to their generated pipeline files —
+	// run() consults it before alias resolution, so /run dive-<agent>
+	// --resume <id> works like any room pipeline.
+	dives map[string]string
+	// coordinator lands dive reports; nil when the room cannot dive.
+	coordinator *roomkit.DiveCoordinator
 
 	mu   sync.Mutex
 	busy bool // a turn is being processed
@@ -60,6 +66,11 @@ func (daemonRoomUI) Notice(string, ...any)      {}
 // identity: hosting an already-hosted name attaches to the live session.
 type hostRooms struct {
 	bin string // the loop binary room-run children are spawned with
+
+	// registerSpec, when set, records a run id → pipeline file as runs
+	// start (deep dives register their generated file; the runs view
+	// then resolves and resumes them like submitted runs).
+	registerSpec func(runID, file string)
 
 	mu    sync.Mutex
 	rooms map[string]*roomSession
@@ -118,6 +129,23 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 		roomPath: abs,
 		room:     room,
 		tr:       tr,
+		dives:    map[string]string{},
+	}
+	// Deep dives: gated on the executor being ready. The start closure
+	// references rs before sup is assigned — safe, because no dive can
+	// start until hosting returns and the command paths use rs.sup.
+	if coordinator := roomkit.AttachDives(room, tr, tr.Dir(), "",
+		func(alias, file string) error {
+			id, err := rs.sup.Start(runctl.Spec{Alias: alias, File: file})
+			if err == nil && h.registerSpec != nil {
+				h.registerSpec(id, file)
+			}
+			return err
+		},
+		func(alias, file string) { rs.dives[alias] = file },
+		nil, // hosted rooms speak through the transcript, not a terminal
+	); coordinator != nil {
+		rs.coordinator = coordinator
 	}
 	// The knowledge layer: agents carry the maintained digest, /notes
 	// reads it for zero tokens. Completed pipeline runs refresh it in
@@ -158,6 +186,11 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 			_ = tr.Append(d.Alias, "[approval needed] "+firstLine(prompt)+" — reply yes, no, or your change requests")
 		},
 		OnEnded: func(d *runctl.Driver, kind, headline string) {
+			// Dive drivers hand completion to the coordinator first —
+			// it lands the report line; the generic summary follows.
+			if rs.coordinator != nil && rs.coordinator.Handles(d.Alias) {
+				rs.coordinator.OnEnded(d.Alias, d.RunID, kind)
+			}
 			resume := fmt.Sprintf("resume with /run %s --resume %s", d.Alias, d.RunID)
 			switch kind {
 			case "completed":
@@ -312,6 +345,9 @@ func (rs *roomSession) runsGuard() error {
 // Files resolve relative to the room file's directory for aliases; paths
 // resolve relative to the workspace (the daemon's cwd).
 func (rs *roomSession) run(alias, resumeID string, vars []string) (string, error) {
+	if file, isDive := rs.dives[alias]; isDive {
+		return rs.sup.Start(runctl.Spec{Alias: alias, File: file, ResumeID: resumeID, Extra: vars})
+	}
 	file, label, ok := resolveRoomPipeline(rs.roomPath, &rs.cfg, alias)
 	if !ok {
 		return "", fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a .loop/pipelines/*.yaml path", alias)

@@ -106,6 +106,16 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 		bin = "loop"
 	}
 	sess := newRoomRunSession(bin, args[0], room.Pipelines, r, ui, out, transcript)
+	// Deep dives: gated on the executor being ready; when unavailable
+	// the room never offers and /deepdive explains why.
+	sess.attachDives()
+	// Rotation is vetoed while a run (pipeline or dive) is alive or
+	// waiting — the same rule the daemon attaches to these verbs.
+	for _, verb := range []string{"reset", "fork"} {
+		if c := r.Command(verb); c != nil {
+			c.Guard = func([]string) error { return sess.runsBusy() }
+		}
+	}
 	// An optional opening message is delivered exactly as if the
 	// user had typed it; the session stays interactive afterwards.
 	// Like typed input, a failed delivery never ends the session.
@@ -214,6 +224,7 @@ func printChatHelp(out io.Writer) {
   /reset       archive the conversation and start a fresh one
   /fork <n>    keep the first n lines, archive the rest — continue from there
   /notes [slug]  project knowledge: list the area notes, or read one
+  /deepdive @agent [topic]  launch an executor-backed deep-dive run
   /quit        end the session (running pipelines are halted resumably)`)
 }
 

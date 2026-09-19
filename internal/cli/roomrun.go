@@ -15,6 +15,7 @@ import (
 
 	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/config"
+	"github.com/shafi-/loop/internal/roomkit"
 	"github.com/shafi-/loop/internal/runctl"
 )
 
@@ -29,6 +30,12 @@ type roomRunSession struct {
 	ui         chat.UI
 	out        io.Writer
 	transcript *chat.Transcript
+	// dives maps deep-dive aliases to their generated pipeline files —
+	// resolveFile consults it, so /approve <alias>, /run <alias>
+	// --resume <id>, and /status all work on dives like on pipelines.
+	dives map[string]string
+	// coordinator lands dive reports; nil when the room cannot dive.
+	coordinator *roomkit.DiveCoordinator
 }
 
 func newRoomRunSession(bin, roomPath string, pipelines []config.RoomPipeline, room *chat.Room, ui chat.UI, out io.Writer, transcript *chat.Transcript) *roomRunSession {
@@ -39,6 +46,7 @@ func newRoomRunSession(bin, roomPath string, pipelines []config.RoomPipeline, ro
 		ui:         ui,
 		out:        out,
 		transcript: transcript,
+		dives:      map[string]string{},
 	}
 	s.sup = runctl.NewSupervisor(bin, runctl.Handlers{
 		OnNotice: s.onRunNotice,
@@ -46,6 +54,36 @@ func newRoomRunSession(bin, roomPath string, pipelines []config.RoomPipeline, ro
 		OnEnded:  s.onRunEnded,
 	})
 	return s
+}
+
+// attachDives wires deep-dive launching: availability gate, the room's
+// StartDive hook, and handler delegation for dive drivers. Called once
+// after the session exists; a nil coordinator = this room cannot dive
+// (the reason is on the room for /deepdive to report).
+func (s *roomRunSession) attachDives() {
+	s.coordinator = roomkit.AttachDives(s.room, s.transcript, s.transcript.Dir(), "",
+		func(alias, file string) error {
+			_, err := s.sup.Start(runctl.Spec{Alias: alias, File: file})
+			return err
+		},
+		func(alias, file string) { s.dives[alias] = file },
+		func(format string, args ...any) { s.ui.Notice(format, args...) },
+	)
+}
+
+// runsBusy reports whether any supervised run (pipeline or dive) is
+// alive or waiting — the rotation veto.
+func (s *roomRunSession) runsBusy() error {
+	for _, r := range s.sup.Runs() {
+		alias := r.Alias
+		if alias == "" {
+			alias = r.RunID
+		}
+		if r.Alive || r.Waiting {
+			return fmt.Errorf("%s is still active — halt it before resetting or forking", alias)
+		}
+	}
+	return nil
 }
 
 func (s *roomRunSession) onRunNotice(d *runctl.Driver, text string) {
@@ -62,8 +100,12 @@ func (s *roomRunSession) onRunGate(d *runctl.Driver, prompt string) {
 }
 
 // onRunEnded reports a run's end and records the summary in the
-// transcript (so the room's agents see the outcome).
+// transcript (so the room's agents see the outcome). Dive drivers hand
+// their completion to the coordinator first — it lands the report.
 func (s *roomRunSession) onRunEnded(d *runctl.Driver, kind, headline string) {
+	if s.coordinator != nil && s.coordinator.Handles(d.Alias) {
+		s.coordinator.OnEnded(d.Alias, d.RunID, kind)
+	}
 	resume := fmt.Sprintf("resume with: /run %s --resume %s", d.Alias, d.RunID)
 	switch kind {
 	case "completed":
@@ -86,6 +128,9 @@ func (s *roomRunSession) onRunEnded(d *runctl.Driver, kind, headline string) {
 // .yaml/.yml in the workspace — and the run's label becomes the file's
 // base name without extension.
 func (s *roomRunSession) resolveFile(alias string) (file, label string, ok bool) {
+	if f, isDive := s.dives[alias]; isDive {
+		return f, alias, true
+	}
 	for _, p := range s.pipelines {
 		if p.Name == alias {
 			if filepath.IsAbs(p.File) {

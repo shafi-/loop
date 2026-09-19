@@ -1,0 +1,43 @@
+# Development room
+#
+# The shipped dev team: @architect plans, @engineer builds, @reviewer
+# checks. Tag who you need (@engineer add a retry to the client); the
+# rest read along and speak when their seat has something to add.
+# A maintained digest of the project rides everyone's context — /notes
+# lists the area summaries.
+#
+# The flow this room is shaped for: @architect drafts a plan and
+# writes it to .loop/plans/<name>.md (a summary + path lands in the chat),
+# the room refines and approves it, then /run implement builds the
+# newest plan in .loop/plans/ — no variables to remember.
+#
+# Tooling: tool-granted personas (architect, engineer) may offer a
+# DEEP DIVE when a question needs real verification — the offer's
+# button (or: /deepdive @agent [topic]) runs it on the agent executor,
+# with shell commands asking the room first. The reviewer has no tools:
+# it checks the conversation, not the code — grant tools: if you want
+# it reading.
+#
+# The personas come from the global library (~/.loop/personas/), so
+# every project on this machine shares the same team; edit them there.
+#
+# Validate it:  loop validate .loop/rooms/dev.yaml
+# Open it:      loop chat .loop/rooms/dev.yaml
+
+name: dev
+
+pipelines:
+  - name: implement
+    file: ../pipelines/implement.yaml
+
+agents:
+  - persona: architect
+    tools: [read_file, write_file]   # reads code to plan; writes .loop/plans/<name>.md
+  - persona: engineer
+    tools: [read_file, write_file, run_command]
+  - persona: reviewer
+
+settings:
+  speak_threshold: 0.6
+  max_spontaneous_replies: 2
+  history_window: 50

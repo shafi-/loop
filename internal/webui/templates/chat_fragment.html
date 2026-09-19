@@ -25,6 +25,15 @@
   <div class="evt gate"><span class="evt-icon">✋</span><span class="evt-from">{{.From}}</span><span class="evt-text gate-q">{{.Text}}</span></div>
   {{else if eq .Kind "system"}}
   <div class="evt system">{{.Text}}</div>
+  {{else if eq .Kind "offer"}}
+  <div class="evt offer">
+    <span class="evt-icon">◈</span>
+    <span class="evt-text"><strong>@{{.From}}</strong> can deep-dive: {{.Text}}</span>
+    <form class="offer-cta" hx-post="/rooms/{{$.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML">
+      <input type="hidden" name="text" value="{{.Detail}}">
+      <button type="submit" class="b-dive" title="launch the deep-dive run — its report lands in this room">deep dive</button>
+    </form>
+  </div>
   {{else}}
   <div class="evt run{{if .Live}} live{{end}}">{{if .Live}}<span class="dot running"></span> {{end}}{{if .Start}}<span class="evt-text">{{.Text}}</span>{{else}}<span class="evt-run">{{.From}}</span><span class="evt-text">{{.Text}}</span>{{end}}</div>
   {{end}}

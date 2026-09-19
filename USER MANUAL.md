@@ -474,10 +474,13 @@ stage output.
 executor (default `cline`). Fields: `persona` (required, must exist in
 `personas`), `input` (required — the interpolated instruction; executors
 receive concrete tasks, never templates), `tools`
-(`read_file`, `write_file`, `run_command`), `max_iterations` (the
+(`read_file`, `write_file`, `run_command` — the declared list binds:
+the executor's agent gets exactly those tools), `max_iterations` (the
 executor's turn budget — honored by the executor), `approval` (`auto`
-default or `ask`), `executor`, `model` (optional override of the
-persona's), `output`.
+default or `ask` — under `ask`, reads and writes run without asking
+while shell commands pause for a `y/N`; headless runs — no terminal
+attached — deny commands instead of running them), `executor`,
+`model` (optional override of the persona's), `output`.
 
 **`tool`** — deterministic local command. Fields: `run` (required,
 executed via `sh -c`), `input` (piped to stdin), `env` (object,
@@ -705,6 +708,34 @@ in the transcript, so the other agents learn the file exists. Tool
 errors go back to the model as results — a bad path is a correction,
 not a dead turn. Caveat worth knowing: `run_command` executes what the
 model asks; grant it only to agents you trust with a shell.
+
+### Deep dives — when a persona needs real investigation
+
+A tool-using persona that would be guessing without facts from the
+codebase says so: after its reply, the room posts an offer line
+
+```
+◈ deep-dive offer @architect — topic: session invalidation in auth/ — run: /deepdive @architect
+```
+
+In the web room view that line renders as a card with a **deep dive**
+button — clicking it just sends the `/deepdive @architect` command; in
+the terminal, type the same command. `/deepdive @agent <topic>` also
+works with no offer and an explicit topic; without a topic it reuses
+the last offered one. Offers never expire and never fire on their own —
+a dive runs only on that explicit command.
+
+The dive is a real pipeline run (one agent stage on the cline executor,
+the persona's full grounding carried over): it searches and reads the
+workspace, and shell commands **pause the run and ask the room** —
+answer with `/approve yes` (gate answers are strict: `yes`/`y`
+approves, anything else declines). When the run completes, the report
+lands in the room as `@architect (deep dive): … — run <id>`, and the
+run's tokens show up in `/cost` like any pipeline. Dives need the agent
+executor (`loop setup`) and a run session (the local or attached `loop
+chat`, or the daemon); rooms without one never offer. If the room is
+mid-turn when you click, the command may bounce — send it again once
+the reply finishes.
 
 ### The persona library
 

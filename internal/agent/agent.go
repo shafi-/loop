@@ -46,6 +46,12 @@ type Decision struct {
 	Speak    bool   `json:"speak"`
 	Priority int    `json:"priority"` // 1..5; 5 = must respond
 	Reason   string `json:"reason"`
+	// DeepDive says answering well needs codebase facts the digest and
+	// area notes likely don't cover — a candidate for the executor-backed
+	// deep dive. Only meaningful for personas with tools and a host that
+	// can launch dives; consumers must check both before offering.
+	DeepDive bool   `json:"deep_dive"`
+	Topic    string `json:"dive_topic"` // specific: "session invalidation in auth/"
 }
 
 // Confidence normalizes priority to 0..1 for threshold comparison
@@ -66,11 +72,28 @@ func (d Decision) Confidence() float64 {
 var speakSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
-		"speak":    map[string]any{"type": "boolean"},
-		"priority": map[string]any{"type": "integer", "minimum": 1, "maximum": 5},
-		"reason":   map[string]any{"type": "string"},
+		"speak":      map[string]any{"type": "boolean"},
+		"priority":   map[string]any{"type": "integer", "minimum": 1, "maximum": 5},
+		"reason":     map[string]any{"type": "string"},
+		"deep_dive":  map[string]any{"type": "boolean"},
+		"dive_topic": map[string]any{"type": "string"},
 	},
-	"required":             []string{"speak", "priority", "reason"},
+	"required":             []string{"speak", "priority", "reason", "deep_dive", "dive_topic"},
+	"additionalProperties": false,
+}
+
+// diveSchema is DecideDive's contract: one structured call deciding
+// whether a tagged tool-using agent's reply warrants offering a deep
+// dive. Tagged agents reply unconditionally, so there is no speak
+// dimension here — only the dive question.
+var diveSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"deep_dive":  map[string]any{"type": "boolean"},
+		"dive_topic": map[string]any{"type": "string"},
+		"reason":     map[string]any{"type": "string"},
+	},
+	"required":             []string{"deep_dive", "dive_topic", "reason"},
 	"additionalProperties": false,
 }
 
@@ -94,6 +117,11 @@ func (a *Agent) framing(room []config.Persona) string {
 	return fmt.Sprintf("You are %s, the %s, in a strategy room with: %s. The user you are speaking to founded this room.",
 		a.Persona.Name, role, others(room, a.Persona.Name))
 }
+
+// Base exposes the persona's composed identity preface (persona system
+// prompt, workspace brief, knowledge digest, room framing) so hosts can
+// send the exact same grounding on an executor-backed deep dive.
+func (a *Agent) Base(room []config.Persona) string { return a.base(room) }
 
 // base composes the persona's identity preface: its own system prompt,
 // the workspace brief (when the host supplied one), the maintained
@@ -278,7 +306,18 @@ another agent this turn.
 
 priority: how strongly you should answer. 5 — the CEO asked something
 your role is closest to. 4 — you can add real value from your seat.
-3 — marginal color only. 1-2 — the silent cases above.`,
+3 — marginal color only. 1-2 — the silent cases above.
+
+deep_dive: you have tools for real investigation (searching the
+codebase, reading files, running checks). true only when answering
+well needs facts from the codebase or workspace that the conversation,
+your brief, and the project notes likely do NOT already cover — the
+kind of answer where you would otherwise be guessing. false when your
+role's judgment, the conversation, or the notes already carry it.
+dive_topic: when deep_dive is true, name exactly what to verify,
+specific enough to start from ("session invalidation logic in
+auth/", "where env vars are read in config/"). Empty string when
+deep_dive is false.`,
 		conversation, a.Persona.Name, role)
 }
 
@@ -309,6 +348,46 @@ func (a *Agent) DecideSpeak(ctx context.Context, room []config.Persona, conversa
 	}
 	if d.Priority > 5 {
 		d.Priority = 5
+	}
+	return d, nil
+}
+
+// DecideDive asks whether this tagged tool-using agent's reply warrants
+// offering a deep dive. Tagged agents always speak, so the only question
+// is the dive; one cheap structured call on the agent's own (metered)
+// provider. The room only consults it when dives are launchable.
+func (a *Agent) DecideDive(ctx context.Context, conversation string) (Decision, error) {
+	role := a.Persona.Role
+	if role == "" {
+		role = "colleague"
+	}
+	req := llm.Request{
+		Model:  a.model(),
+		System: fmt.Sprintf("You decide whether %s's answer to the CEO's latest message would be materially better after real investigation of the workspace (searching code, reading files, running checks). You are not deciding whether to answer — %s always answers.", a.Persona.Name, a.Persona.Name),
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: fmt.Sprintf(`The conversation so far — the CEO's new message is its LAST line:
+
+%s
+
+You are %s, the %s. You will reply from your seat with what you know
+(your brief, the conversation, the project notes). Answer two things:
+
+deep_dive: would your answer be materially better — less guessing,
+more verified fact — if you first investigated the workspace? true
+only when the missing facts are things the codebase or files would
+tell you; false when judgment and what's already in context carry it.
+dive_topic: when true, exactly what to verify, specific enough to
+start from ("session invalidation logic in auth/"). Empty when false.`,
+			conversation, a.Persona.Name, role)}},
+		ResponseSchema: diveSchema,
+		MaxTokens:      300,
+	}
+	resp, err := a.Provider.Complete(ctx, req)
+	if err != nil {
+		return Decision{}, err
+	}
+	var d Decision
+	if err := json.Unmarshal([]byte(resp.Text), &d); err != nil {
+		return Decision{}, fmt.Errorf("dive decision was not valid JSON (%w); raw: %.120s", err, resp.Text)
 	}
 	return d, nil
 }

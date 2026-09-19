@@ -47,7 +47,7 @@ type Server struct {
 // with (production: os.Executable; tests: a fake child).
 func New(version, runsDir, bin string) *Server {
 	workspace, _ := os.Getwd()
-	return &Server{
+	s := &Server{
 		sup:          runctl.NewSupervisor(bin, runctl.Handlers{}),
 		rooms:        newHostRooms(bin),
 		version:      version,
@@ -57,6 +57,14 @@ func New(version, runsDir, bin string) *Server {
 		specs:        map[string]string{},
 		newGenerator: envGenerator,
 	}
+	// Deep dives register their generated pipeline file here, so the
+	// runs view can resolve (and resume) them like submitted runs.
+	s.rooms.registerSpec = func(runID, file string) {
+		s.mu.Lock()
+		s.specs[runID] = file
+		s.mu.Unlock()
+	}
+	return s
 }
 
 // runJSON is the wire form of a supervised run.

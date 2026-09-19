@@ -112,6 +112,20 @@ type Room struct {
 	// room's lead agent (metered under its own /cost label); nil =
 	// /compact declines.
 	Summarizer func(ctx context.Context, text string) (string, error)
+	// StartDive launches an executor-backed deep-dive run for one
+	// persona (roomkit builds the one-agent-stage pipeline and starts
+	// it like /run: gates ask in the chat, the report lands as a
+	// transcript line). Hosts set it at assembly; nil = this room
+	// cannot dive, so agents never offer and /deepdive declines.
+	StartDive func(ctx context.Context, spec DiveSpec) error
+	// DiveUnavailableReason explains why StartDive is nil when the host
+	// knows the cause (executor missing vs no run session) — /deepdive's
+	// error says exactly that instead of a generic attach hint.
+	DiveUnavailableReason string
+	// dives is the last-offered-topic memory (deepdive.json beside the
+	// transcript); divesLoaded guards its lazy read.
+	dives       map[string]divePending
+	divesLoaded bool
 	// usageBase is every PAST session's spend, loaded from the room's
 	// persisted usage.json at open — /cost's "all sessions" line adds
 	// it to the live meter, and FlushUsage persists the sum for the
@@ -147,7 +161,7 @@ func NewRoom(cfg config.Room, agents []*agent.Agent, t *Transcript) *Room {
 		r.Settings.MaxContextBytes = DefaultMaxContextBytes
 	}
 	r.Settings.KnowledgeDisabled = cfg.Settings.Knowledge != nil && !*cfg.Settings.Knowledge
-	r.CustomCommands = append(r.rotationCommands(), r.costCommand(), r.compactCommand(), r.notesCommand())
+	r.CustomCommands = append(r.rotationCommands(), r.costCommand(), r.compactCommand(), r.notesCommand(), r.deepDiveCommand())
 	r.usageBase = loadUsageBase(t.Dir())
 	return r
 }
@@ -277,11 +291,28 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	}
 	base := len(r.Transcript.Messages) // for the produced-nothing check
 
-	// Phase 1: tagged agents reply, in mention order.
+	// Phase 1: tagged agents reply, in mention order. A tool-using
+	// agent first decides (one cheap structured call) whether its
+	// answer would be materially better after real investigation —
+	// if so, the room appends a deep-dive offer line right after its
+	// reply (its CTA is the /deepdive command).
 	mentions := tagged(text, known)
 	for _, name := range mentions {
-		if err := r.reply(ctx, byName[name], ui); err != nil {
+		a := byName[name]
+		var dive agent.Decision
+		if r.canDive(a) {
+			conversation := r.Transcript.BuildConversation(r.Settings.HistoryWindow, r.Settings.MaxContextBytes)
+			if d, err := a.DecideDive(ctx, conversation); err == nil {
+				dive = d
+			} else {
+				ui.Notice("· %s dive decision failed (%v) — replying without an offer", name, err)
+			}
+		}
+		if err := r.reply(ctx, a, ui); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
+		}
+		if dive.DeepDive && strings.TrimSpace(dive.Topic) != "" {
+			r.offerDive(a, dive.Topic, text, ui)
 		}
 	}
 
@@ -317,6 +348,9 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	for _, q := range qualified {
 		if err := r.reply(ctx, q.a, ui); err != nil {
 			return fmt.Errorf("%s: %w", q.a.Name(), err)
+		}
+		if q.d.DeepDive && strings.TrimSpace(q.d.Topic) != "" && r.canDive(q.a) {
+			r.offerDive(q.a, q.d.Topic, text, ui)
 		}
 	}
 	if len(seen) > 0 {
