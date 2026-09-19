@@ -21,6 +21,7 @@ func fakeLoop(t *testing.T, dir string) string {
 	t.Helper()
 	script := filepath.Join(dir, "fake-loop")
 	content := `#!/bin/sh
+echo "$@" > "` + dir + `/args.txt"
 echo "run fake starting: demo (2 stages)" >&2
 echo "── your input needed ──────────────────────" >&2
 echo "Approve the draft?" >&2
@@ -142,13 +143,18 @@ func TestDaemonWarnsOnConcurrentSubmits(t *testing.T) {
 		t.Errorf("warning = %q", sub2.Warning)
 	}
 
-	// Halting one of the two active runs works by id and pauses it.
+	// Halting one of the two active runs works by id. The child gets the
+	// interrupt and the run retires — gone from the active list, or at
+	// least not alive while its retirement settles.
 	if err := cl.Halt(sub2.RunID); err != nil {
 		t.Fatalf("halt: %v", err)
 	}
 	waitFor(t, 5*time.Second, func() bool {
-		info, known, _ := cl.Run(sub2.RunID)
-		return err == nil && known && !info.Alive
+		info, known, err := cl.Run(sub2.RunID)
+		if err != nil || !known {
+			return true // retired from the active list entirely
+		}
+		return !info.Alive
 	}, "the halted run to exit")
 }
 

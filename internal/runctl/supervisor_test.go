@@ -127,3 +127,45 @@ func TestSupervisorRunInfoTracksPhase(t *testing.T) {
 
 	sup.Shutdown()
 }
+
+// A child that dies WITHOUT writing a terminal status line — a crash, a
+// signal — still gets exactly one verdict: the run retires from the
+// supervisor and OnEnded fires. Before the latch lived in finish alone,
+// such runs leaked in the map and their hosts never heard the outcome.
+func TestSupervisorSilentDeathStillGetsOneVerdict(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "silent-loop")
+	script := `#!/bin/sh
+echo "→ draft (tool)" >&2
+echo "→ ship (tool)" >&2
+exit 137
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	verdicts := []string{}
+	sup := NewSupervisor(bin, Handlers{
+		OnEnded: func(d *Driver, kind, headline string) {
+			mu.Lock()
+			defer mu.Unlock()
+			verdicts = append(verdicts, kind)
+		},
+	})
+
+	if _, err := sup.Start(Spec{Alias: "demo", File: bin}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, func() bool {
+		return len(sup.Runs()) == 0 // retired from the map
+	}, "the silently dead run to be retired")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(verdicts) != 1 || verdicts[0] != "failed" {
+		t.Errorf("verdicts = %v, want exactly one failed", verdicts)
+	}
+
+	sup.Shutdown()
+}

@@ -212,9 +212,8 @@ func (s *Supervisor) Start(spec Spec) (string, error) {
 		err := cmd.Wait()
 		// A child that died without a terminal status line still gets a
 		// verdict — crashed runs are resumable, silence would hide that.
-		if !d.markEnded() {
-			return
-		}
+		// finish's markEnded is the only latch: the translator's verdict
+		// and this one race for it, exactly one lands.
 		if err != nil {
 			s.finish(d, "failed", fmt.Sprintf("✗ %s exited: %v", d.Alias, err))
 		} else {
