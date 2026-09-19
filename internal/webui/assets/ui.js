@@ -57,10 +57,12 @@
     if (log) log.scrollTop = log.scrollHeight;
   });
 
-  // ─── @-mention autocomplete (chat-app behavior) ────────────────────
+  // ─── @-mention autocomplete & /-command palette ────────────────────
   // Typing "@" in the composer opens a participant menu above the
-  // input, filtered by what follows; ↑/↓ move, Enter/Tab accept,
-  // Esc closes. Accepting splices "@name " in at the caret.
+  // input; typing "/" as the whole line opens the room's command
+  // palette. Both: filtered by what follows; ↑/↓ move, Enter/Tab
+  // accept, Esc closes. Mentions splice "@name " at the caret;
+  // commands replace the line with "/verb ".
   function initMentions() {
     document.querySelectorAll(".composer form[data-agents]").forEach(bind);
   }
@@ -71,17 +73,23 @@
     if (!input || !menu || input.dataset.mentionsBound) return;
     input.dataset.mentionsBound = "1";
     var agents = (form.getAttribute("data-agents") || "").split(/\s+/).filter(Boolean);
-    var items = [], sel = -1;
+    var commands = [];
+    try { commands = JSON.parse(form.getAttribute("data-commands") || "[]"); } catch (e) {}
+    var pipelines = [];
+    try { pipelines = JSON.parse(form.getAttribute("data-pipelines") || "[]"); } catch (e) {}
+    var items = [], sel = -1, mode = null; // "mention" | "command" | "pipeline"
 
     function close() {
       menu.hidden = true;
       menu.innerHTML = "";
       items = [];
       sel = -1;
+      mode = null;
     }
     function open(fragment) {
       var matches = agents.filter(function (a) { return a.indexOf(fragment.toLowerCase()) === 0; });
       if (!matches.length) return close();
+      mode = "mention";
       menu.innerHTML = "";
       items = matches.map(function (name) {
         var b = document.createElement("button");
@@ -89,6 +97,33 @@
         b.className = "mention-item";
         b.textContent = "@" + name;
         b.addEventListener("mousedown", function (e) { e.preventDefault(); accept(name); });
+        menu.appendChild(b);
+        return b;
+      });
+      sel = 0;
+      items[0].classList.add("sel");
+      menu.hidden = false;
+    }
+    function openCommands(fragment) {
+      var matches = commands.filter(function (c) {
+        return c.name.indexOf(fragment.toLowerCase()) === 0;
+      });
+      if (!matches.length) return close();
+      mode = "command";
+      menu.innerHTML = "";
+      items = matches.map(function (cmd) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "mention-item cmd-item";
+        var n = document.createElement("span");
+        n.className = "cmd-name";
+        n.textContent = "/" + cmd.name;
+        var d = document.createElement("span");
+        d.className = "cmd-desc";
+        d.textContent = cmd.desc || "";
+        b.appendChild(n);
+        b.appendChild(d);
+        b.addEventListener("mousedown", function (e) { e.preventDefault(); acceptCommand(cmd.name); });
         menu.appendChild(b);
         return b;
       });
@@ -106,12 +141,68 @@
       input.focus();
       close();
     }
+    function acceptCommand(verb) {
+      input.value = "/" + verb + " ";
+      input.setSelectionRange(input.value.length, input.value.length);
+      input.focus();
+      close();
+    }
+    // The /run second level: after the verb comes a pipeline name.
+    function openPipelines(fragment) {
+      var frag = fragment.toLowerCase();
+      var matches = pipelines.filter(function (p) {
+        return p.name.toLowerCase().indexOf(frag) === 0;
+      });
+      if (!matches.length) return close();
+      mode = "pipeline";
+      menu.innerHTML = "";
+      items = matches.map(function (p) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "mention-item cmd-item";
+        var n = document.createElement("span");
+        n.className = "cmd-name";
+        n.textContent = p.name;
+        var d = document.createElement("span");
+        d.className = "cmd-desc";
+        d.textContent = p.name.indexOf("/") >= 0 ? "workspace pipeline" : "room pipeline";
+        b.appendChild(n);
+        b.appendChild(d);
+        b.addEventListener("mousedown", function (e) { e.preventDefault(); acceptPipeline(p.name); });
+        menu.appendChild(b);
+        return b;
+      });
+      sel = 0;
+      items[0].classList.add("sel");
+      menu.hidden = false;
+    }
+    function acceptPipeline(name) {
+      input.value = "/run " + name + " ";
+      input.setSelectionRange(input.value.length, input.value.length);
+      input.focus();
+      close();
+    }
     function fragment() {
       var caret = input.selectionStart || 0;
       var m = input.value.slice(0, caret).match(/(^|\s)@([a-z0-9_-]*)$/i);
       return m ? m[2] : null;
     }
+    // The command palette is line-shaped: only when the whole input is
+    // a slash word ("/", "/co…") — mid-message slashes stay prose.
+    function commandFragment() {
+      var m = input.value.match(/^\/([a-z0-9-]*)$/i);
+      return m ? m[1] : null;
+    }
+    // "/run " plus a partial name opens the pipeline picker.
+    function runFragment() {
+      var m = input.value.match(/^\/run\s+([^\s]*)$/i);
+      return m ? m[1] : null;
+    }
     input.addEventListener("input", function () {
+      var cmd = commandFragment();
+      if (cmd !== null) { openCommands(cmd); return; }
+      var run = runFragment();
+      if (run !== null) { openPipelines(run); return; }
       var frag = fragment();
       if (frag === null) close(); else open(frag);
     });
@@ -123,10 +214,18 @@
         sel = (sel + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
         items[sel].classList.add("sel");
       } else if (e.key === "Enter" || e.key === "Tab") {
-        // Consume the key so the form does not submit mid-mention.
+        // Consume the key so the form does not submit mid-pick.
         e.preventDefault();
         e.stopPropagation();
-        accept(items[sel] ? items[sel].textContent.slice(1) : agents[0]);
+        if (mode === "command") {
+          var verb = items[sel] ? items[sel].querySelector(".cmd-name").textContent.slice(1) : commands[0].name;
+          acceptCommand(verb);
+        } else if (mode === "pipeline") {
+          var pick = items[sel] ? items[sel].querySelector(".cmd-name").textContent : pipelines[0].name;
+          acceptPipeline(pick);
+        } else {
+          accept(items[sel] ? items[sel].textContent.slice(1) : agents[0]);
+        }
       } else if (e.key === "Escape") {
         close();
       }

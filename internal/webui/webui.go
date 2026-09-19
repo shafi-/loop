@@ -3,6 +3,7 @@ package webui
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net"
@@ -33,6 +34,7 @@ type pageData struct {
 	Active  []daemon.RunInfo
 	History []daemon.RunInfo
 	Rooms   []daemon.RoomInfo
+	Threads []daemon.RoomThread // every persisted room conversation (openable)
 	Info    daemon.RunInfo
 	Rows    []Row
 	Room    daemon.RoomInfo
@@ -95,17 +97,34 @@ func sidecarRuns(cl *daemon.Client, name string) []SidecarRun {
 	return out
 }
 
-// New builds the dashboard: pages and action endpoints rendered from the
-// daemon API, /api/* proxied to the daemon's unix socket (SSE included).
-func New(version, socket string) (http.Handler, error) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{
+// templateFuncs is the one funcMap every template parse uses — New and
+// the tests — so a function can never exist in one and miss the other.
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
 		"phaseLabel": phaseLabel,
 		"hms":        func(t time.Time) string { return t.Local().Format("15:04") },
 		"hue":        hue,
 		"initial":    initial,
 		"human":      usage.Human,
 		"md":         func(s string) template.HTML { return template.HTML(renderMarkdown(s)) },
-	}).ParseFS(files, "templates/*.html")
+		// shortdate renders a last-active stamp ("Sep 19 02:13").
+		"shortdate": func(t time.Time) string { return t.Local().Format("Jan 2 15:04") },
+		// jsonAttr renders a value as JSON for a data-* attribute
+		// (the composer's "/" command palette).
+		"jsonAttr": func(v any) string {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return "[]"
+			}
+			return string(b)
+		},
+	}
+}
+
+// New builds the dashboard: pages and action endpoints rendered from the
+// daemon API, /api/* proxied to the daemon's unix socket (SSE included).
+func New(version, socket string) (http.Handler, error) {
+	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -146,6 +165,7 @@ func New(version, socket string) (http.Handler, error) {
 	mux.HandleFunc("POST /rooms/{name}/say", func(w http.ResponseWriter, r *http.Request) { roomSay(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/run", func(w http.ResponseWriter, r *http.Request) { roomRun(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/approve", func(w http.ResponseWriter, r *http.Request) { roomApprove(tmpl, cl, w, r) })
+	mux.HandleFunc("POST /rooms/{name}/runs/{alias}/halt", func(w http.ResponseWriter, r *http.Request) { roomHalt(tmpl, cl, w, r) })
 	mux.HandleFunc("POST /rooms/{name}/reset", func(w http.ResponseWriter, r *http.Request) { roomRotate(tmpl, cl, w, r, "reset") })
 	mux.HandleFunc("POST /rooms/{name}/fork", func(w http.ResponseWriter, r *http.Request) { roomRotate(tmpl, cl, w, r, "fork") })
 	mux.HandleFunc("POST /rooms/host", func(w http.ResponseWriter, r *http.Request) { roomHost(tmpl, cl, w, r) })
@@ -186,7 +206,7 @@ func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter
 	renderPage(tmpl, w, "dashboard", pageData{
 		Title: "runs", Workspace: workspace,
 		Active: splitActive(runs), History: splitHistory(runs),
-		Pipelines: wk.Pipelines, WSRooms: wk.Rooms,
+		Pipelines: wk.Pipelines, WSRooms: wk.Rooms, Threads: wk.Threads,
 	})
 }
 
@@ -229,7 +249,15 @@ func fragRuns(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter)
 // change, so they don't ride the runs poll.
 func fragRooms(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter) {
 	rooms, _ := cl.Rooms()
-	if err := tmpl.ExecuteTemplate(w, "frag_rooms", pageData{Rooms: rooms}); err != nil {
+	wk, _ := cl.Workspace()
+	data := pageData{Rooms: rooms, Threads: wk.Threads}
+	renderFragment(tmpl, w, "frag_rooms", data)
+}
+
+// renderFragment executes a fragment template, mapping errors to a 500
+// with the reason (the htmx surface toasts it).
+func renderFragment(tmpl *template.Template, w http.ResponseWriter, name string, data any) {
+	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -319,6 +347,12 @@ func answer(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r
 func halt(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
 	if err := cl.Halt(r.PathValue("id")); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	// Dashboard rows halt here: the whole runs fragment is the response
+	// (the run may retire before a separate refresh would land).
+	if r.Header.Get("HX-Target") == "runs" {
+		fragRuns(tmpl, cl, w)
 		return
 	}
 	// The halt may retire the run before the refresh lands.
@@ -480,6 +514,18 @@ func roomApprove(tmpl *template.Template, cl *daemon.Client, w http.ResponseWrit
 		return
 	}
 	roomChat(tmpl, cl, w, r)
+}
+
+// roomHalt stops one of the room's own runs from the web room's
+// sidecar — pause, resumable, the same semantics as the terminal's
+// /halt. The refreshed sidecar is the response: the 5s poll would
+// catch up anyway, instant is just honest.
+func roomHalt(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter, r *http.Request) {
+	if err := cl.RoomHalt(r.PathValue("name"), r.PathValue("alias")); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	roomSidecar(tmpl, cl, w, r)
 }
 
 // roomRotate handles the room's reset and fork actions: the transcript

@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/shafi-/loop/internal/daemon"
-	"github.com/shafi-/loop/internal/usage"
 )
 
 func ev(typ string, payload string) daemon.EventLine {
@@ -251,8 +250,11 @@ func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 
 	// Rooms are not part of the runs poll anymore: they preload once
 	// via their own fragment, and the workspace pickers re-render on
-	// demand for the refresh buttons.
-	if _, b := get(t, ts.URL+"/frag/rooms"); !strings.Contains(b, "no rooms hosted") {
+	// demand for the refresh buttons. The fragment lists hosted rooms
+	// AND persisted threads — the demo room hosted earlier in this flow
+	// must remain reachable even though no daemon session is hosting it
+	// right now.
+	if _, b := get(t, ts.URL+"/frag/rooms"); !strings.Contains(b, "<th>room</th>") || !strings.Contains(b, "demo") {
 		t.Errorf("frag/rooms = %q", b)
 	}
 	if resp, b := get(t, ts.URL+"/frag/workspace?kind=pipelines"); resp.StatusCode != 200 {
@@ -366,14 +368,7 @@ func TestChatViewForkPoints(t *testing.T) {
 
 // The room's markup wires the fork and reset actions to the daemon.
 func TestChatFragmentRotateMarkup(t *testing.T) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{
-		"phaseLabel": phaseLabel,
-		"hms":        func(t time.Time) string { return t.Local().Format("15:04") },
-		"hue":        hue,
-		"initial":    initial,
-		"human":      usage.Human,
-		"md":         func(s string) template.HTML { return template.HTML(s) },
-	}).ParseFS(files, "templates/*.html")
+	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(files, "templates/*.html")
 	if err != nil {
 		t.Fatal(err)
 	}

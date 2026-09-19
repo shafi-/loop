@@ -1,15 +1,31 @@
 {{define "frag_rooms"}}
 {{$rooms := .Rooms}}
-{{if not $rooms}}<p class="muted">no rooms hosted — open one above.</p>{{else}}
+{{$threads := .Threads}}
 <table>
-  <tr><th>room</th><th>agents</th><th>state</th></tr>
+  <tr><th>room</th><th>participants</th><th>state</th></tr>
   {{range $rooms}}
   <tr>
     <td><a href="/rooms/{{.Name}}">{{.Name}}</a></td>
     <td class="muted">{{range $i, $a := .Agents}}{{if $i}}, {{end}}@{{$a}}{{end}}</td>
-    <td>{{if .Busy}}<span class="badge b-running">thinking…</span>{{else}}<span class="badge b-done">idle</span>{{end}}</td>
+    <td>{{if .Busy}}<span class="badge b-running">thinking…</span>{{else}}<span class="badge b-done">live</span>{{end}}</td>
   </tr>
   {{end}}
+  {{range $threads}}
+  {{$t := .}}
+  {{$hosted := false}}{{range $rooms}}{{if eq .Name $t.Name}}{{$hosted = true}}{{end}}{{end}}
+  {{if not $hosted}}
+  <tr>
+    <td>
+      {{if $t.File}}<form class="thread-open" method="post" action="/rooms/host">
+        <input type="hidden" name="file" value="{{$t.File}}">
+        <button type="submit" class="linklike" title="reopen — hosting {{$t.File}} attaches to this conversation">{{$t.Name}}</button>
+      </form>{{else}}<span class="muted" title="no rooms/*.yaml with this name — the thread is kept, but cannot be reopened without its room file">{{$t.Name}}</span>{{end}}
+    </td>
+    <td class="muted">last active {{shortdate $t.LastActive}} · {{$t.Lines}} lines</td>
+    <td><span class="badge">past</span></td>
+  </tr>
+  {{end}}
+  {{end}}
 </table>
-{{end}}
+{{if not $threads}}{{if not $rooms}}<p class="muted">no rooms yet — open one above.</p>{{end}}{{end}}
 {{end}}

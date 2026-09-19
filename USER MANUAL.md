@@ -342,7 +342,11 @@ browser — the way to attach a viewer to a daemon started without
 `--port`. The dashboard is a client of the daemon: it lists active and
 past runs, starts runs, renders each run's event timeline live, and
 answers gate questions — yes, no, or your words — straight from the
-browser, for any run the daemon owns. Its run and room forms offer
+browser, for any run the daemon owns. Active runs are stoppable from
+the same places: the dashboard's active-runs table and the run page
+have a **stop** button (pause — the run keeps its resume point), and a
+room's pipeline sidecar stops the room's own runs the same way. Its
+run and room forms offer
 pickers of what the workspace holds: the `pipelines/` and `rooms/`
 directories, plus root-level files recognized by their schema (typed
 paths still work for anything else). The UI binds
@@ -632,7 +636,10 @@ with a visible marker, dropped history is announced), and speak
 decisions see a tighter window than replies (recency is what they
 need). `/compact` trades one model call for a shorter session: the
 pre-window turns summarize into a "session so far" line and archive.
-`/cost` shows what the session has spent so far.
+`/cost` shows what was spent — this session, every session since the
+room began (rooms persist their ledger in `usage.json` next to the
+transcript, so an old room knows its history), and the pipeline runs
+commanded from it.
 
 **The room knows your project.** When a room is opened, loop assembles
 a small **workspace brief** from the directory it runs in — detected
@@ -753,12 +760,18 @@ reuses the seats you already have.
 
 A room with a `pipelines:` section is a cockpit. In the session:
 
+Type `/` in the web composer (it opens a command palette) or `/` +
+Enter in the terminal to see every command this room and surface
+understand. The palette has a second level: after `/run `, the runnable
+pipelines appear — room aliases and workspace files alike. `/run` with
+no argument lists them in the terminal too.
+
 | Command | What it does |
 |---|---|
 | `/pipelines` | list owned pipelines |
-| `/run <name> [--var k=v]…` | run one as a **real `loop run` subprocess**, in the background |
+| `/run <alias-or-path> [--var k=v]…` | run one as a **real `loop run` subprocess**, in the background. Room aliases come from the `pipelines:` block; any workspace pipeline also runs by path (`/run pipelines/review.yaml`) |
 | `/approve <yes\|no\|words>` | answer a pipeline asking for approval (free words understood — the gate contract) |
-| `/cost` | this session's token ledger: total calls and tokens, per-agent breakdown |
+| `/cost` | the token ledger at three depths: this session (per-agent breakdown), every session since the room began (persisted in the room's `usage.json`), and the pipeline runs this room commanded (their spend lives in their run records) |
 | `/compact` | summarize everything before the live window into one "session so far" line; the summarized turns archive (never destroyed). One model call, metered under `compact` |
 | `/notes [slug]` | the project knowledge layer: list the maintained area notes, or read one. Deterministic file reads — zero model calls |
 | `/status` | active runs: alias, run id, state, last event |
@@ -781,6 +794,20 @@ from conversation to code is:
 No variables to remember. `--var task="…"` still works when you'd
 rather describe the work inline — with no plan file present, the
 engineer drafts the plan itself before building.
+
+**What a room run receives (the hand-off).** Every `/run` from a room
+writes a **task brief** to the room's `handoff.md` and passes its path
+to the pipeline as the `room_context` var (`room` carries the room's
+name). The brief is assembled deterministically — no model call: the
+explicit task if you gave one, your asks **verbatim** (the last ten
+user messages), the plan files newest-first, and the knowledge digest
+pointer. The shipped `implement` pipeline reads it in a deterministic
+`room-context` stage and folds it into the implement, review, and
+revise prompts — so requirements discussed in the room reach the
+engineer and the reviewer even when nothing was written to `plans/`.
+Pipelines that don't reference the var are unaffected; a run started
+outside a room simply has no `room_context`, and the stage degrades to
+empty (the starter pipeline declares it for exactly that case).
 | `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
 | `/reset` | archive the conversation and start a fresh one |
 | `/fork <n>` | keep the first `n` transcript lines and continue from there — everything after is archived |
@@ -933,7 +960,7 @@ with file:line warnings.
 | Path | Contents |
 |---|---|
 | `.loop/runs/<id>/` | run logs, context snapshots, state |
-| `.loop/rooms/<room>/` | chat transcripts |
+| `.loop/rooms/<room>/` | chat transcripts, usage.json (the room's lifetime ledger) |
 | `.loop/knowledge/` | the maintained project knowledge layer: `digest.md`, `notes/`, `index.json` |
 | `personas/` | this project's persona library |
 | `~/.loop/personas/` | the global persona library (every project; seeded with the six shipped personas) |

@@ -35,20 +35,22 @@
 
       <section class="composer">
         <form class="say-form" hx-post="/rooms/{{.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML"
-              data-agents="{{range .Room.Agents}}{{.}} {{end}}">
+              data-agents="{{range .Room.Agents}}{{.}} {{end}}"
+              data-commands="{{jsonAttr .Room.Commands}}"
+              data-pipelines="{{jsonAttr .Room.Runnable}}">
           <div class="mention-menu" hidden></div>
-          <input name="text" placeholder="@name your message — or just talk to the room" autocomplete="off" autofocus>
+          <input name="text" placeholder="@name your message — or / for commands" autocomplete="off" autofocus>
           <button type="submit" class="primary">send</button>
         </form>
       </section>
     </section>
 
     <aside class="sidecar-col">
-      {{if .Room.Pipelines}}
+      {{if .Room.Runnable}}
       <form class="runline" hx-post="/rooms/{{.Room.Name}}/run" hx-target="#chat-log" hx-swap="innerHTML">
         <span class="runline-label">run pipeline</span>
         <select name="alias">
-          {{range .Room.Pipelines}}<option value="{{.}}">{{.}}</option>{{end}}
+          {{range .Room.Runnable}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
         </select>
         <div class="run-actions">
           <input name="vars" placeholder="--var key=value …">

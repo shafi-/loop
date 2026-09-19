@@ -41,8 +41,9 @@
         <button type="button" class="ghost" title="refresh room list" aria-label="refresh room list"
                 hx-get="/frag/workspace?kind=rooms" hx-target="#room-picker" hx-swap="innerHTML">↻</button>
       </div>
+      <input name="file" id="host-file" placeholder="rooms/dev.yaml" required{{if $firstRoom}} value="{{$firstRoom}}"{{end}}>
       <div class="form-row">
-        <input name="file" id="host-file" placeholder="rooms/leadership.yaml" required{{if $firstRoom}} value="{{$firstRoom}}"{{end}}>
+        <span class="muted form-hint">reopening a room continues its saved conversation</span>
         <button type="submit">open</button>
       </div>
     </form>

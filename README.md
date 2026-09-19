@@ -61,8 +61,11 @@ directly in your repository behind a reviewed, gated loop (that one
 needs `loop setup`'s agent executor). The hand-off is a file — the dev
 room's `@architect` writes agreed plans to `plans/<name>.md`, and
 `/run implement` from the room builds the newest one, nothing to
-memorize. The classic examples are still there —
-`pipelines/feature-delivery.yaml` and `rooms/leadership.yaml`.
+memorize. The room's context travels with the run: `/run` writes a
+task brief (your asks verbatim, the plan files, the digest pointer)
+and passes it as the `room_context` var. The classic examples are
+still there — `pipelines/feature-delivery.yaml` and
+`rooms/leadership.yaml`.
 
 ## One engine, three doors
 

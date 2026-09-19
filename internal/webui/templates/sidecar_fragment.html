@@ -1,5 +1,6 @@
 {{define "sidecar_fragment"}}
-{{if .Room.Usage}}<div class="sidecar-usage" title="this session's model usage — /cost for per-agent detail">◈ {{.Room.Usage.Calls}} calls · in {{human .Room.Usage.InputTokens}} · out {{human .Room.Usage.OutputTokens}} tokens</div>{{end}}
+{{if .Room.Usage}}<div class="sidecar-usage" title="this session's model usage — /cost for per-agent detail">◈ session {{.Room.Usage.Calls}} calls · in {{human .Room.Usage.InputTokens}} · out {{human .Room.Usage.OutputTokens}} tokens</div>{{end}}
+{{if .Room.UsageAll}}<div class="sidecar-usage" title="every session since the room began">◈ all sessions {{.Room.UsageAll.Calls}} calls · in {{human .Room.UsageAll.InputTokens}} · out {{human .Room.UsageAll.OutputTokens}} tokens</div>{{end}}
 <div class="sidecar-title">pipelines</div>
 {{if not .Sidecar}}<p class="muted sidecar-empty">no runs yet — start one below the chat.</p>{{else}}
 {{range .Sidecar}}
@@ -8,6 +9,11 @@
     <span class="dot {{.Info.Phase}}"></span>
     <span class="sidecar-alias">{{$alias := .Info.Alias}}{{if $alias}}{{$alias}}{{else}}{{.Info.Pipeline}}{{end}}</span>
     <span class="sidecar-phase p-{{.Info.Phase}}">{{phaseLabel .Info.Phase}}</span>
+    {{if .Info.Alive}}{{$a := .Info.Alias}}{{if not $a}}{{$a = .Info.RunID}}{{end}}<button type="button" class="sidecar-stop"
+      onclick="event.stopPropagation()"
+      hx-post="/rooms/{{$.Room.Name}}/runs/{{$a}}/halt"
+      hx-target="#sidecar" hx-swap="innerHTML"
+      title="pause this run — it keeps its resume point">stop</button>{{end}}
   </summary>
   <div class="sidecar-detail">
     <p class="muted"><a href="/runs/{{.Info.RunID}}">{{.Info.RunID}}</a>{{if .Info.LastLine}} — {{.Info.LastLine}}{{end}}</p>
