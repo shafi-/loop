@@ -26,7 +26,7 @@ func makeExec(t *testing.T, path, body string) string {
 // directly — even with a NodeBin that cannot exist.
 func TestStandaloneHostSatisfiesCheckAndRun(t *testing.T) {
 	dir := t.TempDir()
-	bin := makeExec(t, filepath.Join(dir, "host"), `cat > /dev/null; echo '{"type":"done","output":"standalone"}'; exit 0`)
+	bin := makeExec(t, filepath.Join(dir, "host"), `read task; echo '{"type":"done","output":"standalone"}'; exit 0`)
 	e := &Executor{NodeBin: "/nonexistent/node", HostPath: filepath.Join(dir, "index.mjs"), HostBin: bin}
 
 	if !e.StandaloneHost() {

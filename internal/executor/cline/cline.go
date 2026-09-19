@@ -169,14 +169,45 @@ type modelWire struct {
 	MaxTokens   int      `json:"maxTokens,omitempty"`
 }
 
-// hostEvent is any protocol line the host sends.
+// hostEvent is any protocol line the host sends. Output is a raw JSON
+// value because two event types legitimately reuse the key with
+// different types: done carries a string, usage a number — duplicate
+// tagged fields would make encoding/json drop both.
 type hostEvent struct {
-	Type    string `json:"type"`
-	Text    string `json:"text"`
-	Tool    string `json:"tool"`
-	Detail  string `json:"detail"`
-	Message string `json:"message"`
-	Output  string `json:"output"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text"`
+	Tool      string          `json:"tool"`
+	Detail    string          `json:"detail"`
+	Message   string          `json:"message"`
+	RequestID string          `json:"requestId"` // approval_request correlation
+	Input     int             `json:"input"`     // usage events: cumulative input tokens
+	Output    json.RawMessage `json:"output"`    // done: final text · usage: cumulative output tokens
+}
+
+// outputString decodes the done event's output text.
+func (ev hostEvent) outputString() string {
+	var s string
+	if err := json.Unmarshal(ev.Output, &s); err != nil {
+		return ""
+	}
+	return s
+}
+
+// outputInt decodes the usage event's cumulative output tokens.
+func (ev hostEvent) outputInt() int {
+	var n int
+	if err := json.Unmarshal(ev.Output, &n); err != nil {
+		return 0
+	}
+	return n
+}
+
+// approvalResponse is the protocol line answering an approval_request.
+type approvalResponse struct {
+	Type      string `json:"type"`
+	RequestID string `json:"requestId"`
+	Approved  bool   `json:"approved"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // Run implements executor.Executor: spawn the host, stream its events,
@@ -247,7 +278,8 @@ func (e *Executor) Run(ctx context.Context, task executor.Task, onEvent func(exe
 	if _, err := stdin.Write(append(line, '\n')); err != nil {
 		return nil, fmt.Errorf("sending task to host: %w", err)
 	}
-	stdin.Close() // one task per host invocation
+	// stdin stays open: under approval=ask the host sends approval_request
+	// lines and waits for our approval_response on this pipe.
 
 	result := &executor.Result{}
 	sc := bufio.NewScanner(stdout)
@@ -275,15 +307,41 @@ func (e *Executor) Run(ctx context.Context, task executor.Task, onEvent func(exe
 			if onEvent != nil {
 				onEvent(executor.Event{Type: executor.EventToolResult, Tool: ev.Tool, Detail: ev.Detail})
 			}
+		case "approval_request":
+			approved, reason := false, "no approver attached to this run"
+			if task.AskApproval != nil {
+				a, r, err := task.AskApproval(ctx, ev.Tool, ev.Detail)
+				if err != nil {
+					reason = "approval unavailable: " + err.Error()
+				} else {
+					approved, reason = a, r
+				}
+			}
+			resp, err := json.Marshal(approvalResponse{
+				Type:      "approval_response",
+				RequestID: ev.RequestID,
+				Approved:  approved,
+				Reason:    reason,
+			})
+			if err != nil {
+				return nil, err
+			}
+			if _, err := stdin.Write(append(resp, '\n')); err != nil {
+				return nil, fmt.Errorf("answering approval request: %w", err)
+			}
 		case "notice":
 			if onEvent != nil {
 				onEvent(executor.Event{Type: executor.EventNotice, Text: ev.Text})
 			}
+		case "usage":
+			if onEvent != nil {
+				onEvent(executor.Event{Type: executor.EventUsage, InputTokens: ev.Input, OutputTokens: ev.outputInt()})
+			}
 		case "done":
 			// Authoritative final output replaces streamed accumulation
 			// (which may have missed non-delta text).
-			if ev.Output != "" {
-				result.Output = ev.Output
+			if out := ev.outputString(); out != "" {
+				result.Output = out
 			}
 			return result, nil
 		case "error":

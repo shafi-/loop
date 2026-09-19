@@ -197,16 +197,29 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 		Approval: s.Agent.Approval,
 		MaxTurns: s.Agent.MaxIterations,
 	}
+	if s.Agent.Approval == config.ApprovalAsk {
+		task.AskApproval = agentApprover(s.ID, d)
+	}
 	// API key resolution lives with the provider factory's conventions.
 	if key, err := resolveAPIKey(modelCfg); err == nil {
 		task.Model.APIKey = key
 	}
 
 	// Executor observability: every event lands in the run log (audit
-	// trail), text deltas also stream to the terminal.
+	// trail), text deltas also stream to the terminal, usage deltas
+	// feed the run's token ledger — the executor owns the key and the
+	// provider call, so its spend reaches loop only through these.
+	var lastInput, lastOutput int
 	onEvent := func(ev executor.Event) {
 		if ev.Type == executor.EventText && d.Stdout != nil {
 			fmt.Fprint(d.Stdout, ev.Text)
+		}
+		if ev.Type == executor.EventUsage && d.Usage != nil {
+			// Events are cumulative; only the delta is new spend.
+			if dIn, dOut := ev.InputTokens-lastInput, ev.OutputTokens-lastOutput; dIn > 0 || dOut > 0 {
+				d.Usage.Record("stage:"+s.ID, llm.Usage{InputTokens: dIn, OutputTokens: dOut})
+				lastInput, lastOutput = ev.InputTokens, ev.OutputTokens
+			}
 		}
 		if d.Log != nil {
 			// Text and notice events carry their payload in Text; tool
@@ -232,4 +245,50 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 		return nil, err
 	}
 	return &stageOutcome{Output: res.Output}, nil
+}
+
+// agentApprover turns an agent stage's shell-command approval requests
+// into a terminal y/N question. Only gated tools reach it (the cline
+// host auto-approves read and write tools); with no human attached the
+// run is headless — deny deterministically and record why, never hang,
+// never silently execute.
+func agentApprover(stageID string, d *stageDeps) func(context.Context, string, string) (bool, string, error) {
+	return func(ctx context.Context, tool, detail string) (bool, string, error) {
+		if d.Human == nil {
+			if d.Log != nil {
+				d.Log.Event("executor_approval", stageID, map[string]any{
+					"tool": tool, "detail": detail, "approved": false, "why": "headless",
+				})
+			}
+			return false, "no human is attached to this run — approval: ask needs an interactive runner", nil
+		}
+		answer, err := d.Human.Prompt(ctx, fmt.Sprintf(
+			"agent stage %q requests %s: %s — allow? [y/N]", stageID, tool, detail))
+		approved := err == nil && isYesWord(answer)
+		if d.Log != nil {
+			ev := map[string]any{"tool": tool, "detail": detail, "approved": approved, "answer": answer}
+			if err != nil {
+				ev["error"] = err.Error()
+			}
+			d.Log.Event("executor_approval", stageID, ev)
+		}
+		if err != nil {
+			return false, "", err
+		}
+		if !approved {
+			return false, "the operator declined this command", nil
+		}
+		return true, "", nil
+	}
+}
+
+// isYesWord reads a y/N answer: yes or y approves, everything else —
+// including free text — declines. Deliberately stricter than the gate
+// vocabulary: a command runs on an explicit yes only.
+func isYesWord(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "y", "yes":
+		return true
+	}
+	return false
 }

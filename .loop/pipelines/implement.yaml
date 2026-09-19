@@ -1,0 +1,169 @@
+# Implement pipeline
+#
+# The room's approved plan, built. The architect writes plans to
+# .loop/plans/<name>.md; this pipeline's first stage finds the newest one
+# and the engineer agent implements it — so from the dev room the
+# whole command is just:
+#
+#   /run implement
+#
+# No plan file yet? Set the task instead and the engineer plans
+# inline before building. The reviewer report and a human gate decide
+# the outcome; change requests feed a revise loop that listens.
+#
+# Prerequisite: `loop setup` once (installs the agent executor).
+#
+# Run it (outside a room):
+#   loop run .loop/pipelines/implement.yaml
+# With an explicit task:
+#   loop run .loop/pipelines/implement.yaml --var task="add rate limiting to the API"
+# Started from a room (/run implement), the room's context travels
+# automatically: the task brief (the asks as stated there, the plan
+# files, the knowledge digest pointer) is written to the room's
+# handoff.md and arrives as the room_context var.
+
+name: implement
+description: Implement the newest approved plan in .loop/plans/ (or a task) with a reviewed, gated loop
+
+vars:
+  task: ""
+  # Declared so a standalone run (outside a room) interpolates these to
+  # empty instead of failing on an unknown var — the room-context stage
+  # then degrades to no context, by design.
+  room_context: ""
+  room: ""
+
+# The engineer comes from the global persona library (~/.loop/personas/);
+# every project shares it. The model resolves from your environment.
+personas:
+  - persona: engineer
+
+stages:
+  # The hand-off: the newest plan the room approved. Empty when .loop/plans/
+  # has nothing — the engineer then works from the task below.
+  - id: plan-file
+    type: tool
+    run: ls -t .loop/plans/*.md 2>/dev/null | head -1 || true
+    output: plan_file
+
+  # What the room handed over when it started this run: the task, the
+  # requirements as stated there, the plan files, the digest pointer.
+  # Empty when the pipeline was started outside a room.
+  - id: room-context
+    type: tool
+    run: 'if [ -f "${vars.room_context}" ]; then cat "${vars.room_context}"; fi'
+    output: room_context
+
+  - id: implement
+    type: agent
+    persona: engineer
+    input: |
+      Implement this task in the current workspace.
+
+      Task: {{ vars.task }}
+      The task may be empty — the room context or the plan file below
+      then carries the requirements.
+
+      Context from the room that started this run:
+      ${stages.room-context.output}
+      If non-empty, this is the task brief: what was asked in the room,
+      which plan files exist, where the project digest lives.
+
+      Approved plan file: ${stages.plan-file.output}
+      If the plan file above is non-empty, read it first and treat it
+      as the approved plan — follow it or improve it, reporting any
+      deviation. If it is empty, draft a short plan yourself from the
+      task or the room context before writing code.
+
+      Make the smallest coherent change, match the project's style,
+      and run its tests or build if available. If the task, the room
+      context, and the plan file are all empty, do not invent work —
+      report that there is nothing to implement. Finish with a report:
+      files changed, what each does, how you verified.
+    tools: [read_file, write_file, run_command]
+    # Reads and writes are auto-approved; shell commands pause for a
+    # y/N answer (headless runs deny commands instead of running them).
+    approval: ask
+    max_iterations: 15
+    output: implement_md
+
+  - id: review
+    type: llm
+    prompt: |
+      Review an engineer's implementation report against the task.
+      Judge completeness and risk: what is missing, what could break,
+      what should be double-checked before merge. End with either
+      "VERDICT: approve" or "VERDICT: request-changes" plus the
+      blocking list.
+
+      Task: {{ vars.task }}
+
+      Room context (may be empty — the asks there are the requirements):
+      ${stages.room-context.output}
+
+      Implementation report:
+      ${outputs.implement_md}
+    output: review_md
+
+  - id: approval
+    type: human
+    gate: true
+    prompt: |
+      The engineer implemented the task; the reviewer's take follows.
+      Reply yes to accept, no to reject, or describe what should
+      change — free words are understood.
+
+      ${outputs.review_md}
+
+      --- engineer's report ---
+      ${outputs.implement_md}
+    output: approval.answer
+
+  - id: route
+    type: router
+    when:
+      - if: "${stages.approval.intent} == 'yes'"
+        next: accepted
+      - if: "${stages.approval.intent} == 'no'"
+        next: rejected
+      - next: revise
+
+  # Change requests go back to the engineer; the shared implement_md
+  # slot is overwritten, so review and approval always see the latest.
+  - id: revise
+    type: agent
+    persona: engineer
+    input: |
+      The reviewer and the human asked for changes to work done in
+      this workspace. Apply exactly these changes, then report files
+      touched and how you verified.
+
+      Change requests:
+      ${stages.approval.answer}
+
+      Original task: {{ vars.task }}
+
+      Room context (may be empty):
+      ${stages.room-context.output}
+
+      Previous report:
+      ${outputs.implement_md}
+    tools: [read_file, write_file, run_command]
+    approval: ask
+    max_iterations: 15
+    output: implement_md
+
+  - id: back
+    type: router
+    when:
+      - next: review
+
+  - id: accepted
+    type: tool
+    terminal: true
+    run: echo "accepted — implementation complete"
+
+  - id: rejected
+    type: tool
+    terminal: true
+    run: echo "rejected — the workspace keeps the changes; review them with 'loop run .loop/pipelines/review.yaml'"

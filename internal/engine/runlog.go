@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/shafi-/loop/internal/usage"
@@ -130,6 +131,27 @@ func ReadRunUsage(runsDir, runID string) (usage.Total, bool) {
 		return usage.Total{}, false
 	}
 	return *s.Usage, true
+}
+
+// ReadStageOutput reports one stage's output text from a completed
+// run's context.json snapshot. ok is false when the run, snapshot, or
+// stage output is missing — callers render their own fallback.
+func ReadStageOutput(runsDir, runID, stageID string) (string, bool) {
+	if runsDir == "" {
+		runsDir = runDirBase
+	}
+	data, err := os.ReadFile(filepath.Join(runsDir, runID, "context.json"))
+	if err != nil {
+		return "", false
+	}
+	var snap struct {
+		Outputs map[string]string `json:"outputs"`
+	}
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return "", false
+	}
+	out, ok := snap.Outputs[stageID]
+	return out, ok && strings.TrimSpace(out) != ""
 }
 
 // Event appends one structured event to events.jsonl.

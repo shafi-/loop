@@ -6,9 +6,12 @@
 // internals — auditability comes from the event stream, not from owning
 // the loop.
 //
-// v1 ships the "cline" executor (Node sidecar over @cline/sdk, M3).
-// loop's own micro-LLM calls (narrator, speak-policy, router
-// classification) do NOT go through executors; they use internal/llm.
+// v1 ships the "cline" executor (Node sidecar over @cline/sdk, M3). Its
+// tool policy binds end-to-end: the task's tools select the agent's
+// toolset, and approval=ask routes gated calls (shell commands) to the
+// task's AskApproval callback over the protocol. loop's own micro-LLM
+// calls (narrator, speak-policy, router classification) do NOT go
+// through executors; they use internal/llm.
 package executor
 
 import "context"
@@ -34,6 +37,14 @@ type Task struct {
 	Tools    []string // allowed tool names; empty = executor default
 	MaxTurns int      // 0 = executor default
 	Approval string   // "auto" | "ask": tool approval policy
+
+	// AskApproval is consulted for tool calls the approval policy gates
+	// (approval: "ask") — in practice shell commands; read and write
+	// tools stay auto-approved. tool names the executor-side tool and
+	// detail renders the call for a human (the command line for shell
+	// tools). An error from the callback denies the call with that
+	// reason. nil = nothing can be approved (calls are denied).
+	AskApproval func(ctx context.Context, tool, detail string) (approved bool, reason string, err error)
 }
 
 // EventType discriminates executor stream events.
@@ -44,6 +55,7 @@ const (
 	EventToolCall   EventType = "tool_call" // executor-side tool invocation
 	EventToolResult EventType = "tool_result"
 	EventNotice     EventType = "notice" // executor lifecycle commentary
+	EventUsage      EventType = "usage"  // cumulative provider tokens so far
 )
 
 // Event is one observation from a running executor.
@@ -52,6 +64,11 @@ type Event struct {
 	Text   string
 	Tool   string
 	Detail string
+	// InputTokens/OutputTokens carry EventUsage: the executor-side
+	// provider totals so far (the executor owns the key and the call,
+	// so this is how its spend reaches loop's meter).
+	InputTokens  int
+	OutputTokens int
 }
 
 // Result is the aggregated output of a finished task.
