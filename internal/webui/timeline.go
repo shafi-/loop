@@ -84,11 +84,10 @@ func Timeline(events []daemon.EventLine) []Row {
 			// (176 of them in one ordinary agent stage) — usage rows are
 			// per-delta accounting, and notices were host protocol
 			// dumps; rendering them evicted the meaningful rows from
-			// the capped view. One row per tool call is the activity
-			// worth showing ("tool" covers executors that log it
-			// directly); stage rows above carry progress, and tool
-			// results land in the stage output.
-			if p.Kind != "tool" && p.Kind != "tool_call" {
+			// the capped view. One row per completed tool call is the
+			// activity worth showing ("tool"/"tool_call" cover other
+			// executors' naming); stage rows above carry progress.
+			if p.Kind != "tool" && p.Kind != "tool_call" && p.Kind != "tool_result" {
 				continue
 			}
 			tool := p.Tool

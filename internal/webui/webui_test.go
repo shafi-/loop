@@ -34,15 +34,15 @@ func TestTimelineClassification(t *testing.T) {
 		ev("human_intent", `{"stage":"approval","intent":"yes","via":"vocabulary"}`),
 		ev("stage_failed", `{"stage":"compile","error":"boom"}`),
 		ev("narration", `{"text":"almost there"}`),
-		ev("executor_event", `{"kind":"tool_call","tool":"write_file","detail":"{\"path\":\"x.md\"}"}`),
+		ev("executor_event", `{"kind":"tool_result","tool":"write_file","detail":"{\"path\":\"x.md\"}"}`),
 		// The executor's own stream is audit, not timeline: text rows
 		// are one-per-streamed-chunk, notices are host protocol dumps,
-		// usage rows are per-delta accounting, and tool results would
-		// double every call — none may flood the view.
+		// and usage rows are per-delta accounting — none may flood the
+		// view. (tool_call from other executors renders the same way.)
 		ev("executor_event", `{"kind":"text","detail":"a streamed chunk"}`),
 		ev("executor_event", `{"kind":"notice","detail":"[message-added] {\"snapshot\":{}}"}`),
 		ev("executor_event", `{"kind":"usage","detail":""}`),
-		ev("executor_event", `{"kind":"tool_result","tool":"write_file","detail":"ok"}`),
+		ev("executor_event", `{"kind":"tool_call","tool":"read_files","detail":"{...}"}`),
 		ev("run_completed", `{"steps":3}`),
 		ev("provider_detail", `{"detail":"not shown"}`), // unknown kinds are skipped
 	}
@@ -57,6 +57,7 @@ func TestTimelineClassification(t *testing.T) {
 		{"failure", "✗ compile failed"},
 		{"narration", "almost there"},
 		{"executor", "🔧 write_file"},
+		{"executor", "🔧 read_files"},
 		{"terminal ok", "✓ run complete (3 steps)"},
 	}
 	if len(rows) != len(want) {

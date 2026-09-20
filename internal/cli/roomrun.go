@@ -206,11 +206,15 @@ func (s *roomRunSession) warnUnknownVars(file string, extra []string) {
 }
 
 // userVarKeys returns the keys the caller set with --var k=v, in order.
+// The hand-off vars the room itself appends (room_context, room) are
+// not the caller's spelling to get wrong — an explicit room_context
+// opt-out must never be warned about.
 func userVarKeys(extra []string) []string {
 	var keys []string
 	for i := 0; i+1 < len(extra); i++ {
 		if extra[i] == "--var" {
-			if k, _, ok := strings.Cut(extra[i+1], "="); ok && k != "" {
+			if k, _, ok := strings.Cut(extra[i+1], "="); ok && k != "" &&
+				k != "room_context" && k != "room" {
 				keys = append(keys, k)
 			}
 		}

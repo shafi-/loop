@@ -216,18 +216,17 @@ async function runTask(task, rl) {
     "run-started", "run-finished", "turn-started", "turn-finished",
     "message-added", "assistant-message", "assistant-reasoning-delta",
     "reasoning-delta", "tool-call-delta", "tool-updated",
+    "tool-call", "tool-started",
   ]);
   agent.subscribe((event) => {
     const t = event?.type || "";
     if (t === "assistant-text-delta") {
       send({ type: "text", text: event.text ?? "" });
-    } else if (t === "tool-call" || t === "tool-started") {
-      // SDK tool events are hyphenated ("tool-call"); the old matcher
-      // looked for "tool_call" and matched nothing, so tool activity
-      // only ever surfaced as notice snapshot dumps.
-      send({ type: "tool_call", tool: event.tool?.name || event.tool || "", detail: safeJSON(event) });
     } else if (t === "tool-result" || t === "tool-finished") {
-      send({ type: "tool_result", tool: event.tool?.name || event.tool || "", detail: safeJSON(event) });
+      // One line per completed tool call. This SDK build emits
+      // tool-finished as a whole-runtime snapshot — the tool's name
+      // lives only in the newest tool part inside it — hence the dig.
+      send({ type: "tool_result", tool: toolNameOf(event), detail: safeJSON(event.output ?? event) });
     } else if (t === "usage-updated") {
       // Cumulative after each model call — forward the totals; the Go
       // side diffs consecutive events into its meter.
@@ -264,10 +263,28 @@ async function runTask(task, rl) {
   send({ type: "done", output });
 }
 
+// toolNameOf digs the tool's name out of an SDK tool event. Top-level
+// fields when present (tool-result per the type docs); otherwise the
+// newest tool part in the runtime snapshot (what this build actually
+// emits for tool-finished).
+function toolNameOf(event) {
+  if (typeof event?.toolName === "string" && event.toolName) return event.toolName;
+  if (typeof event?.toolCall?.name === "string" && event.toolCall.name) return event.toolCall.name;
+  if (typeof event?.tool?.name === "string" && event.tool.name) return event.tool.name;
+  const msgs = event?.snapshot?.messages || [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const parts = msgs[i]?.content;
+    if (!Array.isArray(parts)) continue;
+    for (const p of parts) {
+      if (typeof p?.toolName === "string" && p.toolName) return p.toolName;
+    }
+  }
+  return "";
+}
+
 function safeJSON(v) {
   try {
-    const s = JSON.stringify(v);
-    return s.length > 2000 ? s.slice(0, 2000) + "…" : s;
+    const s = JSON.stringify(v);    return s.length > 2000 ? s.slice(0, 2000) + "…" : s;
   } catch {
     return String(v);
   }
