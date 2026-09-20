@@ -39,7 +39,7 @@
               data-commands="{{jsonAttr .Room.Commands}}"
               data-pipelines="{{jsonAttr .Room.Runnable}}">
           <div class="mention-menu" hidden></div>
-          <input name="text" placeholder="@name your message — or / for commands" autocomplete="off" autofocus>
+          <textarea name="text" rows="1" placeholder="@name your message — / for commands · Enter sends, Shift+Enter for a newline" autocomplete="off" autofocus></textarea>
           <button type="submit" class="primary">send</button>
         </form>
       </section>

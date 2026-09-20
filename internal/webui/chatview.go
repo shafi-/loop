@@ -55,6 +55,12 @@ var runStartRe = regexp.MustCompile(`^run \S+ starting: (.+?)(?: \(\d+ stages?\)
 // view renders it as an offer card whose button sends the command.
 var diveOfferRe = regexp.MustCompile(`^◈ deep-dive offer @(\S+) — topic: (.+) — run: (/deepdive @\S+)$`)
 
+// approveAnswerPrefix marks the user's own gate answer, recorded by the
+// host when the gate's answer goes through ("approve <alias>: yes"). It
+// renders as the compact answer chip under the gate's question line —
+// the room's record of what was decided, not a conversation bubble.
+const approveAnswerPrefix = "approve "
+
 // ChatView turns transcript lines into chat-view messages: the user's
 // lines as their own bubbles, persona lines as agent bubbles (markdown
 // rendered), tool activity as compact notices, and run status as
@@ -68,6 +74,10 @@ func ChatView(lines []daemon.RoomLine, agents []string, runs []daemon.RunInfo) [
 	out := make([]ChatMsg, 0, len(lines))
 	for _, ln := range lines {
 		switch {
+		case ln.From == "user" && strings.HasPrefix(ln.Text, approveAnswerPrefix):
+			out = append(out, ChatMsg{
+				Kind: "answer", From: "you", Text: ln.Text, At: ln.At, Line: ln.Seq,
+			})
 		case ln.From == "user":
 			out = append(out, ChatMsg{
 				Kind: "user", From: "you", Text: ln.Text, At: ln.At,

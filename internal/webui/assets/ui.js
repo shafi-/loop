@@ -68,7 +68,7 @@
   }
 
   function bind(form) {
-    var input = form.querySelector("input[name='text']");
+    var input = form.querySelector("input[name='text'], textarea[name='text']");
     var menu = form.querySelector(".mention-menu");
     if (!input || !menu || input.dataset.mentionsBound) return;
     input.dataset.mentionsBound = "1";
@@ -78,6 +78,15 @@
     var pipelines = [];
     try { pipelines = JSON.parse(form.getAttribute("data-pipelines") || "[]"); } catch (e) {}
     var items = [], sel = -1, mode = null; // "mention" | "command" | "pipeline"
+
+    // The composer grows with what is typed, up to five lines (the cap
+    // is CSS max-height; overflow scrolls). height:auto first so
+    // scrollHeight reflects the content, not the previous height.
+    function grow() {
+      if (input.tagName !== "TEXTAREA") return;
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+    }
 
     function close() {
       menu.hidden = true;
@@ -140,12 +149,14 @@
       input.setSelectionRange(pos, pos);
       input.focus();
       close();
+      grow();
     }
     function acceptCommand(verb) {
       input.value = "/" + verb + " ";
       input.setSelectionRange(input.value.length, input.value.length);
       input.focus();
       close();
+      grow();
     }
     // The /run second level: after the verb comes a pipeline name.
     function openPipelines(fragment) {
@@ -181,6 +192,7 @@
       input.setSelectionRange(input.value.length, input.value.length);
       input.focus();
       close();
+      grow();
     }
     function fragment() {
       var caret = input.selectionStart || 0;
@@ -199,12 +211,21 @@
       return m ? m[1] : null;
     }
     input.addEventListener("input", function () {
+      grow();
       var cmd = commandFragment();
       if (cmd !== null) { openCommands(cmd); return; }
       var run = runFragment();
       if (run !== null) { openPipelines(run); return; }
       var frag = fragment();
       if (frag === null) close(); else open(frag);
+    });
+    // Enter sends (chat convention); Shift+Enter is a newline. When the
+    // mention/command menu is open, its own handler owns the key.
+    input.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+      if (!menu.hidden) return;
+      e.preventDefault();
+      if (input.value.trim()) form.requestSubmit();
     });
     input.addEventListener("keydown", function (e) {
       if (menu.hidden) return;
@@ -314,6 +335,23 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.hidden = true; }, 4500);
   }
+
+  // A gate answer must not lock the card forever when the backend
+  // never answers: cap the request at 15s on the XHR itself, so htmx
+  // settles it (error path) and re-enables the buttons. The loader and
+  // button lockup come from the .htmx-request class in the stylesheet.
+  document.body.addEventListener("htmx:beforeRequest", function (e) {
+    var f = e.detail.elt;
+    if (!f || !f.matches || !f.matches(".gate-form")) return;
+    if (e.detail.xhr) e.detail.xhr.timeout = 15000;
+  });
+  document.body.addEventListener("htmx:timeout", function (e) {
+    var f = e.detail.elt;
+    if (f && f.matches && f.matches(".gate-form")) {
+      toast("✗ the answer did not reach the room in time — try again");
+    }
+  });
+
   document.body.addEventListener("htmx:responseError", function (e) {
     var f = e.detail.elt;
     // The save form's 409 (file exists) is handled by its own confirm
@@ -355,14 +393,17 @@
   });
 
   // The composer sits outside the swap region, so htmx never replaces
-  // it — clear it after a successful send instead, and keep focus ready
-  // for the next message.
+  // it — clear it after a successful send instead (and shrink it back
+  // to one line), and keep focus ready for the next message.
   document.body.addEventListener("htmx:afterRequest", function (e) {
     var f = e.detail.elt;
     if (!e.detail.successful || !f.matches || !f.matches(".composer form")) return;
     f.reset();
-    var input = f.querySelector("input[name='text']");
-    if (input) input.focus();
+    var input = f.querySelector("input[name='text'], textarea[name='text']");
+    if (input) {
+      input.style.height = "";
+      input.focus();
+    }
   });
 
   // The sidecar polls and re-renders every few seconds; remember which

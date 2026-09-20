@@ -276,6 +276,20 @@ func (s *Server) handleRoomApprove(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "%v", err)
 		return
 	}
+	// The decision belongs to the room's record: the transcript shows
+	// the gate's question, this line shows what the user decided — the
+	// chat renders it as the answer chip under the gate line, and the
+	// agents read the decision in context on their next turn.
+	alias := req.Alias
+	if alias == "" {
+		for _, run := range rs.sup.Runs() {
+			if run.Waiting {
+				alias = run.Alias
+				break
+			}
+		}
+	}
+	_ = rs.tr.Append("user", fmt.Sprintf("approve %s: %s", alias, strings.TrimSpace(req.Text)))
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

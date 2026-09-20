@@ -23,6 +23,8 @@
   <div class="evt tool"><span class="evt-icon">🔧</span><span class="evt-from">@{{.From}}</span><span class="evt-text">{{.Text}}</span>{{if gt .Count 1}}<span class="evt-count">×{{.Count}}</span>{{end}}</div>
   {{else if eq .Kind "gate"}}
   <div class="evt gate"><span class="evt-icon">✋</span><span class="evt-from">{{.From}}</span><span class="evt-text gate-q">{{.Text}}</span></div>
+  {{else if eq .Kind "answer"}}
+  <div class="evt answer"><span class="evt-icon">↩</span><span class="evt-text">{{.Text}}</span></div>
   {{else if eq .Kind "system"}}
   <div class="evt system">{{.Text}}</div>
   {{else if eq .Kind "offer"}}
@@ -42,11 +44,13 @@
 <div class="gatecard" id="gatecard">
   <div class="gate-head"><span class="evt-icon">✋</span> pipeline <span class="gate-run">{{.Waiting.Alias}}</span> needs your approval</div>
   <div class="gate-question">{{md .Waiting.Prompt}}</div>
-  <form class="gate-form" hx-post="/rooms/{{.Room.Name}}/approve" hx-target="#chat-log" hx-swap="innerHTML">
+  <form class="gate-form" hx-post="/rooms/{{.Room.Name}}/approve" hx-target="#chat-log" hx-swap="innerHTML"
+        hx-disabled-elt="find button">
     <input name="text" placeholder="your words — or press a button" autocomplete="off">
     <button type="submit" name="quick" value="yes" class="b-yes">yes</button>
     <button type="submit" name="quick" value="no" class="b-no">no</button>
     <button type="submit">send</button>
+    <div class="gate-loading" aria-live="polite"><span class="spinner"></span>sending your answer…</div>
   </form>
 </div>
 {{end}}

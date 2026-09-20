@@ -299,3 +299,61 @@ func TestDaemonRoomRunWarnsOnUnknownVar(t *testing.T) {
 		return false
 	}, "the unknown-var warning to land in the transcript")
 }
+
+// The user's gate decision becomes part of the room's record: after an
+// answer goes through, the transcript carries "approve <alias>: <what
+// was answered>" — what the chat's answer chip renders, and what the
+// agents read as the decision on their next turn.
+func TestDaemonRoomGateAnswerRecordedInTranscript(t *testing.T) {
+	mock := mockAnthropic(t, "unused", 0)
+	pointProvidersAtMock(t, mock)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fake := fakeLoop(t, dir)
+
+	cl, _ := startTestServer(t, fake, filepath.Join(dir, "runs"))
+
+	roomYAML := filepath.Join(dir, "room.yaml")
+	if err := os.WriteFile(roomYAML, []byte("name: gate-room\nagents:\n  - name: scout\n    role: scout\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.HostRoom(roomYAML); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".loop/pipelines"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".loop/pipelines", "demo.yaml"),
+		[]byte("name: demo\nstages:\n  - id: only\n    type: tool\n    run: echo hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := cl.RoomRun("gate-room", ".loop/pipelines/demo.yaml", "", nil); err != nil {
+		t.Fatalf("room run: %v", err)
+	}
+	waitFor(t, 10*time.Second, func() bool {
+		runs, err := cl.RoomRuns("gate-room")
+		if err != nil {
+			return false
+		}
+		for _, r := range runs {
+			if r.Alias == "demo" && r.Waiting {
+				return true
+			}
+		}
+		return false
+	}, "the run to reach its gate")
+
+	if err := cl.RoomApprove("gate-room", "demo", "yes"); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	waitFor(t, 5*time.Second, func() bool {
+		lines, _ := cl.RoomTranscript("gate-room", 0)
+		for _, ln := range lines {
+			if ln.From == "user" && strings.Contains(ln.Text, "approve demo:") && strings.Contains(ln.Text, "yes") {
+				return true
+			}
+		}
+		return false
+	}, "the answer to land in the room transcript")
+}

@@ -478,3 +478,29 @@ func TestComposerResetCommand(t *testing.T) {
 		return len(lines) == 2 && lines[1].From == "system"
 	}, "the composer /fork to rotate the transcript")
 }
+
+// The user's gate answer is recorded by the host as "approve <alias>:
+// <answer>" and renders as the compact answer chip — the room's record
+// of the decision, right under the gate's question line. Ordinary user
+// lines stay conversation bubbles.
+func TestChatViewRendersGateAnswerAsChip(t *testing.T) {
+	lines := []daemon.RoomLine{
+		{Seq: 1, From: "user", Text: "looks good to me?"},
+		{Seq: 2, From: "demo", Text: "[approval needed] Review the architecture. reply yes, no, or your change requests"},
+		{Seq: 3, From: "user", Text: "approve demo: yes"},
+		{Seq: 4, From: "user", Text: "what's next?"},
+	}
+	view := ChatView(lines, nil, nil)
+	if len(view) != 4 {
+		t.Fatalf("messages = %d, want 4", len(view))
+	}
+	if view[2].Kind != "answer" {
+		t.Errorf("gate answer kind = %q, want the answer chip", view[2].Kind)
+	}
+	if view[0].Kind != "user" || view[3].Kind != "user" {
+		t.Errorf("ordinary user lines must stay bubbles, got %q / %q", view[0].Kind, view[3].Kind)
+	}
+	if !strings.Contains(view[2].Text, "yes") {
+		t.Errorf("answer chip lost the provided answer: %q", view[2].Text)
+	}
+}

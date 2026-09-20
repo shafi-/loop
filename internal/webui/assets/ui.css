@@ -81,6 +81,36 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .create-links a { color: var(--muted); text-decoration: none; padding: .22rem .55rem; border-radius: 6px; }
 .create-links a:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+
+/* ─── home: workspace rail (left) + management sections (right) ───── */
+.home-shell {
+  display: grid; grid-template-columns: 13.5rem 1fr; gap: 1.2rem;
+  align-items: start; max-width: 74rem; margin: 0 auto;
+}
+.ws-rail {
+  position: sticky; top: calc(var(--nav-h) + 1rem);
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 10px;
+  box-shadow: var(--shadow-1); padding: 1rem .9rem;
+}
+.ws-rail h2 { margin: 0 0 .6rem; }
+.ws-list { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
+.ws {
+  display: flex; flex-direction: column; gap: .1rem;
+  padding: .5rem .6rem; border-radius: 8px; border: 1px solid var(--edge);
+  background: var(--panel2);
+}
+.ws.active { border-color: color-mix(in srgb, var(--accent) 45%, var(--edge)); }
+.ws-name { font-weight: 700; }
+.ws-meta { font-size: .74rem; }
+.create-rail { flex-direction: column; align-items: flex-start; gap: .15rem; }
+.create-rail .muted { margin: 0 0 .15rem; text-transform: uppercase; font-size: .72rem; letter-spacing: .08em; }
+.create-rail a { display: block; width: 100%; }
+.home-main { min-width: 0; }
+.persona-links { display: flex; gap: 1rem; flex-wrap: wrap; }
+@media (max-width: 56rem) {
+  .home-shell { grid-template-columns: 1fr; }
+  .ws-rail { position: static; }
+}
 .stack-form { display: flex; flex-direction: column; gap: .5rem; align-items: stretch; }
 .stack-form input[name="file"] { width: 100%; flex: 1; min-width: 0; }
 .picker-row { display: flex; gap: .4rem; align-items: center; }
@@ -415,22 +445,57 @@ details.room-head > summary:hover { background: var(--edge); }
   background: var(--panel); border: 1px solid var(--edge); border-radius: 6px;
   padding: .5rem .6rem; white-space: pre-wrap;
 }
-.gate-form { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
+.gate-form { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; position: relative; }
 .gate-form input { flex: 1; min-width: 12rem; background: var(--panel2); }
 .b-yes { color: var(--ok); } .b-yes:hover { border-color: var(--ok); color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
 .b-no { color: var(--bad); } .b-no:hover { border-color: var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+
+/* An answer in flight: buttons lock (hx-disabled-elt sets the real
+   disabled attribute; this dims the row), a loader takes the card,
+   and ui.js caps the request at 15s. */
+.gate-form.htmx-request button { opacity: .45; }
+.gate-loading {
+  display: none;
+  position: absolute; inset: 0; z-index: 5;
+  align-items: center; justify-content: center; gap: .5rem;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  border-radius: 9px;
+  font-size: .85rem; color: var(--faint);
+}
+.gate-form.htmx-request .gate-loading { display: flex; }
+.spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--edge-strong); border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* The decision, once given: a compact chip under the gate's question —
+   the room's record of what was answered, not a conversation bubble. */
+.evt.answer { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); font-size: .92rem; }
+.evt.answer .evt-text { opacity: .92; }
 
 /* ─── composer ────────────────────────────────────────────────────── */
 .composer {
   flex-shrink: 0; border-top: 1px solid var(--edge); background: var(--panel);
   padding: .7rem 1.4rem .8rem;
 }
-.composer .say-form { display: flex; gap: .5rem; }
-.composer input[name="text"] {
+.composer .say-form { display: flex; gap: .5rem; align-items: flex-end; }
+.composer .say-form input[name="text"],
+.composer .say-form textarea[name="text"] {
   flex: 1; background: var(--panel2); border: 1px solid var(--edge); border-radius: 9px;
   padding: .58rem .85rem; font-family: var(--sans); font-size: 14px;
 }
-.composer input[name="text"]:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.composer .say-form textarea[name="text"] {
+  resize: none; overflow-y: auto;
+  line-height: 1.5;
+  /* five lines, then it scrolls instead of growing */
+  max-height: calc(5 * 1.5em + 1.16rem);
+  height: auto;
+  min-height: calc(1.5em + 1.16rem);
+}
+.composer .say-form input[name="text"]:focus,
+.composer .say-form textarea[name="text"]:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
 .chat-log + .composer { box-shadow: 0 -6px 18px rgba(0, 0, 0, .28); }
 
 /* the pipeline runner lives at the top of the sidecar rail, above the
