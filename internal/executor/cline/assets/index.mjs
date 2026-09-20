@@ -208,13 +208,25 @@ async function runTask(task, rl) {
 
   const agent = new Agent(opts);
   let failure = null;
+  // SDK events that carry no timeline value: per-token or per-message
+  // state snapshots whose payload already reaches the host through the
+  // text / usage / done lines. Forwarding them as notices once flooded
+  // the audit log — 40+ snapshot dumps for one ordinary agent stage.
+  const ignore = new Set([
+    "run-started", "run-finished", "turn-started", "turn-finished",
+    "message-added", "assistant-message", "assistant-reasoning-delta",
+    "reasoning-delta", "tool-call-delta", "tool-updated",
+  ]);
   agent.subscribe((event) => {
     const t = event?.type || "";
     if (t === "assistant-text-delta") {
       send({ type: "text", text: event.text ?? "" });
-    } else if (t.includes("tool_call") || t === "tool-use") {
+    } else if (t === "tool-call" || t === "tool-started") {
+      // SDK tool events are hyphenated ("tool-call"); the old matcher
+      // looked for "tool_call" and matched nothing, so tool activity
+      // only ever surfaced as notice snapshot dumps.
       send({ type: "tool_call", tool: event.tool?.name || event.tool || "", detail: safeJSON(event) });
-    } else if (t.includes("tool_result") || t === "tool-result") {
+    } else if (t === "tool-result" || t === "tool-finished") {
       send({ type: "tool_result", tool: event.tool?.name || event.tool || "", detail: safeJSON(event) });
     } else if (t === "usage-updated") {
       // Cumulative after each model call — forward the totals; the Go
@@ -227,7 +239,10 @@ async function runTask(task, rl) {
       failure = [event?.snapshot?.lastError, event?.errorClass].filter(Boolean).join(" ") || "agent run failed";
     } else if (t === "error") {
       failure = event.message || event.error?.message || "SDK error event";
-    } else {
+    } else if (!ignore.has(t)) {
+      // Unknown event types still surface — a new SDK event should be
+      // visible, not silently dropped — but known-noise ones never dump
+      // their snapshots into the log.
       send({ type: "notice", text: `[${t}] ${safeJSON(event)}` });
     }
   });

@@ -79,11 +79,23 @@ func Timeline(events []daemon.EventLine) []Row {
 		case "narration":
 			row = Row{Class: "narration", Head: p.Text}
 		case "executor_event":
-			head := "🔧 " + p.Kind
-			if p.Tool != "" {
-				head += ": " + p.Tool
+			// The executor's audit stream is not the timeline. Text rows
+			// are the model's prose mid-flight — one per streamed chunk
+			// (176 of them in one ordinary agent stage) — usage rows are
+			// per-delta accounting, and notices were host protocol
+			// dumps; rendering them evicted the meaningful rows from
+			// the capped view. One row per tool call is the activity
+			// worth showing ("tool" covers executors that log it
+			// directly); stage rows above carry progress, and tool
+			// results land in the stage output.
+			if p.Kind != "tool" && p.Kind != "tool_call" {
+				continue
 			}
-			row = Row{Class: "executor", Head: head, Detail: p.Detail, LongBlk: len(p.Detail) > detailLimit}
+			tool := p.Tool
+			if tool == "" {
+				tool = "tool"
+			}
+			row = Row{Class: "executor", Head: "🔧 " + tool, Detail: p.Detail, LongBlk: len(p.Detail) > detailLimit}
 		case "output_truncated":
 			row = Row{Class: "retry", Head: fmt.Sprintf("⚠ output truncated at %d tokens", p.MaxTokens)}
 		case "usage":
