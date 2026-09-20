@@ -215,3 +215,19 @@ func TestStarterImplementPipelineShape(t *testing.T) {
 		t.Errorf("implement input does not consume the room's hand-off:\n%s", input)
 	}
 }
+
+// The feature pipeline must never ship a demo idea again: a baked-in
+// example task ("add OAuth login…") is what a room's /run implemented
+// when its pipeline ignored the hand-off var — the run faithfully built
+// the demo instead of the discussed work. The idea is the caller's:
+// the room's brief (folded into the first model stage) or --var idea=….
+func TestFeaturePipelineShipsNoDemoIdea(t *testing.T) {
+	p, err := config.ParsePipeline([]byte(FeaturePipeline))
+	if err != nil {
+		t.Fatalf("feature pipeline no longer parses: %v", err)
+	}
+	idea, _ := p.Vars["idea"].(string)
+	if strings.TrimSpace(idea) != "" {
+		t.Errorf("feature pipeline ships a demo idea %q — real runs would implement it instead of the room's ask", idea)
+	}
+}

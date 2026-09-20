@@ -9,8 +9,9 @@ import (
 )
 
 // The hand-off is the room→pipeline context contract: a deterministic
-// file (no model in the loop) carrying the explicit task, the asks as
-// stated in the room, the plan files, and the digest pointer.
+// file (no model in the loop) carrying the explicit task, the room's
+// discussion (personas' verdicts included — they are the requirements),
+// the plan files, and the digest pointer.
 func TestWriteHandoff(t *testing.T) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, ".loop", "rooms", "dev")
@@ -64,8 +65,10 @@ func TestWriteHandoff(t *testing.T) {
 		"# room hand-off: dev",
 		"## task",
 		"ship it today",
-		"- add rate limiting to the API",
-		"- keep it under 50 lines and no new dependencies",
+		"## the room's discussion (attributed, newest last)",
+		"[user] add rate limiting to the API",
+		"[architect] I suggest a token bucket; plan below.",
+		"[user] keep it under 50 lines and no new dependencies",
 		".loop/plans/b.md",
 		".loop/plans/a.md",
 		"no knowledge digest yet",
@@ -73,10 +76,6 @@ func TestWriteHandoff(t *testing.T) {
 		if !strings.Contains(doc, want) {
 			t.Errorf("hand-off missing %q:\n%s", want, doc)
 		}
-	}
-	// The conversation section quotes the room's asks, not agent chatter.
-	if strings.Contains(doc, "I suggest a token bucket") {
-		t.Errorf("hand-off quotes agent chatter:\n%s", doc)
 	}
 	// Newest plan first.
 	if i, j := strings.Index(doc, ".loop/plans/b.md"), strings.Index(doc, ".loop/plans/a.md"); i > j {
@@ -106,15 +105,16 @@ func TestWriteHandoff(t *testing.T) {
 	}
 }
 
-// Long rooms still produce a bounded hand-off: only the last asks are
-// quoted and each is clipped to one line.
+// Long rooms still produce a bounded hand-off: the discussion section
+// spends its byte budget on the newest messages, announces dropped
+// history, and clips any single oversized message.
 func TestWriteHandoffBounded(t *testing.T) {
 	ws := t.TempDir()
 	tr, err := OpenTranscript(filepath.Join(ws, ".loop", "rooms", "dev"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < maxHandoffAsks+5; i++ {
+	for i := 0; i < 30; i++ {
 		if err := tr.Append("user", strings.Repeat("ask ", 200)+"!"); err != nil {
 			t.Fatal(err)
 		}
@@ -128,22 +128,20 @@ func TestWriteHandoffBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 15 asks × 400-char clips would be ~6KiB unbounded-with-clip; the
-	// byte cap on the section plus 10-ask limit keeps the file small.
+	// The discussion section is byte-capped (8KiB), so the whole file
+	// stays well under the 16KiB the engine fold re-caps anyway.
 	if info.Size() > 16*1024 {
 		t.Errorf("hand-off is %d bytes, want it bounded well under 16KiB", info.Size())
 	}
 	data, _ := os.ReadFile(filepath.Join(ws, path))
 	doc := string(data)
-	// 10 quoted asks plus the trim marker.
-	if got := strings.Count(doc, "\n- "); got > maxHandoffAsks+1 {
-		t.Errorf("hand-off quotes %d ask lines, want at most %d plus the trim marker", got, maxHandoffAsks)
+	if !strings.Contains(doc, omittedMarker) {
+		t.Errorf("dropped history not announced:\n%s", doc)
 	}
-	// A clipped ask collapses to one line: bullets stay intact. ("- " +
-	// clip + "…" is 2+400+3 bytes at most.)
+	// A clipped message stays one line — sections after it stay intact.
 	for _, ln := range strings.Split(doc, "\n") {
-		if strings.HasPrefix(ln, "- ") && len(ln) > maxHandoffQuoteChars+5 {
-			t.Errorf("ask line not clipped (%d chars): %.60s…", len(ln), ln)
+		if strings.HasPrefix(ln, "[user] ") && len(ln) > PerMessageClip+len(clippedSuffix) {
+			t.Errorf("message line not clipped (%d chars): %.60s…", len(ln), ln)
 		}
 	}
 }

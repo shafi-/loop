@@ -172,7 +172,9 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	}
 	// Typed /run reaches the room engine too — the web composer and any
 	// attached client can start a pipeline without surface-specific
-	// commands (the CLI's own /run intercepts earlier, same semantics).
+	// commands (the CLI's own /run intercepts earlier; the REST endpoint
+	// starts through the same session, so verb and endpoint cannot drift
+	// on hand-off semantics).
 	if rs.room.Command("run") == nil {
 		rs.room.CustomCommands = append(rs.room.CustomCommands, rs.runCommand())
 	}
@@ -352,7 +354,87 @@ func (rs *roomSession) run(alias, resumeID string, vars []string) (string, error
 	if !ok {
 		return "", fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a .loop/pipelines/*.yaml path", alias)
 	}
+	rs.warnUnknownVars(file, vars)
 	return rs.sup.Start(runctl.Spec{Alias: label, File: file, ResumeID: resumeID, Extra: vars})
+}
+
+// runWithRoomContext starts a pipeline with the room's hand-off brief:
+// WriteHandoff renders it next to the transcript and it travels as the
+// room_context var (a caller-provided room_context wins; dives bypass
+// this — they embed their context in the generated pipeline). Every
+// start path — the typed verb and the REST endpoint — routes through
+// here, so the surfaces cannot drift.
+func (rs *roomSession) runWithRoomContext(alias, resumeID string, vars []string) (runID, handoff string, err error) {
+	if _, isDive := rs.dives[alias]; !isDive {
+		if p, werr := rs.room.WriteHandoff(taskVarIn(vars)); werr != nil {
+			_ = rs.tr.Append("system", fmt.Sprintf("! context hand-off failed: %v — the run starts without it", werr))
+		} else if !hasVar(vars, "room_context") {
+			handoff = p
+			vars = append(vars, "--var", "room_context="+handoff, "--var", "room="+rs.room.Name)
+		}
+	}
+	runID, err = rs.run(alias, resumeID, vars)
+	return runID, handoff, err
+}
+
+// taskVarIn extracts the caller's --var task=… value; "" when none.
+func taskVarIn(vars []string) string {
+	for i := 0; i+1 < len(vars); i++ {
+		if vars[i] == "--var" {
+			if t, ok := strings.CutPrefix(vars[i+1], "task="); ok {
+				return t
+			}
+		}
+	}
+	return ""
+}
+
+// warnUnknownVars surfaces --var keys the pipeline never declared. Vars
+// merge silently downstream, so a misspelled or shell-mangled key would
+// otherwise vanish and the run would quietly work from baked-in
+// defaults. Parse failure says nothing here — the child reports it.
+func (rs *roomSession) warnUnknownVars(file string, vars []string) {
+	keys := userVarKeys(vars)
+	if len(keys) == 0 {
+		return
+	}
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return
+	}
+	p, err := config.ParsePipeline(src)
+	if err != nil {
+		return
+	}
+	var unknown []string
+	for _, k := range keys {
+		if _, ok := p.Vars[k]; !ok {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) == 0 {
+		return
+	}
+	declared := make([]string, 0, len(p.Vars))
+	for k := range p.Vars {
+		declared = append(declared, k)
+	}
+	sort.Strings(declared)
+	_ = rs.tr.Append("system", fmt.Sprintf("⚠ %s declares vars: %s — %s not among them (check spelling)",
+		file, strings.Join(declared, ", "), strings.Join(unknown, ", ")))
+}
+
+// userVarKeys returns the keys the caller set with --var k=v, in order.
+func userVarKeys(vars []string) []string {
+	var keys []string
+	for i := 0; i+1 < len(vars); i++ {
+		if vars[i] == "--var" {
+			if k, _, ok := strings.Cut(vars[i+1], "="); ok && k != "" {
+				keys = append(keys, k)
+			}
+		}
+	}
+	return keys
 }
 
 // resolveRoomPipeline maps a room-owned alias to its pipeline file
@@ -464,7 +546,6 @@ func (rs *roomSession) runCommand() chat.CustomCommand {
 			alias := args[0]
 			var resume string
 			var vars []string
-			task := ""
 			for i := 1; i < len(args); i++ {
 				switch {
 				case args[i] == "--resume" && i+1 < len(args):
@@ -472,28 +553,15 @@ func (rs *roomSession) runCommand() chat.CustomCommand {
 					resume = args[i]
 				case args[i] == "--var" && i+1 < len(args):
 					i++
-					if t, ok := strings.CutPrefix(args[i], "task="); ok {
-						task = t
-					}
 					vars = append(vars, "--var", args[i])
 				}
 			}
-			// Hand the run the room's context: the brief (task, the asks
-			// as stated, plan files, digest pointer) lands next to the
-			// transcript and travels as the room_context var. Pipelines
-			// that don't read the var ignore it.
-			var handoff string
-			if p, err := rs.room.WriteHandoff(task); err != nil {
-				_ = rs.tr.Append("system", fmt.Sprintf("! context hand-off failed: %v — the run starts without it", err))
-			} else if !hasVar(vars, "room_context") {
-				handoff = p
-				vars = append(vars, "--var", "room_context="+handoff, "--var", "room="+rs.room.Name)
-			}
-			id, err := rs.run(alias, resume, vars)
+			// The hand-off travels inside runWithRoomContext — the same
+			// brief the REST run endpoint gets.
+			id, handoff, err := rs.runWithRoomContext(alias, resume, vars)
 			if err != nil {
 				return err
 			}
-			_ = ctx // the run outlives the turn; nothing to await here
 			line := fmt.Sprintf("▶ %s started — run %s; records in .loop/runs/%s/", alias, id, id)
 			if handoff != "" {
 				line += fmt.Sprintf("; context: %s", handoff)

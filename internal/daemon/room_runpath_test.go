@@ -201,3 +201,101 @@ func TestDaemonRoomHaltStopsRoomRun(t *testing.T) {
 		return false
 	}, "the halt to show in the room transcript")
 }
+
+// The REST run endpoint (the web UI's run button and the attached CLI's
+// /run interception ride it) must hand the run the room's context —
+// exactly what the typed verb does. It previously skipped the hand-off
+// entirely while claiming "same semantics", so the web-side run worked
+// purely from the pipeline's baked-in inputs.
+func TestDaemonRoomRESTRunCarriesHandoff(t *testing.T) {
+	mock := mockAnthropic(t, "unused", 0)
+	pointProvidersAtMock(t, mock)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fake := fakeLoop(t, dir)
+
+	cl, _ := startTestServer(t, fake, filepath.Join(dir, "runs"))
+
+	roomYAML := filepath.Join(dir, "room.yaml")
+	if err := os.WriteFile(roomYAML, []byte("name: rest-room\nagents:\n  - name: scout\n    role: scout\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.HostRoom(roomYAML); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".loop/pipelines"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".loop/pipelines", "adhoc.yaml"),
+		[]byte("name: adhoc\nstages:\n  - id: only\n    type: tool\n    run: echo hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The ask is stated in the room before the REST run starts.
+	if err := cl.Say("rest-room", "add rate limiting to the API"); err != nil {
+		t.Fatalf("say: %v", err)
+	}
+	waitFor(t, 10*time.Second, func() bool {
+		_, err := cl.RoomRun("rest-room", ".loop/pipelines/adhoc.yaml", "", nil)
+		return err == nil
+	}, "the room to accept the REST run (the ask's turn to finish)")
+
+	// The child carries the hand-off var, and the brief carries the ask.
+	waitFor(t, 10*time.Second, func() bool {
+		args, err := os.ReadFile(filepath.Join(dir, "args.txt"))
+		return err == nil && strings.Contains(string(args), "--var room_context=")
+	}, "the child to start with the room_context var")
+	handoffs, _ := filepath.Glob(filepath.Join(dir, ".loop", "rooms", "*", "handoff.md"))
+	if len(handoffs) != 1 {
+		t.Fatalf("expected one hand-off file, found %v", handoffs)
+	}
+	data, err := os.ReadFile(handoffs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "add rate limiting to the API") {
+		t.Errorf("REST-started run's hand-off lost the room's ask:\n%s", data)
+	}
+}
+
+// An unknown --var key is surfaced, never swallowed: vars merge
+// silently downstream, so a misspelled or shell-mangled key would
+// otherwise vanish and the run would quietly work from baked-in
+// defaults (a mangled "prompt" var was found in a real run's records).
+func TestDaemonRoomRunWarnsOnUnknownVar(t *testing.T) {
+	mock := mockAnthropic(t, "unused", 0)
+	pointProvidersAtMock(t, mock)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	fake := fakeLoop(t, dir)
+
+	cl, _ := startTestServer(t, fake, filepath.Join(dir, "runs"))
+
+	roomYAML := filepath.Join(dir, "room.yaml")
+	if err := os.WriteFile(roomYAML, []byte("name: var-room\nagents:\n  - name: scout\n    role: scout\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.HostRoom(roomYAML); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".loop/pipelines"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".loop/pipelines", "idea.yaml"),
+		[]byte("name: idea\nvars:\n  idea: \"\"\nstages:\n  - id: only\n    type: tool\n    run: echo hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := cl.RoomRun("var-room", ".loop/pipelines/idea.yaml", "", []string{"--var", "prompt=\"implement oauth"}); err != nil {
+		t.Fatalf("room run: %v", err)
+	}
+	waitFor(t, 10*time.Second, func() bool {
+		lines, _ := cl.RoomTranscript("var-room", 0)
+		for _, ln := range lines {
+			if strings.Contains(ln.Text, "declares vars: idea") && strings.Contains(ln.Text, "prompt") {
+				return true
+			}
+		}
+		return false
+	}, "the unknown-var warning to land in the transcript")
+}

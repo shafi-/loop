@@ -17,8 +17,11 @@ name: feature-delivery
 description: Turn an idea into a reviewed implementation plan
 
 # Inputs to the pipeline. Reference them in any prompt as {{ vars.idea }}.
+# The idea is left to the caller on purpose: start the run from a room
+# (the room's brief reaches the run automatically) or pass
+# --var idea="…" — a baked-in example task would hijack real runs.
 vars:
-  idea: add OAuth login to our web app
+  idea: ""
 
 # Personas are reusable agent identities. Pipeline agent stages reference
 # them by name; rooms define their own inline.

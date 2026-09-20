@@ -30,6 +30,10 @@ type stageDeps struct {
 	Log       *RunLog                          // run event log (executor observability lands here)
 	Warnf     func(format string, args ...any) // progress warnings (nil = silent)
 	Usage     *usage.Meter                     // token ledger; stage/gate calls wrap their providers with it
+	// Hand-off fold state (see handoff.go): the room brief is delivered
+	// once per run, at the first model-facing stage that executes.
+	handoffStage  string
+	handoffLogged bool
 }
 
 // metered wraps a resolved provider so its calls land in the run's
@@ -86,6 +90,7 @@ func runLLMStage(ctx context.Context, s *config.Stage, c *Context, d *stageDeps)
 	if err != nil {
 		return nil, fmt.Errorf("prompt template: %w", err)
 	}
+	prompt = d.foldHandoff(s, s.LLM.Prompt, prompt)
 	logClippedValues(d, s.ID, c)
 	provider, err := d.Providers(cfg)
 	if err != nil {
@@ -179,6 +184,7 @@ func runAgentStage(ctx context.Context, s *config.Stage, c *Context, d *stageDep
 	if err != nil {
 		return nil, fmt.Errorf("input template: %w", err)
 	}
+	instruction = d.foldHandoff(s, s.Agent.Input, instruction)
 	logClippedValues(d, s.ID, c)
 
 	rm := modelCfg.Resolve()

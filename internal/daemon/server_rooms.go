@@ -248,7 +248,7 @@ func (s *Server) handleRoomRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "body must be JSON with a pipeline \"alias\"")
 		return
 	}
-	id, err := rs.run(req.Alias, req.ResumeID, req.Vars)
+	id, handoff, err := rs.runWithRoomContext(req.Alias, req.ResumeID, req.Vars)
 	if err != nil {
 		writeError(w, http.StatusConflict, "%v", err)
 		return
@@ -256,7 +256,7 @@ func (s *Server) handleRoomRun(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.specs[id] = req.Alias // room runs keep their alias as the room-side name
 	s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]string{"run_id": id, "alias": req.Alias})
+	writeJSON(w, http.StatusOK, map[string]string{"run_id": id, "alias": req.Alias, "context": handoff})
 }
 
 func (s *Server) handleRoomApprove(w http.ResponseWriter, r *http.Request) {

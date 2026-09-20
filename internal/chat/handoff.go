@@ -12,21 +12,21 @@ import (
 )
 
 // The room→pipeline hand-off. Starting a pipeline from a room must hand
-// the run the room's context: the task as stated, the requirements from
-// the conversation (verbatim — no model in the loop), the plan files on
-// disk, and where the knowledge digest lives. WriteHandoff renders that
-// brief deterministically into the room's record dir; hosts pass the
-// returned path to the run as the `room_context` var, and pipeline
-// stages read the file. A pipeline started outside a room simply has no
-// such var — stages guard for that.
+// the run the room's context: the task as stated, the room's discussion
+// (verbatim — no model in the loop), the plan files on disk, and where
+// the knowledge digest lives. WriteHandoff renders that brief
+// deterministically into the room's record dir; hosts pass the returned
+// path to the run as the `room_context` var — and the engine folds the
+// brief into the first model-facing stage's input, so the run sees the
+// room even when its pipeline never reads the var. A pipeline started
+// outside a room simply has no such var — stages guard for that.
 
 const (
-	// maxHandoffAsks bounds the conversation section: the last N user
-	// messages are the requirements; older ones stay in the transcript.
-	maxHandoffAsks = 10
-	// maxHandoffAsksBytes caps the whole asks section.
-	maxHandoffAsksBytes = 8 * 1024
-	// maxHandoffQuoteChars clips one quoted message.
+	// maxHandoffDiscussionBytes bounds the discussion section: the room's
+	// recent conversation is the requirements context; older history
+	// stays in the transcript.
+	maxHandoffDiscussionBytes = 8 * 1024
+	// maxHandoffQuoteChars clips one quoted task line.
 	maxHandoffQuoteChars = 400
 )
 
@@ -54,29 +54,16 @@ func (r *Room) WriteHandoff(task string) (string, error) {
 		b.WriteString("(none given with /run — the asks and the plan files below carry the requirements)\n")
 	}
 
-	b.WriteString("\n## asks & decisions from the room (verbatim, oldest last)\n\n")
-	var asked []string
-	for _, m := range r.Transcript.Window(0) {
-		if m.From == "user" {
-			asked = append(asked, m.Text)
-		}
+	b.WriteString("\n## the room's discussion (attributed, newest last)\n\n")
+	// The whole window, not just the user's asks: the personas' verdicts
+	// are part of the requirements. BuildConversation is the same
+	// renderer the deep dives ship — newest-priority under the byte
+	// budget, per-message clips marked, dropped history announced.
+	discussion := r.Transcript.BuildConversation(r.Settings.HistoryWindow, maxHandoffDiscussionBytes)
+	if strings.TrimSpace(discussion) == "" {
+		b.WriteString("(nothing said in the room yet)\n")
 	}
-	if len(asked) > maxHandoffAsks {
-		asked = asked[len(asked)-maxHandoffAsks:]
-	}
-	if len(asked) == 0 {
-		b.WriteString("(nothing asked in the room yet)\n")
-	}
-	used := 0
-	for _, a := range asked {
-		line := "- " + clipLine(a, maxHandoffQuoteChars) + "\n"
-		if used+len(line) > maxHandoffAsksBytes {
-			b.WriteString("- (…earlier asks trimmed — the room transcript has the full history)\n")
-			break
-		}
-		b.WriteString(line)
-		used += len(line)
-	}
+	b.WriteString(discussion)
 
 	b.WriteString("\n## plan files (newest first)\n\n")
 	plans := planFiles(r.Workspace)

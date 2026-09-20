@@ -62,8 +62,11 @@ needs `loop setup`'s agent executor). The hand-off is a file — the dev
 room's `@architect` writes agreed plans to `.loop/plans/<name>.md`, and
 `/run implement` from the room builds the newest one, nothing to
 memorize. The room's context travels with the run: `/run` writes a
-task brief (your asks verbatim, the plan files, the digest pointer)
-and passes it as the `room_context` var. The classic examples are
+task brief (the room's discussion and asks verbatim, the plan files,
+the digest pointer) and the engine folds it into the run's first model
+stage — every pipeline sees the room without opting in (`room_context`
+stays available to pipelines that read the var themselves). The
+classic examples are
 still there — `.loop/pipelines/feature-delivery.yaml` and
 `.loop/rooms/leadership.yaml`.
 

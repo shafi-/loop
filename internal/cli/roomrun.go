@@ -160,6 +160,7 @@ func (s *roomRunSession) Start(alias, resumeID string, extra []string) error {
 	if !ok {
 		return fmt.Errorf("no pipeline %q in this room — /pipelines lists its aliases, or pass a .loop/pipelines/*.yaml path", alias)
 	}
+	s.warnUnknownVars(file, extra)
 	if s.room != nil {
 		if p, err := s.room.WriteHandoff(taskVar(extra)); err == nil && !hasVarArg(extra, "room_context") {
 			extra = append(extra, "--var", "room_context="+p, "--var", "room="+s.room.Name)
@@ -167,6 +168,54 @@ func (s *roomRunSession) Start(alias, resumeID string, extra []string) error {
 	}
 	_, err := s.sup.Start(runctl.Spec{Alias: label, File: file, ResumeID: resumeID, Extra: extra})
 	return err
+}
+
+// warnUnknownVars surfaces --var keys the pipeline never declared. Vars
+// merge silently downstream, so a misspelled or shell-mangled key would
+// otherwise vanish and the run would quietly work from baked-in
+// defaults. Parse failure says nothing here — the child reports it.
+func (s *roomRunSession) warnUnknownVars(file string, extra []string) {
+	keys := userVarKeys(extra)
+	if len(keys) == 0 {
+		return
+	}
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return
+	}
+	p, err := config.ParsePipeline(src)
+	if err != nil {
+		return
+	}
+	var unknown []string
+	for _, k := range keys {
+		if _, ok := p.Vars[k]; !ok {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) == 0 {
+		return
+	}
+	declared := make([]string, 0, len(p.Vars))
+	for k := range p.Vars {
+		declared = append(declared, k)
+	}
+	sort.Strings(declared)
+	s.ui.Notice("⚠ %s declares vars: %s — %s not among them (check spelling)",
+		file, strings.Join(declared, ", "), strings.Join(unknown, ", "))
+}
+
+// userVarKeys returns the keys the caller set with --var k=v, in order.
+func userVarKeys(extra []string) []string {
+	var keys []string
+	for i := 0; i+1 < len(extra); i++ {
+		if extra[i] == "--var" {
+			if k, _, ok := strings.Cut(extra[i+1], "="); ok && k != "" {
+				keys = append(keys, k)
+			}
+		}
+	}
+	return keys
 }
 
 // taskVar extracts the user's --var task=… value from the raw argument

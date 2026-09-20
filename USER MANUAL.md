@@ -842,18 +842,29 @@ rather describe the work inline — with no plan file present, the
 engineer drafts the plan itself before building.
 
 **What a room run receives (the hand-off).** Every `/run` from a room
-writes a **task brief** to the room's `handoff.md` and passes its path
-to the pipeline as the `room_context` var (`room` carries the room's
-name). The brief is assembled deterministically — no model call: the
-explicit task if you gave one, your asks **verbatim** (the last ten
-user messages), the plan files newest-first, and the knowledge digest
-pointer. The shipped `implement` pipeline reads it in a deterministic
+writes a **task brief** to the room's `handoff.md`: the explicit task
+if you gave one, the room's recent discussion **verbatim** (personas'
+verdicts included — the architect's analysis is part of the
+requirements), the plan files newest-first, and the knowledge digest
+pointer. Assembled deterministically — no model call. The brief
+reaches the run at two layers. First, its path travels as the
+`room_context` var (`room` carries the room's name) for pipelines that
+read it: the shipped `implement` pipeline cats it in a deterministic
 `room-context` stage and folds it into the implement, review, and
-revise prompts — so requirements discussed in the room reach the
-engineer and the reviewer even when nothing was written to `.loop/plans/`.
-Pipelines that don't reference the var are unaffected; a run started
-outside a room simply has no `room_context`, and the stage degrades to
-empty (the starter pipeline declares it for exactly that case).
+revise prompts. Second — and this applies to **every** pipeline,
+opted in or not — the engine folds the brief into the run's **first
+model-facing stage input**, under a `--- room context (from the room
+that started this run) ---` marker and flagged as the authoritative
+statement of the task, so a pipeline carrying example or placeholder
+defaults follows the room instead of its demo text. The fold happens
+once per run (on `--resume`, at the first stage the resumed session
+executes), is audited as `handoff_folded` in the run's `events.jsonl`,
+and is skipped for pipelines whose stage already references
+`room_context` — never delivered twice. Opt out with
+`/run <file> --var room_context=`; runs started outside a room are
+unchanged. Misspelled `--var` keys are called out at start time (the
+pipeline's declared vars are shown), because vars merge silently
+downstream and a mangled key would otherwise vanish.
 | `/halt [name]` | stop a run cleanly — resumable with `/run <name> --resume <id>` |
 | `/reset` | archive the conversation and start a fresh one |
 | `/fork <n>` | keep the first `n` transcript lines and continue from there — everything after is archived |
