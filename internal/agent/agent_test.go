@@ -80,3 +80,41 @@ func TestAgentModelResolution(t *testing.T) {
 		t.Error("DecideSpeak must include the new message in its prompt")
 	}
 }
+
+// Room replies are chat messages: both reply paths must carry the
+// house brevity contract (the machinery owns it — left to defaults,
+// models write report essays nobody reads), and the tool-less reply
+// carries the token backstop.
+func TestReplyCarriesChatContract(t *testing.T) {
+	m := llm.NewMock(&llm.Response{Text: "ok"})
+	a := &Agent{
+		Persona:  config.Persona{Name: "cfo", Role: "CFO", Model: &config.ModelConfig{Provider: config.ProviderAnthropic}},
+		Provider: m,
+	}
+	if _, err := a.Reply(context.Background(), nil, "[user] hi", nil); err != nil {
+		t.Fatal(err)
+	}
+	req := m.Requests()[0]
+	if !strings.Contains(req.System, "chat message, not a report") {
+		t.Errorf("tool-less reply missing the chat contract:\n%s", req.System)
+	}
+	if req.MaxTokens != replyMaxTokens {
+		t.Errorf("reply MaxTokens = %d, want the %d backstop", req.MaxTokens, replyMaxTokens)
+	}
+
+	tm := llm.NewMock(&llm.Response{Text: "ok"})
+	ta := &Agent{
+		Persona:  config.Persona{Name: "eng", Role: "Engineer", Tools: []string{"read_file"}, Model: &config.ModelConfig{Provider: config.ProviderAnthropic}},
+		Provider: tm,
+	}
+	if _, err := ta.Reply(context.Background(), nil, "[user] hi", nil); err != nil {
+		t.Fatal(err)
+	}
+	treq := tm.Requests()[0]
+	if !strings.Contains(treq.System, "chat message, not a report") {
+		t.Errorf("tool-loop reply missing the chat contract:\n%s", treq.System)
+	}
+	if len(treq.Tools) == 0 {
+		t.Error("tool loop must still expose tools")
+	}
+}

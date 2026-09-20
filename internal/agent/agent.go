@@ -144,6 +144,29 @@ func (a *Agent) base(room []config.Persona) string {
 	return strings.Join(parts, "\n\n")
 }
 
+// replyMaxTokens caps the plain (tool-less) reply: the contract asks
+// for a few sentences, this is the physical backstop. Tool-loop rounds
+// stay uncapped on purpose — a write_file's arguments are output
+// tokens too, and a clipped tool call breaks the loop, not just prose.
+const replyMaxTokens = 400
+
+// replyContract is the house style for room replies, appended to every
+// persona's base prompt on both reply paths. Chat brevity is machinery,
+// not persona: left to their defaults, models write report-shaped
+// essays nobody in a chat actually reads. The pressure valve is the
+// workspace — long-form belongs in a file, the room gets one line.
+const replyContract = `
+Reply to the user directly. Stay strictly in your role's perspective.
+Never prefix your reply with your own name.
+
+This is a chat message, not a report: it is read in one glance or
+skipped. Two or three sentences, about 80 words as the ceiling; no
+headings, no tier lists, and bullets only when you are genuinely
+listing items. Lead with the answer or verdict, give the one reason
+that matters, stop. If a reply honestly needs more — a plan, a full
+review, a spec — write it to a file and post one line with the path
+and the gist. Never repeat what another participant already said.`
+
 // Reply produces this agent's answer to the conversation. The transcript
 // is explicitly attributed ([name] lines) because provider role arrays
 // cannot represent multi-party conversations cleanly. When onDelta is
@@ -156,14 +179,12 @@ func (a *Agent) Reply(ctx context.Context, room []config.Persona, conversation s
 	if len(a.Persona.Tools) > 0 {
 		return a.replyWithTools(ctx, room, conversation, onDelta)
 	}
-	system := strings.TrimSpace(a.base(room) + `
-Reply to the user directly. Stay strictly in your role's perspective.
-Be concise. Do not repeat what other participants already said. Never
-prefix your reply with your own name.`)
+	system := strings.TrimSpace(a.base(room) + replyContract)
 	req := llm.Request{
-		Model:    a.model(),
-		System:   system,
-		Messages: []llm.Message{{Role: llm.RoleUser, Content: conversation}},
+		Model:     a.model(),
+		System:    system,
+		Messages:  []llm.Message{{Role: llm.RoleUser, Content: conversation}},
+		MaxTokens: replyMaxTokens,
 	}
 	resp, err := a.Provider.Stream(ctx, req, onDelta)
 	if err != nil {
@@ -197,10 +218,7 @@ exact code.`
 // the round budget is spent. Tool rounds use Complete — the final text
 // is delivered as one delta.
 func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conversation string, onDelta llm.StreamFunc) (string, error) {
-	system := strings.TrimSpace(a.base(room) + `
-Reply to the user directly. Stay strictly in your role's perspective.
-Be concise. Do not repeat what other participants already said. Never
-prefix your reply with your own name.
+	system := strings.TrimSpace(a.base(room) + replyContract + `
 
 You have tools: read_file, write_file, run_command — confined to the
 workspace. When a deliverable is worth keeping (a plan, a brief, a
