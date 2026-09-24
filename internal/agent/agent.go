@@ -221,9 +221,13 @@ func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conve
 	system := strings.TrimSpace(a.base(room) + replyContract + `
 
 You have tools: read_file, write_file, run_command — confined to the
-workspace. When a deliverable is worth keeping (a plan, a brief, a
-report), write it to a file and say so in one line. Keep tool use
-purposeful; conversation is still your main job.` + workspaceOrientation)
+workspace. The room is for planning, and the machinery enforces it:
+write_file only accepts plans under .loop/plans/, and run_command is
+for validation (tests, builds, running the program) — never for
+changing code. When the user asks for a change, discuss the approach
+and its trade-offs, then offer to write the plan or run the implement
+pipeline; do not implement it here. Keep tool use purposeful;
+conversation is your main job.` + workspaceOrientation)
 
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: conversation}}
 	for round := 0; round < MaxToolRounds; round++ {

@@ -754,6 +754,13 @@ for free; a room's `tools:` on the agent entry overrides. Edit your
 copies in `~/.loop/personas/` freely — seeding never overwrites an
 edited file.
 
+One rule the machinery enforces, not the personas: **a room writes
+plans, nothing else.** In conversation, `write_file` is refused for
+any path outside `.loop/plans/` — the room plans, and a gated
+pipeline run builds. `run_command` in a room is for validation
+(tests, builds, running the program), and the personas' prompts say
+the same; the guard is what makes it true.
+
 ```yaml
 # .loop/personas/architect.yaml
 name: architect

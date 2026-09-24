@@ -41,8 +41,9 @@ var roomToolDefs = map[string]llm.ToolDef{
 		},
 	},
 	"write_file": {
-		Name:        "write_file",
-		Description: "Write (create or replace) a file in the workspace.",
+		Name: "write_file",
+		Description: "Write a plan file under .loop/plans/ (the only writes a " +
+			"room allows — code changes belong to a pipeline run).",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -53,8 +54,9 @@ var roomToolDefs = map[string]llm.ToolDef{
 		},
 	},
 	"run_command": {
-		Name:        "run_command",
-		Description: "Run a shell command in the workspace (60s timeout).",
+		Name: "run_command",
+		Description: "Run a shell command in the workspace (60s timeout). " +
+			"For validation — checks, tests, builds, running the program — not for changing code.",
 		Schema: map[string]any{
 			"type":       "object",
 			"properties": map[string]any{"command": map[string]any{"type": "string"}},
@@ -140,6 +142,14 @@ func execRoomTool(ctx context.Context, name, argsJSON, cwd string) (string, erro
 		if err != nil {
 			return "", err
 		}
+		// The room is for planning: a chat persona writes plans, never
+		// the project. Enforced here — deterministically, not by prompt
+		// discipline — so the room cannot mutate code no matter what the
+		// model decides; implementation belongs to a gated pipeline run.
+		if !inPlansDir(cwd, p) {
+			return "refused: the room is for planning — write_file may only write plans under .loop/plans/. " +
+				"Write the agreed plan there, or discuss the change and let a pipeline run (/run implement) make it — then reply.", nil
+		}
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return "", fmt.Errorf("write_file %s: %w", a.Path, err)
 		}
@@ -221,6 +231,17 @@ func safePath(cwd, p string) (string, error) {
 		return clean, nil
 	}
 	return filepath.Join(cwd, clean), nil
+}
+
+// inPlansDir reports whether p (already workspace-confined) sits inside
+// the workspace's .loop/plans/ — the only place a chat room writes.
+func inPlansDir(cwd, p string) bool {
+	plans := filepath.Join(cwd, ".loop", "plans")
+	rel, err := filepath.Rel(plans, p)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // clip bounds tool output fed back to the model.

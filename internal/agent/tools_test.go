@@ -209,3 +209,44 @@ func TestExecRoomToolRunCommand(t *testing.T) {
 		t.Error("unknown tool must be refused")
 	}
 }
+
+// The room is for planning: the machinery refuses any write outside
+// .loop/plans/ — a chat persona cannot mutate the project no matter
+// what the model decides; implementation belongs to a pipeline run.
+// Writes inside .loop/plans/ (the architect's plan flow) keep working.
+func TestRoomWritesConfinedToPlans(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	refused, err := execRoomTool(context.Background(), "write_file",
+		`{"path":"app.py","content":"hacked"}`, dir)
+	if err != nil {
+		t.Fatalf("refusal must be a tool result, not an error: %v", err)
+	}
+	if !strings.Contains(refused, ".loop/plans/") || !strings.Contains(refused, "refused") {
+		t.Errorf("refusal does not teach the flow: %q", refused)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "app.py"))
+	if string(data) != "original" {
+		t.Errorf("the project file was mutated anyway: %q", data)
+	}
+
+	for _, outside := range []string{".loop/knowledge/x.md", "notes.md", "sub/dir/file.txt"} {
+		out, err := execRoomTool(context.Background(), "write_file",
+			`{"path":"`+outside+`","content":"x"}`, dir)
+		if err != nil || !strings.Contains(out, "refused") {
+			t.Errorf("write to %s must be refused (out=%q err=%v)", outside, out, err)
+		}
+	}
+
+	wrote, err := execRoomTool(context.Background(), "write_file",
+		`{"path":".loop/plans/add-goodbye.md","content":"# plan"}`, dir)
+	if err != nil || !strings.Contains(wrote, "wrote") {
+		t.Errorf("plan writes must keep working (out=%q err=%v)", wrote, err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, ".loop", "plans", "add-goodbye.md")); string(data) != "# plan" {
+		t.Errorf("plan file not written: %q", data)
+	}
+}

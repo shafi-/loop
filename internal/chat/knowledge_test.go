@@ -40,12 +40,14 @@ func TestWritingTurnDoesNotTouchKnowledge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// One tool-using agent: writes a file, then answers. A writing turn
-	// is drafting, not landing — the knowledge layer must not move.
+	// One tool-using agent: writes a plan file, then answers. A writing
+	// turn is drafting, not landing — the knowledge layer must not move.
+	// (Rooms write plans only; the code drift below is an external edit,
+	// which is what session-open maintenance reconciles.)
 	writer := &agent.Agent{
 		Persona: config.Persona{Name: "builder", Role: "Builder", System: "build", Tools: []string{"write_file"}},
 		Provider: llm.NewMock(
-			&llm.Response{ToolCalls: []llm.ToolCall{{ID: "t1", Name: "write_file", Args: `{"path":"pkg/new.go","content":"package pkg"}`}}, StopReason: llm.StopToolUse},
+			&llm.Response{ToolCalls: []llm.ToolCall{{ID: "t1", Name: "write_file", Args: `{"path":".loop/plans/draft.md","content":"# draft"}`}}, StopReason: llm.StopToolUse},
 			&llm.Response{Text: "done", StopReason: llm.StopEndTurn},
 		),
 		CWD: ws,
@@ -76,6 +78,12 @@ func TestWritingTurnDoesNotTouchKnowledge(t *testing.T) {
 	}
 	if km.Calls() != 0 {
 		t.Fatalf("writing turn spent %d knowledge calls, want 0", km.Calls())
+	}
+
+	// The drift maintenance must catch: an edit to the code from
+	// outside the room (not something a chat turn wrote).
+	if err := os.WriteFile(filepath.Join(ws, "pkg", "new.go"), []byte("package pkg\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
 	// Session open is the reconciliation point: EnsureKnowledge catches
