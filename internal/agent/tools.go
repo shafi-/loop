@@ -165,6 +165,13 @@ func execRoomTool(ctx context.Context, name, argsJSON, cwd string) (string, erro
 		if err := json.Unmarshal([]byte(argsJSON), &a); err != nil {
 			return "", fmt.Errorf("run_command: arguments must be JSON with a command: %w", err)
 		}
+		// Validation commands only — the same planning-room rule the
+		// write_file guard enforces, applied to the shell's escape
+		// hatches. Deterministic, so "never change code from the room"
+		// does not depend on the model's discipline.
+		if refusal := validateRoomCommand(a.Command); refusal != "" {
+			return refusal, nil
+		}
 		cctx, cancel := context.WithTimeout(ctx, commandTimeout)
 		defer cancel()
 		out, err := exec.CommandContext(cctx, "sh", "-c", a.Command).CombinedOutput()
@@ -242,6 +249,119 @@ func inPlansDir(cwd, p string) bool {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// validateRoomCommand refuses the shell's escape hatches from a chat
+// room: heredocs and interpreter inline scripts (arbitrary code — the
+// route around the write_file guard), output redirection into files,
+// and the plain mutating utilities. Rooms run validation — checks,
+// tests, builds, running the program; not `2>/dev/null`-style fd
+// redirects (usually), and nothing that edits.
+// Not a security boundary (a validation command's own program can still
+// do anything) — it is the room-behavior contract, enforced.
+func validateRoomCommand(cmd string) string {
+	trimmed := strings.TrimSpace(cmd)
+	if trimmed == "" {
+		return ""
+	}
+	const why = "refused: rooms run validation commands only (checks, tests, builds, running the program) — " +
+		"this command writes files or runs inline scripts. Code changes belong to a pipeline run (/run implement)."
+	if strings.Contains(trimmed, "<<") {
+		return why // heredoc: an inline script
+	}
+	fields := strings.Fields(stripQuoted(trimmed))
+	if len(fields) > 0 {
+		if _, scripted := interpreters[fields[0]]; scripted {
+			for _, f := range fields[1:] {
+				if f == "-c" || f == "-e" || strings.HasPrefix(f, "-c=") {
+					return why // interpreter inline script
+				}
+			}
+		}
+	}
+	for _, f := range fields {
+		if mutating[f] {
+			return why
+		}
+		if f == "sed" {
+			for _, g := range fields[1:] {
+				if g == "-i" || strings.HasPrefix(g, "-i") {
+					return why // in-place edit (also -i.bak, -in)
+				}
+			}
+		}
+	}
+	if writesFiles(stripQuoted(trimmed)) {
+		return why
+	}
+	return ""
+}
+
+// interpreters whose -c/-e flags mean "run this string as code".
+var interpreters = map[string]bool{
+	"python": true, "python3": true, "python2": true, "perl": true,
+	"ruby": true, "node": true, "nodejs": true, "php": true,
+	"bash": true, "sh": true, "zsh": true, "ksh": true, "dash": true,
+	"lua": true, "osascript": true,
+}
+
+// mutating utilities — never needed to validate a change.
+var mutating = map[string]bool{
+	"rm": true, "mv": true, "cp": true, "dd": true, "tee": true,
+	"chmod": true, "chown": true, "truncate": true, "shred": true,
+	"mkfs": true, "ln": true,
+}
+
+// stripQuoted removes single- and double-quoted spans (naively — no
+// nesting) so operators inside strings don't trip the scanner.
+func stripQuoted(s string) string {
+	var b strings.Builder
+	var q byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if q != 0 {
+			if c == q {
+				q = 0
+			}
+			continue
+		}
+		if c == '\'' || c == '"' {
+			q = c
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// writesFiles reports whether the (quote-stripped) command redirects
+// output into a file: `>` or `>>`, except fd dups (`2>&1`) and fd
+// redirects (`2>/dev/null`), which validation commands legitimately use.
+func writesFiles(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] != '>' {
+			continue
+		}
+		if i+1 < len(s) && s[i+1] == '>' {
+			return true // >>
+		}
+		prev, next := byte(0), byte(0)
+		if i > 0 {
+			prev = s[i-1]
+		}
+		if i+1 < len(s) {
+			next = s[i+1]
+		}
+		if next == '&' || next == '(' || next == '=' {
+			continue // >& fd dup, >(...) substitution, >= test
+		}
+		if prev >= '1' && prev <= '9' {
+			continue // 2> target: fd redirect
+		}
+		return true // > file
+	}
+	return false
 }
 
 // clip bounds tool output fed back to the model.

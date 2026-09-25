@@ -223,11 +223,12 @@ func (a *Agent) replyWithTools(ctx context.Context, room []config.Persona, conve
 You have tools: read_file, write_file, run_command — confined to the
 workspace. The room is for planning, and the machinery enforces it:
 write_file only accepts plans under .loop/plans/, and run_command is
-for validation (tests, builds, running the program) — never for
-changing code. When the user asks for a change, discuss the approach
-and its trade-offs, then offer to write the plan or run the implement
-pipeline; do not implement it here. Keep tool use purposeful;
-conversation is your main job.` + workspaceOrientation)
+for validation (tests, builds, running the program) — it refuses file
+writes, redirection, and inline scripts, so never reach for them. When
+the user asks for a change, discuss the approach and its trade-offs,
+then offer to write the plan or run the implement pipeline; do not
+implement it here. Keep tool use purposeful; conversation is your main
+job.` + workspaceOrientation)
 
 	msgs := []llm.Message{{Role: llm.RoleUser, Content: conversation}}
 	for round := 0; round < MaxToolRounds; round++ {
@@ -277,7 +278,7 @@ func (a *Agent) reportTool(tc llm.ToolCall, out string, err error) {
 	case "read_file":
 		detail = "read " + path
 	case "run_command":
-		detail = cmd
+		detail = summarizeCommand(cmd)
 	default:
 		detail = tc.Name
 	}
@@ -285,6 +286,23 @@ func (a *Agent) reportTool(tc llm.ToolCall, out string, err error) {
 		detail += fmt.Sprintf(" — failed: %v", err)
 	}
 	a.ToolHook(tc.Name, strings.TrimSpace(detail))
+}
+
+// summarizeCommand renders a shell command as one short transcript
+// line: the first line, clipped, with a note when the command spans
+// more. The room is a conversation — a full heredoc blob is noise to
+// read, and the operator can ask the agent what it ran.
+func summarizeCommand(cmd string) string {
+	lines := strings.Split(strings.TrimSpace(cmd), "\n")
+	first := strings.TrimSpace(lines[0])
+	const maxCommandChars = 96
+	if len(first) > maxCommandChars {
+		first = first[:maxCommandChars] + "…"
+	}
+	if len(lines) > 1 {
+		first += fmt.Sprintf(" … (+%d lines)", len(lines)-1)
+	}
+	return first
 }
 
 // outOrError renders a tool round-trip for the model: errors are

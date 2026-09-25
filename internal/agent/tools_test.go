@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -248,5 +249,74 @@ func TestRoomWritesConfinedToPlans(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(filepath.Join(dir, ".loop", "plans", "add-goodbye.md")); string(data) != "# plan" {
 		t.Errorf("plan file not written: %q", data)
+	}
+}
+
+// Rooms run validation commands only. The shell's escape hatches —
+// heredocs, interpreter inline scripts, output redirection into files,
+// the mutating utilities — are refused deterministically, so the
+// write_file guard cannot be walked around with a `python3 - <<PY`
+// one-liner. Legitimate validation commands keep working.
+func TestRoomCommandGuard(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("print('app')"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	refused := []string{
+		"python3 - <<'PY'\np='x'\ns=open(p).read()\nopen(p,'w').write(s)\nPY", // the observed bypass
+		"python3 -c \"open('app.py','w').write('hacked')\"",
+		"perl -e 'unlink \"app.py\"'",
+		"echo hacked > app.py",
+		"cat header >> app.py",
+		"sed -i s/app/module/ app.py",
+		"tail -f server.log | tee copy.log",
+		"rm -rf .",
+		"cp secrets.py app.py",
+	}
+	for _, cmd := range refused {
+		out, err := execRoomTool(context.Background(), "run_command", `{"command":`+strconv.Quote(cmd)+`}`, dir)
+		if err != nil {
+			t.Fatalf("refusal must be a tool result, not an error: %v (cmd %q)", err, cmd)
+		}
+		if !strings.Contains(out, "refused") || !strings.Contains(out, "pipeline") {
+			t.Errorf("command not refused: %q -> %q", cmd, out)
+		}
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, "app.py")); string(data) != "print('app')" {
+		t.Errorf("app.py was mutated anyway: %q", data)
+	}
+
+	allowed := []string{
+		"go test ./internal/cli/ -run TestEnvPaths 2>&1 | tail -2",
+		"python3 app.py",
+		"grep -c pattern file.txt",
+		"curl -s http://localhost:8080/health",
+		"git diff --stat",
+		"ls -la; wc -l app.py",
+	}
+	for _, cmd := range allowed {
+		out, err := execRoomTool(context.Background(), "run_command", `{"command":`+strconv.Quote(cmd)+`}`, dir)
+		if strings.Contains(out, "refused") {
+			t.Errorf("validation command wrongly refused: %q -> %q", cmd, out)
+		}
+		_ = err // the command itself may fail (no go test here); refusal is what we pin
+	}
+}
+
+// Tool lines are room conversation: a multi-line command renders as one
+// short line with a line-count note, clipped when the first line is long.
+func TestSummarizeCommand(t *testing.T) {
+	heredoc := "python3 - <<'PY'\ns=open(p).read()\nopen(p,'w').write(s)\nPY"
+	got := summarizeCommand(heredoc)
+	if strings.Contains(got, "\n") || !strings.Contains(got, "(+3 lines)") {
+		t.Errorf("multi-line command not summarized to one line: %q", got)
+	}
+	long := strings.Repeat("x", 200)
+	if got := summarizeCommand(long); len(got) > 120 || !strings.HasSuffix(got, "…") {
+		t.Errorf("long command not clipped: %d chars", len(got))
+	}
+	if got := summarizeCommand("go test ./... 2>&1 | tail -2"); got != "go test ./... 2>&1 | tail -2" {
+		t.Errorf("short command mangled: %q", got)
 	}
 }

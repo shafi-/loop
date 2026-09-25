@@ -703,11 +703,17 @@ replies: `read_file`, `write_file`, `run_command` (the fixed set).
 File paths are **confined to the workspace** — absolute paths and `..`
 escapes are refused; tool output is capped; commands run via `sh -c`
 with a 60s timeout; the loop is bounded (8 rounds). Every executed tool
-is noticed in the room (`🔧 @architect wrote .loop/plans/x.md`) and recorded
-in the transcript, so the other agents learn the file exists. Tool
-errors go back to the model as results — a bad path is a correction,
-not a dead turn. Caveat worth knowing: `run_command` executes what the
-model asks; grant it only to agents you trust with a shell.
+is noticed in the room (`🔧 @architect wrote .loop/plans/x.md` — commands
+render as one clipped line) and recorded in the transcript, so the other
+agents learn the file exists. Tool errors go back to the model as
+results — a bad path is a correction, not a dead turn. Two rules the
+machinery enforces, not the model's manners: `write_file` is refused
+outside `.loop/plans/`, and `run_command` runs **validation only** —
+heredocs, interpreter inline scripts (`python3 -c …`), output
+redirection into files, and the mutating utilities (`rm`, `sed -i`,
+`tee`, …) are refused, so the shell is not a route around the
+plans-only write rule. A validation command's own program can still do
+anything — grant the shell only to agents you trust.
 
 ### Deep dives — when a persona needs real investigation
 
