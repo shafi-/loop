@@ -285,12 +285,13 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	// Whatever this turn spends (replies, decisions, /compact) lands in
 	// the room's lifetime ledger on the way out.
 	defer r.FlushUsage()
-	// The activity indicator: the turn itself is the first thing worth
-	// announcing ("the room is thinking"); the deferred clear is always
-	// immediate, so the indicator never outlives the work. Covers the
-	// turn path — errors and pauses — not a panic (there is no recover
-	// here; a panicked turn takes the process down either way).
-	r.setActivity("", "the room is thinking")
+	// The activity indicator announces only NAMED, verifiable work: an
+	// agent's reply (it lands, so the announcement was true), a tool it
+	// runs (the transcript line proves it), a command held for your
+	// answer. Room-level "thinking" — decisions that often end in
+	// silence, gaps between replies — is invisible work; announcing it
+	// produced exactly the false alarms this indicator exists to
+	// prevent. The deferred clear still covers every turn path.
 	defer r.clearActivity()
 	// Room verbs parse once here, in the engine — the one interface
 	// every client drives (local CLI, attached CLI, web composer via
@@ -503,10 +504,10 @@ func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow, r.Settings.MaxContextBytes), func(delta string) {
 		ui.AgentTextDelta(a.Name(), delta)
 	})
-	// The turn continues past this reply (observers, the next agent) or
-	// ends — Say's defer clears either way; here the room takes over as
-	// the announced worker.
-	r.setActivity("", "the room is thinking")
+	// The reply is the announcement's proof: once it is done (landed or
+	// failed), the named activity is over — cleared immediately rather
+	// than handing back to an invisible "the room is thinking".
+	r.clearActivity()
 	if err != nil {
 		return err
 	}

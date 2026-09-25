@@ -88,11 +88,17 @@ func TestActivityLifecycleOverTurn(t *testing.T) {
 	if _, ok := r.Activity(); ok {
 		t.Fatalf("activity survived the turn: %+v", r.act)
 	}
-	// Mid-turn: the provider saw the agent's thinking (and the tool's
-	// running state exists only between probe calls, so the room-level
-	// read inside the second call is the room-thinking handback).
+	// Mid-turn: the provider saw only NAMED activity — the builder's
+	// thinking. Room-level "the room is thinking" is invisible work and
+	// must never be announced (that is the false alarm this indicator
+	// refuses to repeat).
 	if len(probe.seen) == 0 || probe.seen[0].Agent != "builder" {
 		t.Errorf("per-agent activity not announced mid-turn: %+v", probe.seen)
+	}
+	for _, act := range probe.seen {
+		if act.Agent == "" {
+			t.Errorf("room-level activity announced: %+v", act)
+		}
 	}
 	// The port heard the tool start (pre-execution, neutral verb).
 	if len(started) != 1 || started[0][0] != "builder" || !strings.HasPrefix(started[0][1], "reading ") {

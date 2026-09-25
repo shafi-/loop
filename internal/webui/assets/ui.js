@@ -36,6 +36,15 @@
       });
     }
     var es = new EventSource(url);
+    // A stream that dies permanently (daemon restarted, room re-hosted)
+    // must not leave a frozen page: EventSource gives up on non-2xx,
+    // so reload shortly after — the conversation is persisted server-
+    // side and a fresh page re-connects with the current state.
+    es.addEventListener("error", function () {
+      if (es.readyState === EventSource.CLOSED) {
+        setTimeout(function () { window.location.reload(); }, 2000);
+      }
+    });
     es.onmessage = function () {
       if (timer) return; // events arrive in bursts; refresh once per burst
       timer = setTimeout(function () {
