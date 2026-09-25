@@ -717,7 +717,11 @@ answer** — the terminal prompts (`allow? [y/N]`), the web room shows a
 gate card. Strict yes runs it, anything else declines and your words go
 back to the agent as the reason; no answer within three minutes denies.
 With no approver attached at all, commands are denied without being
-asked.
+asked. While any of this runs, the room shows what it is doing: a pill
+above the composer (`🔧 @engineer running: go test ./…`, `@architect is
+thinking`) appears once an activity persists ~2 seconds and clears the
+moment the turn ends — in the terminal the same announcements print as
+`·` lines.
 
 ### Deep dives — when a persona needs real investigation
 

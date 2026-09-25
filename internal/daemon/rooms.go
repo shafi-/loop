@@ -122,19 +122,29 @@ func (rs *roomSession) deliverToolAnswer(text string) bool {
 
 // pendingToolAsk snapshots the held command for the room JSON (the web
 // gate card); nil when nothing is asking.
-func (rs *roomSession) pendingToolAsk() *ToolAsk {
+func (rs *roomSession) pendingToolAsk() *ToolAskJSON {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	if rs.pending == nil {
 		return nil
 	}
-	return &ToolAsk{Agent: rs.pending.agent, Command: rs.pending.command}
+	return &ToolAskJSON{Agent: rs.pending.agent, Command: rs.pending.command}
 }
 
-// ToolAsk is one shell command awaiting the room's answer.
-type ToolAsk struct {
-	Agent   string `json:"agent"`
-	Command string `json:"command"`
+// ActivityJSON is the wire form of the room's held activity.
+type ActivityJSON struct {
+	Agent string `json:"agent"`
+	What  string `json:"what"`
+}
+
+// activityNow snapshots the room's announce-worthy activity; nil when
+// idle or still inside the 2s announce threshold.
+func (rs *roomSession) activityNow() *ActivityJSON {
+	act, ok := rs.room.Activity()
+	if !ok {
+		return nil
+	}
+	return &ActivityJSON{Agent: act.Agent, What: act.What}
 }
 
 // daemonRoomUI absorbs the per-viewer rendering chat.Room emits: in a

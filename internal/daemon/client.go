@@ -282,11 +282,12 @@ type RoomInfo struct {
 	Busy      bool               `json:"busy"`
 	Lines     int                `json:"transcript_lines"`
 	Runs      []RunInfo          `json:"runs"` // the room's own pipeline runs
-	// PendingApproval is a room agent's shell command held for the
-	// room's answer — the chat renders it as a gate card.
-	PendingApproval *ToolAskJSON     `json:"pending_approval,omitempty"`
-	Usage           *usage.Total     `json:"usage"`       // the session's token ledger, when calls were made
-	UsageAll        *usage.Total     `json:"usage_total"` // every session since the room began
+	// Activity is what the room is doing right now (only past the 2s
+	// announce threshold); nil = idle.
+	Activity        *ActivityJSON `json:"activity,omitempty"`
+	PendingApproval *ToolAskJSON  `json:"pending_approval,omitempty"`
+	Usage           *usage.Total  `json:"usage"`       // the session's token ledger, when calls were made
+	UsageAll        *usage.Total  `json:"usage_total"` // every session since the room began
 }
 
 // ToolAskJSON mirrors the daemon's held-command ask.
@@ -348,6 +349,9 @@ type RoomLine struct {
 	From string    `json:"from"`
 	Text string    `json:"text"`
 	At   time.Time `json:"at,omitempty"`
+	// Kind marks non-transcript payloads riding the stream (only
+	// "activity" today); transcript lines carry none.
+	Kind string `json:"kind,omitempty"`
 }
 
 // RoomTranscript polls a room's transcript after the given line number.
@@ -383,17 +387,30 @@ func (c *Client) RoomStream(ctx context.Context, name string, after int) (<-chan
 		sc := bufio.NewScanner(resp.Body)
 		sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
 		for sc.Scan() {
-			line := sc.Text()
-			if !strings.HasPrefix(line, "data: ") {
-				continue
-			}
-			var ln RoomLine
-			if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ln) == nil {
+			if ln, ok := parseRoomLine(sc.Text()); ok {
 				ch <- ln
 			}
 		}
 	}()
 	return ch, nil
+}
+
+// parseRoomLine decodes one SSE data line into a transcript line.
+// Activity frames riding the same stream (kind "activity") are not
+// transcript lines and are dropped here — a bare decode would surface
+// them as blank `[ ]` chatter in attached CLIs.
+func parseRoomLine(line string) (RoomLine, bool) {
+	if !strings.HasPrefix(line, "data: ") {
+		return RoomLine{}, false
+	}
+	var ln RoomLine
+	if json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &ln) != nil {
+		return RoomLine{}, false
+	}
+	if ln.Kind == "activity" {
+		return RoomLine{}, false
+	}
+	return ln, true
 }
 
 // RoomRuns lists every pipeline run associated with a hosted room —

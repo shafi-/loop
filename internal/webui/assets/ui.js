@@ -43,6 +43,22 @@
         refresh();
       }, 450);
     };
+    // The room's activity indicator rides the same stream as a named
+    // event (never onmessage, so it cannot trigger a chat refetch).
+    // The pill lives outside the swap region; the run page has none.
+    var pill = document.getElementById("activity-pill");
+    es.addEventListener("activity", function (e) {
+      if (!pill) return;
+      var act = {};
+      try { act = JSON.parse(e.data); } catch (err) { return; }
+      if (act && act.what) {
+        pill.innerHTML = '<span class="dot running"></span>' +
+          (act.agent ? "🔧 @" + act.agent + " " : "") + act.what;
+        pill.hidden = false;
+      } else {
+        pill.hidden = true;
+      }
+    });
     es.addEventListener("end", function () {
       refresh();
       es.close();

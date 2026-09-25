@@ -352,9 +352,10 @@ type roomJSON struct {
 	Busy      bool               `json:"busy"`
 	Lines     int                `json:"transcript_lines"`
 	Runs      []runJSON          `json:"runs"` // the room's own pipeline runs
-	// PendingApproval is a room agent's shell command held for the
-	// room's answer — the web gate card renders it.
-	PendingApproval *ToolAsk     `json:"pending_approval,omitempty"`
-	Usage           *usage.Total `json:"usage,omitempty"`
-	UsageAll        *usage.Total `json:"usage_total,omitempty"` // every session since the room began
+	// Activity is what the room is doing right now (past the announce
+	// threshold); nil = idle.
+	Activity        *ActivityJSON `json:"activity,omitempty"`
+	PendingApproval *ToolAskJSON  `json:"pending_approval,omitempty"`
+	Usage           *usage.Total  `json:"usage,omitempty"`
+	UsageAll        *usage.Total  `json:"usage_total,omitempty"` // every session since the room began
 }

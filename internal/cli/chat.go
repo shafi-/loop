@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -184,11 +186,16 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 		if handleRoomRunCommand(text, sess, out) {
 			continue
 		}
+		// Announce slow turns and slow tools while the (blocking) turn
+		// runs; the tracker's 2s threshold keeps this quiet otherwise.
+		watched := make(chan struct{})
+		go watchActivity(watched, r, ui)
 		if err := r.Say(cmd.Context(), text, ui); err != nil {
 			// Reply failures are real errors (with provider hints
 			// already attached) but never end the session.
 			fmt.Fprintf(ui.err, "✗ %v\n", err)
 		}
+		close(watched)
 	}
 }
 
@@ -320,23 +327,32 @@ func handleRoomRunCommand(text string, sess *roomRunSession, out io.Writer) bool
 	return true
 }
 
-// terminalChatUI renders room activity for a human.
+// terminalChatUI renders room activity for a human. The activity
+// watcher goroutine (see watchActivity) writes alongside the turn
+// goroutine, so every write is serialized.
 type terminalChatUI struct {
+	mu  sync.Mutex
 	out io.Writer
 	err io.Writer
 }
 
 func (u *terminalChatUI) AgentReplyStart(name string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	fmt.Fprintf(u.out, "\n── %s ──\n", name)
 }
 
 func (u *terminalChatUI) AgentTextDelta(name, delta string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	fmt.Fprint(u.out, delta)
 }
 
 // AgentsSeen renders read receipts: silence at a glance, like a messaging
 // app — one line regardless of room size.
 func (u *terminalChatUI) AgentsSeen(names []string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	quoted := make([]string, len(names))
 	for i, n := range names {
 		quoted[i] = "@" + n
@@ -345,9 +361,70 @@ func (u *terminalChatUI) AgentsSeen(names []string) {
 }
 
 func (u *terminalChatUI) AgentCapped(name string, priority int) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	fmt.Fprintf(u.out, "✋ @%s wants to respond too (priority %d, held by max_spontaneous_replies)\n", name, priority)
 }
 
 func (u *terminalChatUI) Notice(format string, args ...any) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	fmt.Fprintf(u.err, "· "+format+"\n", args...)
+}
+
+// activityLine is the activity watcher's writer: the same locked path,
+// on stderr with the notice accent.
+func (u *terminalChatUI) activityLine(format string, args ...any) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	fmt.Fprintf(u.err, "· "+format+"\n", args...)
+}
+
+// activityAnnounce decides one watcher tick: the line to print (when
+// the activity is new and announce-worthy) and the new last-seen key.
+// Per-agent "thinking" is never announced — the reply header
+// (── @architect ──) already announces it.
+func activityAnnounce(last string, act chat.Activity) (string, string, bool) {
+	if act.What == "" {
+		return last, "", false
+	}
+	key := act.Agent + "\x00" + act.What
+	if key == last {
+		return last, "", false
+	}
+	if act.Agent != "" && act.What == "thinking" {
+		return last, "", false
+	}
+	if act.Agent != "" {
+		return key, "🔧 @" + act.Agent + " " + act.What, true
+	}
+	return key, act.What, true
+}
+
+// watchActivity announces what the room is doing while the turn runs:
+// each new visible activity (the 2s announce threshold lives in the
+// tracker) prints once, on stderr, so a silent turn is never mistaken
+// for a hung one. Per-agent "thinking" is skipped — the reply header
+// (── @architect ──) already announces it.
+func watchActivity(done <-chan struct{}, r *chat.Room, ui *terminalChatUI) {
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	last := ""
+	for {
+		select {
+		case <-done:
+			return
+		case <-tick.C:
+			act, ok := r.Activity()
+			if !ok {
+				continue
+			}
+			var line string
+			var announce bool
+			last, line, announce = activityAnnounce(last, act)
+			if announce {
+				ui.activityLine("%s", line)
+			}
+		}
+	}
 }

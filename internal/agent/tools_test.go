@@ -375,3 +375,65 @@ func TestRunCommandHeldForApproval(t *testing.T) {
 func toolCallStruct(name, args string) llm.ToolCall {
 	return llm.ToolCall{ID: "x", Name: name, Args: args}
 }
+
+// The start hook fires before execution for ungated tools, and for
+// shell commands only after the approval gate — a denied command never
+// claims to be running.
+func TestToolStartHookOrdering(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte("the plan"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var events []string
+	approve := func(yes bool) func(context.Context, string, string) (bool, string, error) {
+		return func(context.Context, string, string) (bool, string, error) {
+			events = append(events, "approval")
+			return yes, "", nil
+		}
+	}
+	start := func(a *Agent) {
+		a.ToolStartHook = nil // each stage records its own events only
+		prev := a.ToolStartHook
+		a.ToolStartHook = func(tool, detail string) {
+			events = append(events, "start:"+detail)
+			if prev != nil {
+				prev(tool, detail)
+			}
+		}
+	}
+
+	// Ungated tool: start fires before execution.
+	a := &Agent{Persona: config.Persona{Name: "b", Tools: []string{"read_file"}}, CWD: dir}
+	start(a)
+	_, err := a.execTool(context.Background(), llm.ToolCall{ID: "1", Name: "read_file", Args: `{"path":"plan.md"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0] != "start:reading plan.md" {
+		t.Fatalf("ungated start events = %v", events)
+	}
+
+	// Shell command, approved: gate first, then the running start.
+	events = nil
+	a.AskApproval = approve(true)
+	start(a)
+	if out, err := a.execTool(context.Background(), llm.ToolCall{ID: "2", Name: "run_command", Args: `{"command":"echo hi"}`}); err != nil || strings.TrimSpace(out) != "hi" {
+		t.Fatalf("approved command: out=%q err=%v", out, err)
+	}
+	if len(events) != 2 || events[0] != "approval" || events[1] != "start:running: echo hi" {
+		t.Fatalf("approved command events = %v, want approval then running", events)
+	}
+
+	// Shell command, denied: no start at all.
+	events = nil
+	a.AskApproval = approve(false)
+	start(a)
+	out, err := a.execTool(context.Background(), llm.ToolCall{ID: "3", Name: "run_command", Args: `{"command":"echo hi"}`})
+	if err != nil || !strings.Contains(out, "denied:") {
+		t.Fatalf("denied command out=%q err=%v", out, err)
+	}
+	if len(events) != 1 || events[0] != "approval" {
+		t.Fatalf("denied command events = %v, want the gate with no start", events)
+	}
+}

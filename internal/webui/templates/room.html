@@ -6,7 +6,6 @@
     <details class="room-head">
       <summary>
         <span class="room-title">#{{.Room.Name}}</span>
-        {{if .Room.Busy}}<span class="badge b-running pulse">thinking…</span>{{end}}
         <span class="head-count">{{len .Room.Agents}} participants</span>
       </summary>
       <div class="participants-panel">
@@ -32,6 +31,8 @@
       <div id="chat-log" class="chat-log" data-sse-connect="/api/rooms/{{.Room.Name}}/stream?after={{.Room.Lines}}" data-refresh="/rooms/{{.Room.Name}}/chat">
         {{template "chat_fragment" .}}
       </div>
+
+      <div id="activity-pill" class="activity-pill" hidden></div>
 
       <section class="composer">
         <form class="say-form" hx-post="/rooms/{{.Room.Name}}/say" hx-target="#chat-log" hx-swap="innerHTML"

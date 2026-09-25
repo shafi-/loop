@@ -521,3 +521,24 @@ func TestChatViewRendersToolAsk(t *testing.T) {
 		t.Errorf("answer kind = %q, want the answer chip", view[1].Kind)
 	}
 }
+
+// The activity pill is static markup toggled by ui.js from the room's
+// SSE activity events; the stale page-load "thinking…" badge is gone
+// (the pill plus its connect snapshot cover page-load too).
+func TestRoomPageHasActivityPill(t *testing.T) {
+	tmpl := ""
+	page, err := os.ReadFile(filepath.Join("templates", "room.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl = string(page)
+	if !strings.Contains(tmpl, `id="activity-pill"`) {
+		t.Error("room page missing the activity pill")
+	}
+	if strings.Contains(tmpl, `b-running pulse`) {
+		t.Error("stale page-load thinking badge still present")
+	}
+	if strings.Contains(tmpl, `/activity`) {
+		t.Error("unexpected activity polling — the indicator rides the SSE stream")
+	}
+}

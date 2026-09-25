@@ -582,3 +582,18 @@ details.room-head > summary:hover { background: var(--edge); }
   .chat-log { max-height: 60vh; }
   .msg { max-width: 100%; }
 }
+
+/* ─── room activity pill ──────────────────────────────────────────── */
+/* The ephemeral "what is the room doing" indicator: fed by activity
+   events on the room's SSE stream (server announces only activity that
+   has persisted ≥2s); hidden whenever the room goes idle. */
+.activity-pill {
+  display: flex; align-items: center; gap: .5rem;
+  margin: .35rem 1.4rem 0;
+  padding: .32rem .7rem; width: fit-content;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 999px;
+  color: var(--faint); font-size: .82rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: calc(100% - 2.8rem);
+}
+.activity-pill .dot.running { flex-shrink: 0; }

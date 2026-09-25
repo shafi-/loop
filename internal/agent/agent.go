@@ -33,6 +33,13 @@ type Agent struct {
 	// compact human-readable line ("wrote .loop/plans/x.md (120 bytes)") —
 	// the room wires it to a UI notice and a transcript line.
 	ToolHook func(name, detail string)
+	// ToolStartHook, when set, is called once per tool BEFORE it
+	// executes, with what is about to happen ("reading app.py",
+	// "running: go test ./…") — the room feeds its activity indicator
+	// from it. Shell commands announce only after their approval gate
+	// passes (inside execTool), so a denied command never claims to be
+	// running.
+	ToolStartHook func(tool, detail string)
 	// AskApproval, when set, is consulted before every run_command:
 	// the host decides whether the shell may run (the terminal prompts
 	// the user; the daemon holds the ask for the room's answer — the
@@ -270,13 +277,17 @@ job.` + workspaceOrientation)
 // execTool runs one tool call, holding shell commands for the host's
 // approval first (see AskApproval). A denial goes back to the model as
 // tool content — it can answer without the command or propose another.
+// Start announcements fire after the gate for commands (a denied
+// command never claims to be running) and before execution for the
+// ungated tools.
 func (a *Agent) execTool(ctx context.Context, tc llm.ToolCall) (string, error) {
 	if tc.Name == "run_command" {
 		var args struct {
 			Command string `json:"command"`
 		}
 		_ = json.Unmarshal([]byte(tc.Args), &args)
-		approved, reason, err := a.approve(ctx, strings.TrimSpace(args.Command))
+		cmd := strings.TrimSpace(args.Command)
+		approved, reason, err := a.approve(ctx, cmd)
 		if err != nil {
 			return "", fmt.Errorf("approval: %w", err)
 		}
@@ -286,8 +297,35 @@ func (a *Agent) execTool(ctx context.Context, tc llm.ToolCall) (string, error) {
 			}
 			return "denied: " + reason + " — answer without running it, or propose a different approach.", nil
 		}
+		a.startTool(tc.Name, "running: "+summarizeCommand(cmd))
+		return execRoomTool(ctx, tc.Name, tc.Args, a.CWD)
 	}
+	a.startTool(tc.Name, describeToolStart(tc))
 	return execRoomTool(ctx, tc.Name, tc.Args, a.CWD)
+}
+
+// startTool notifies the room's activity indicator; nil hook = no
+// indicator wired.
+func (a *Agent) startTool(tool, detail string) {
+	if a.ToolStartHook != nil {
+		a.ToolStartHook(tool, detail)
+	}
+}
+
+// describeToolStart renders what is about to happen, in neutral verbs
+// (a start has no outcome yet).
+func describeToolStart(tc llm.ToolCall) string {
+	var args map[string]any
+	_ = json.Unmarshal([]byte(tc.Args), &args)
+	path, _ := args["path"].(string)
+	switch tc.Name {
+	case "read_file":
+		return "reading " + path
+	case "write_file":
+		return "writing " + path
+	default:
+		return tc.Name
+	}
 }
 
 // approve consults the host's approver; with none attached, shell

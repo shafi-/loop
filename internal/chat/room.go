@@ -129,6 +129,16 @@ type Room struct {
 	// approver attached: commands are denied deterministically, never
 	// silently run.
 	ToolApproval func(ctx context.Context, agent, tool, detail string) (approved bool, reason string, err error)
+	// ToolStarted, when set, is notified the moment a room agent starts
+	// a tool — the port for surfaces that print rather than poll (the
+	// terminal's delayed "running" line). The daemon polls the activity
+	// tracker instead and leaves it nil.
+	ToolStarted func(agent, detail string)
+	// actMu guards act — the ephemeral "what is the room doing" state
+	// behind Room.Activity() (see activity.go). Written by the turn
+	// goroutine only; read concurrently by hosting surfaces.
+	actMu sync.Mutex
+	act   Activity
 	// dives is the last-offered-topic memory (deepdive.json beside the
 	// transcript); divesLoaded guards its lazy read.
 	dives       map[string]divePending
@@ -275,6 +285,13 @@ func (r *Room) Say(ctx context.Context, text string, ui UI) error {
 	// Whatever this turn spends (replies, decisions, /compact) lands in
 	// the room's lifetime ledger on the way out.
 	defer r.FlushUsage()
+	// The activity indicator: the turn itself is the first thing worth
+	// announcing ("the room is thinking"); the deferred clear is always
+	// immediate, so the indicator never outlives the work. Covers the
+	// turn path — errors and pauses — not a panic (there is no recover
+	// here; a panicked turn takes the process down either way).
+	r.setActivity("", "the room is thinking")
+	defer r.clearActivity()
 	// Room verbs parse once here, in the engine — the one interface
 	// every client drives (local CLI, attached CLI, web composer via
 	// the daemon) — so a command means the same thing everywhere. A
@@ -457,16 +474,39 @@ func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 		ui.Notice("🔧 @%s %s", a.Name(), detail)
 		_ = r.Transcript.Append(a.Name(), "[tool] "+detail)
 	}
+	// Tool starts feed the activity indicator (the pill reads the
+	// tracker) and, when a surface prints rather than polls, its port.
+	a.ToolStartHook = func(name, detail string) {
+		r.setActivity(a.Name(), detail)
+		if r.ToolStarted != nil {
+			r.ToolStarted(a.Name(), detail)
+		}
+	}
 	a.AskApproval = func(ctx context.Context, tool, detail string) (bool, string, error) {
+		// Held commands read honestly while parked; the gate card and
+		// the indicator agree. A denial restores thinking — the command
+		// never ran (its "running:" state is only announced after a yes,
+		// inside the agent's execTool).
+		r.setActivity(a.Name(), "waiting for your answer")
 		if r.ToolApproval == nil {
+			r.setActivity(a.Name(), "thinking")
 			return false, "no approver is attached to this room — shell commands are denied", nil
 		}
-		return r.ToolApproval(ctx, a.Name(), tool, detail)
+		approved, reason, err := r.ToolApproval(ctx, a.Name(), tool, detail)
+		if !approved {
+			r.setActivity(a.Name(), "thinking")
+		}
+		return approved, reason, err
 	}
+	r.setActivity(a.Name(), "thinking")
 	ui.AgentReplyStart(a.Name())
 	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow, r.Settings.MaxContextBytes), func(delta string) {
 		ui.AgentTextDelta(a.Name(), delta)
 	})
+	// The turn continues past this reply (observers, the next agent) or
+	// ends — Say's defer clears either way; here the room takes over as
+	// the announced worker.
+	r.setActivity("", "the room is thinking")
 	if err != nil {
 		return err
 	}

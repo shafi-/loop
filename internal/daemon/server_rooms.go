@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/engine"
 )
 
@@ -20,6 +21,7 @@ func (s *Server) roomJSON(rs *roomSession) roomJSON {
 		Commands:        rs.room.CommandList(),
 		Busy:            rs.busyNow(),
 		PendingApproval: rs.pendingToolAsk(),
+		Activity:        rs.activityNow(),
 		Roles:           map[string]string{},
 	}
 	for _, a := range rs.cfg.Agents {
@@ -189,11 +191,30 @@ func (s *Server) handleRoomStream(w http.ResponseWriter, r *http.Request) {
 	after := queryInt(r, "after")
 	tick := time.NewTicker(300 * time.Millisecond)
 	defer tick.Stop()
+	// Activity rides the same stream as a named event: the ticker is
+	// idle exactly while a persona is busy, which is when the indicator
+	// matters. Announce only what persists (activityAfter); clears are
+	// immediate. lastKey is this client's last-sent state, so each
+	// viewer gets its own transitions; the empty snapshot on connect
+	// clears a pill left over from a previous daemon's turn.
+	var lastKey string
+	emitActivity := func(force bool) {
+		act, _ := rs.room.Activity()
+		key, payload, send := activityEmission(lastKey, force, act, time.Now(), activityAfter)
+		if !send {
+			return
+		}
+		lastKey = key
+		fmt.Fprint(w, payload)
+		fl.Flush()
+	}
+	emitActivity(true) // connect snapshot (possibly empty): a pill from a dead turn clears here
 	for {
 		select {
 		case <-r.Context().Done():
 			return
 		case <-tick.C:
+			emitActivity(false)
 			lines, err := readTranscript(path, after)
 			if err != nil {
 				return
@@ -207,6 +228,40 @@ func (s *Server) handleRoomStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// activityAfter is how long an activity must persist before the room
+// announces it — "show only what persists". Faster fragments (a
+// millisecond read, a short decision call) would strobe the indicator.
+// Clears are never held.
+var activityAfter = 2 * time.Second
+
+// activityEmission decides the next SSE activity emission for one
+// stream client. Sets are held for hold (an activity still forming
+// keeps the previous pill — no clear/show blink on every phase
+// transition); clears are immediate; force (the connect snapshot)
+// always sends, so a pill left over from a previous daemon's turn
+// clears on reconnect. key is the client's new last-sent state
+// ("" = idle).
+func activityEmission(last string, force bool, act chat.Activity, now time.Time, hold time.Duration) (key, payload string, send bool) {
+	if act.What == "" {
+		if !force && last == "" {
+			return last, "", false
+		}
+		return "", activityPayload("", ""), true
+	}
+	key = act.Agent + "\x00" + act.What
+	if !force && (key == last || now.Sub(act.Since) < hold) {
+		return last, "", false // unchanged, or still forming — keep what is shown
+	}
+	return key, activityPayload(act.Agent, act.What), true
+}
+
+// activityPayload renders one SSE activity frame. Self-identifying
+// ("kind":"activity"): transcript-line clients filter on it, since a
+// bare data line would decode into a blank RoomLine.
+func activityPayload(agent, what string) string {
+	return fmt.Sprintf("event: activity\ndata: {\"kind\":\"activity\",\"agent\":%q,\"what\":%s}\n\n", agent, mustJSON(what))
 }
 
 // mustJSON renders v as a compact JSON value for embedding in an SSE
