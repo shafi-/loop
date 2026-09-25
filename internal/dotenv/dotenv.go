@@ -16,6 +16,7 @@ import (
 // .env at all); malformed lines are returned as warnings so typos surface
 // instead of silently producing empty keys.
 func Load(path string) (loaded int, warnings []string, err error) {
+	loadedPaths = append(loadedPaths, path)
 	data, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -67,4 +68,17 @@ func cleanValue(v string) string {
 		v = strings.TrimSpace(v[:i])
 	}
 	return v
+}
+
+// loadedPaths records the paths Load actually read (or attempted), in
+// order. It is a package-level var because dotenv loads once at
+// startup; the doctor command reports it rather than guessing which
+// files exist.
+var loadedPaths []string
+
+// Loaded reports the env files Load has been called with, in order —
+// including ones that did not exist (the doctor reports those as
+// skipped instead of guessing).
+func Loaded() []string {
+	return append([]string(nil), loadedPaths...)
 }

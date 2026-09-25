@@ -40,6 +40,20 @@
   <div class="evt run{{if .Live}} live{{end}}">{{if .Live}}<span class="dot running"></span> {{end}}{{if .Start}}<span class="evt-text">{{.Text}}</span>{{else}}<span class="evt-run">{{.From}}</span><span class="evt-text">{{.Text}}</span>{{end}}</div>
   {{end}}
 {{end}}
+{{if .ToolAsk}}
+<div class="gatecard" id="toolgate">
+  <div class="gate-head"><span class="evt-icon">✋</span> @<span class="gate-run">{{.ToolAsk.Agent}}</span> wants to run a command</div>
+  <div class="gate-question"><pre>{{.ToolAsk.Command}}</pre></div>
+  <form class="gate-form" hx-post="/rooms/{{.Room.Name}}/approve" hx-target="#chat-log" hx-swap="innerHTML"
+        hx-disabled-elt="find button">
+    <input name="text" placeholder="your words — or press a button" autocomplete="off">
+    <button type="submit" name="quick" value="yes" class="b-yes">yes</button>
+    <button type="submit" name="quick" value="no" class="b-no">no</button>
+    <button type="submit">send</button>
+    <div class="gate-loading" aria-live="polite"><span class="spinner"></span>sending your answer…</div>
+  </form>
+</div>
+{{end}}
 {{if .Waiting}}
 <div class="gatecard" id="gatecard">
   <div class="gate-head"><span class="evt-icon">✋</span> pipeline <span class="gate-run">{{.Waiting.Alias}}</span> needs your approval</div>

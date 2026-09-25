@@ -320,3 +320,58 @@ func TestSummarizeCommand(t *testing.T) {
 		t.Errorf("short command mangled: %q", got)
 	}
 }
+
+// Room shell commands are human-in-the-loop: held for the host's
+// approver, run only on explicit yes, denied as tool content when not
+// (and always denied with no approver attached — a room with no human
+// path never runs a shell command).
+func TestRunCommandHeldForApproval(t *testing.T) {
+	dir := t.TempDir()
+	canary := filepath.Join(dir, "canary.txt")
+
+	deny := func(ctx context.Context, tool, detail string) (bool, string, error) {
+		return false, "the user said: not that way", nil
+	}
+	a := &Agent{
+		Persona:     config.Persona{Name: "eng", Role: "Engineer", Tools: []string{"run_command"}},
+		Provider:    llm.NewMock(&llm.Response{Text: "ok", StopReason: llm.StopEndTurn}),
+		CWD:         dir,
+		AskApproval: deny,
+	}
+	// A read-only command, structurally fine, but the user said no.
+	tc := llm.ToolCall{ID: "t1", Name: "run_command", Args: `{"command":"cat ` + canary + `"}`}
+	out, err := a.execTool(context.Background(), tc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "denied:") || !strings.Contains(out, "not that way") {
+		t.Errorf("denial not delivered to the model as content: %q", out)
+	}
+	if _, serr := os.Stat(canary); !os.IsNotExist(serr) {
+		t.Errorf("a denied command's side effect exists anyway")
+	}
+
+	// No approver at all: deterministic denial, no ask, no run.
+	bare := &Agent{
+		Persona:  config.Persona{Name: "eng", Role: "Engineer", Tools: []string{"run_command"}},
+		Provider: llm.NewMock(&llm.Response{Text: "ok", StopReason: llm.StopEndTurn}),
+		CWD:      dir,
+	}
+	out, err = bare.execTool(context.Background(), llm.ToolCall{ID: "t2", Name: "run_command", Args: `{"command":"echo hi"}`})
+	if err != nil || !strings.Contains(out, "denied:") || !strings.Contains(out, "no approver") {
+		t.Errorf("unapproved room must deny commands: out=%q err=%v", out, err)
+	}
+
+	// Explicit yes runs a validation command.
+	allow := func(ctx context.Context, tool, detail string) (bool, string, error) { return true, "", nil }
+	bare.AskApproval = allow
+	out, err = bare.execTool(context.Background(), llm.ToolCall{ID: "t3", Name: "run_command", Args: `{"command":"echo hello"}`})
+	if err != nil || strings.TrimSpace(out) != "hello" {
+		t.Errorf("approved command did not run: out=%q err=%v", out, err)
+	}
+}
+
+// toolCallStruct is a tiny helper building a ToolCall from JSON args.
+func toolCallStruct(name, args string) llm.ToolCall {
+	return llm.ToolCall{ID: "x", Name: name, Args: args}
+}

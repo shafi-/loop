@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -76,6 +77,24 @@ func runLocalChat(cmd *cobra.Command, args []string, roomsDir string) error {
 		return err
 	}
 	out := cmd.OutOrStdout()
+	// Shell commands from room personas are human-in-the-loop, same as
+	// a pipeline's `approval: ask`: the command prints, the terminal
+	// answers. No answer (EOF) denies — commands never run unasked.
+	toolIn := bufio.NewReader(os.Stdin)
+	r.ToolApproval = func(ctx context.Context, agentName, tool, detail string) (bool, string, error) {
+		fmt.Fprintf(out, "\n── @%s wants to run a command ──────────────────\n%s\n", agentName, detail)
+		fmt.Fprint(out, "allow? [y/N] ")
+		answer, err := toolIn.ReadString('\n')
+		if err != nil {
+			fmt.Fprintln(out)
+			return false, "no answer (EOF) — command denied", nil
+		}
+		switch strings.ToLower(strings.TrimSpace(answer)) {
+		case "y", "yes":
+			return true, "", nil
+		}
+		return false, "the user declined this command", nil
+	}
 	// The knowledge layer: agents carry the maintained digest, /notes
 	// reads it for zero tokens. The layer only describes landed work —
 	// completed pipeline runs refresh it in their own process; session

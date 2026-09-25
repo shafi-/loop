@@ -14,12 +14,13 @@ import (
 
 func (s *Server) roomJSON(rs *roomSession) roomJSON {
 	out := roomJSON{
-		Name:     rs.cfg.Name,
-		Path:     rs.roomPath,
-		Runnable: rs.runnablePipelines(),
-		Commands: rs.room.CommandList(),
-		Busy:     rs.busyNow(),
-		Roles:    map[string]string{},
+		Name:            rs.cfg.Name,
+		Path:            rs.roomPath,
+		Runnable:        rs.runnablePipelines(),
+		Commands:        rs.room.CommandList(),
+		Busy:            rs.busyNow(),
+		PendingApproval: rs.pendingToolAsk(),
+		Roles:           map[string]string{},
 	}
 	for _, a := range rs.cfg.Agents {
 		out.Agents = append(out.Agents, a.Name)
@@ -270,6 +271,13 @@ func (s *Server) handleRoomApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Text == "" {
 		writeError(w, http.StatusBadRequest, "body must be JSON with a \"text\" answer")
+		return
+	}
+	// A held shell command from a room agent gets the answer first —
+	// it is parked mid-turn on exactly this question. Pipeline gates
+	// come after.
+	if rs.deliverToolAnswer(req.Text) {
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return
 	}
 	if err := rs.sup.Approve(req.Alias, req.Text); err != nil {

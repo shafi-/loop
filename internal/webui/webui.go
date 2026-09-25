@@ -40,6 +40,9 @@ type pageData struct {
 	Room    daemon.RoomInfo
 	Chat    []ChatMsg
 	Waiting *daemon.RunInfo
+	// ToolAsk is a room agent's shell command held for the room's
+	// answer — its gate card renders above a pipeline gate's.
+	ToolAsk *daemon.ToolAskJSON
 	Sidecar []SidecarRun
 	// workspace candidates feeding the dashboard's pickers (nil = the
 	// workspace offered none; the forms fall back to typed paths)
@@ -203,10 +206,12 @@ func dashboard(tmpl *template.Template, cl *daemon.Client, w http.ResponseWriter
 	runs, _ := cl.Runs(true)
 	workspace := workspaceOf(cl)
 	wk, _ := cl.Workspace()
+	personas, _ := cl.Personas() // best-effort: the sidebar shows the count
 	renderPage(tmpl, w, "dashboard", pageData{
 		Title: "runs", Workspace: workspace,
 		Active: splitActive(runs), History: splitHistory(runs),
 		Pipelines: wk.Pipelines, WSRooms: wk.Rooms, Threads: wk.Threads,
+		Personas: personas,
 	})
 }
 
@@ -445,6 +450,7 @@ func roomData(cl *daemon.Client, w http.ResponseWriter, r *http.Request) (pageDa
 	}
 	lines, _ := cl.RoomTranscript(info.Name, 0)
 	data := pageData{Title: info.Name, Workspace: workspaceOf(cl), FullBleed: true, Room: info, Chat: ChatView(lines, info.Agents, info.Runs)}
+	data.ToolAsk = info.PendingApproval
 	if waiting, ok := anyWaiting(info.Runs); ok {
 		data.Waiting = &waiting
 	}

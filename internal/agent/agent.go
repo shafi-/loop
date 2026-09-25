@@ -33,6 +33,13 @@ type Agent struct {
 	// compact human-readable line ("wrote .loop/plans/x.md (120 bytes)") —
 	// the room wires it to a UI notice and a transcript line.
 	ToolHook func(name, detail string)
+	// AskApproval, when set, is consulted before every run_command:
+	// the host decides whether the shell may run (the terminal prompts
+	// the user; the daemon holds the ask for the room's answer — the
+	// same human-in-the-loop a pipeline's `approval: ask` gives). When
+	// nil — no approver attached — shell commands are denied
+	// deterministically: a room with no human path never runs one.
+	AskApproval func(ctx context.Context, tool, detail string) (approved bool, reason string, err error)
 }
 
 // Name returns the persona identifier.
@@ -250,7 +257,7 @@ job.` + workspaceOrientation)
 		}
 		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: resp.Text, ToolCalls: resp.ToolCalls})
 		for _, tc := range resp.ToolCalls {
-			out, terr := execRoomTool(ctx, tc.Name, tc.Args, a.CWD)
+			out, terr := a.execTool(ctx, tc)
 			a.reportTool(tc, out, terr)
 			// Tool errors go back to the model as results, not as fatal
 			// failures: it can correct a bad path and retry.
@@ -258,6 +265,38 @@ job.` + workspaceOrientation)
 		}
 	}
 	return "", fmt.Errorf("%s exceeded %d tool rounds without answering — narrow the request", a.Persona.Name, MaxToolRounds)
+}
+
+// execTool runs one tool call, holding shell commands for the host's
+// approval first (see AskApproval). A denial goes back to the model as
+// tool content — it can answer without the command or propose another.
+func (a *Agent) execTool(ctx context.Context, tc llm.ToolCall) (string, error) {
+	if tc.Name == "run_command" {
+		var args struct {
+			Command string `json:"command"`
+		}
+		_ = json.Unmarshal([]byte(tc.Args), &args)
+		approved, reason, err := a.approve(ctx, strings.TrimSpace(args.Command))
+		if err != nil {
+			return "", fmt.Errorf("approval: %w", err)
+		}
+		if !approved {
+			if reason == "" {
+				reason = "the user did not approve this command"
+			}
+			return "denied: " + reason + " — answer without running it, or propose a different approach.", nil
+		}
+	}
+	return execRoomTool(ctx, tc.Name, tc.Args, a.CWD)
+}
+
+// approve consults the host's approver; with none attached, shell
+// commands are denied — never silently run.
+func (a *Agent) approve(ctx context.Context, cmd string) (bool, string, error) {
+	if a.AskApproval == nil {
+		return false, "no approver is attached to this room — shell commands are denied", nil
+	}
+	return a.AskApproval(ctx, "run_command", cmd)
 }
 
 // reportTool surfaces one executed tool to the room (UI + transcript)
@@ -279,6 +318,9 @@ func (a *Agent) reportTool(tc llm.ToolCall, out string, err error) {
 		detail = "read " + path
 	case "run_command":
 		detail = summarizeCommand(cmd)
+		if strings.HasPrefix(out, "denied:") {
+			detail += " — denied"
+		}
 	default:
 		detail = tc.Name
 	}

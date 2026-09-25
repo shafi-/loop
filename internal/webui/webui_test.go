@@ -504,3 +504,20 @@ func TestChatViewRendersGateAnswerAsChip(t *testing.T) {
 		t.Errorf("answer chip lost the provided answer: %q", view[2].Text)
 	}
 }
+
+// An agent's held command renders as the gate chip in the conversation;
+// the tool-ask card renders above the pipeline gate card when the room
+// JSON carries one.
+func TestChatViewRendersToolAsk(t *testing.T) {
+	lines := []daemon.RoomLine{
+		{Seq: 1, From: "engineer", Text: "[approval needed] wants to run: python3 app.py — answer /approve yes | no"},
+		{Seq: 2, From: "user", Text: "approve engineer: yes"},
+	}
+	view := ChatView(lines, []string{"engineer"}, nil)
+	if view[0].Kind != "gate" {
+		t.Errorf("held command kind = %q, want the gate chip", view[0].Kind)
+	}
+	if view[1].Kind != "answer" {
+		t.Errorf("answer kind = %q, want the answer chip", view[1].Kind)
+	}
+}

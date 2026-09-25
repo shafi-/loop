@@ -94,7 +94,11 @@ func ChatView(lines []daemon.RoomLine, agents []string, runs []daemon.RunInfo) [
 				out = append(out, ChatMsg{Kind: "system", Text: ln.Text, At: ln.At})
 			}
 		case isAgent[ln.From]:
-			if text, ok := strings.CutPrefix(ln.Text, "[tool] "); ok {
+			if text, ok := strings.CutPrefix(ln.Text, "[approval needed] "); ok {
+				// A shell command held for the room's answer: the ask
+				// renders as a gate chip, the answer as the ↩ chip.
+				out = append(out, ChatMsg{Kind: "gate", From: ln.From, Text: text, At: ln.At})
+			} else if text, ok := strings.CutPrefix(ln.Text, "[tool] "); ok {
 				// Consecutive tool notices collapse into the newest one:
 				// a flailing agent must not flood the conversation.
 				if n := len(out); n > 0 && out[n-1].Kind == "tool" && out[n-1].From == ln.From {

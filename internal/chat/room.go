@@ -122,6 +122,13 @@ type Room struct {
 	// knows the cause (executor missing vs no run session) — /deepdive's
 	// error says exactly that instead of a generic attach hint.
 	DiveUnavailableReason string
+	// ToolApproval is asked before a room agent's shell command runs —
+	// the same human-in-the-loop a pipeline's `approval: ask` gives.
+	// The terminal prompts the user; the daemon holds the ask for the
+	// room's answer through the gate card / approve endpoint. nil = no
+	// approver attached: commands are denied deterministically, never
+	// silently run.
+	ToolApproval func(ctx context.Context, agent, tool, detail string) (approved bool, reason string, err error)
 	// dives is the last-offered-topic memory (deepdive.json beside the
 	// transcript); divesLoaded guards its lazy read.
 	dives       map[string]divePending
@@ -449,6 +456,12 @@ func (r *Room) reply(ctx context.Context, a *agent.Agent, ui UI) error {
 	a.ToolHook = func(name, detail string) {
 		ui.Notice("🔧 @%s %s", a.Name(), detail)
 		_ = r.Transcript.Append(a.Name(), "[tool] "+detail)
+	}
+	a.AskApproval = func(ctx context.Context, tool, detail string) (bool, string, error) {
+		if r.ToolApproval == nil {
+			return false, "no approver is attached to this room — shell commands are denied", nil
+		}
+		return r.ToolApproval(ctx, a.Name(), tool, detail)
 	}
 	ui.AgentReplyStart(a.Name())
 	text, err := a.Reply(ctx, r.Personas, r.Transcript.BuildConversation(r.Settings.HistoryWindow, r.Settings.MaxContextBytes), func(delta string) {

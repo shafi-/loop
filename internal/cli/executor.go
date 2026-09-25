@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shafi-/loop/internal/counters"
+	"github.com/shafi-/loop/internal/dotenv"
 	"github.com/shafi-/loop/internal/executor"
 	"github.com/shafi-/loop/internal/executor/cline"
 )
@@ -73,11 +74,20 @@ func newDoctorCmd() *cobra.Command {
 func runDoctor(out, errOut io.Writer) error {
 	fmt.Fprintln(out, "checking loop prerequisites…")
 
-	// Credentials source: a .env here is the usual setup.
-	if _, err := os.Stat(".env"); err == nil {
-		fmt.Fprintf(out, "✓ .env found in this directory (loaded at startup; shell env wins)\n")
-	} else {
-		fmt.Fprintf(out, "• no .env file (using shell environment only) — export ANTHROPIC_API_KEY / OPENAI_API_KEY, or run `loop setup`\n")
+	// Credentials source: env files loaded at startup (the real shell
+	// environment always wins over files).
+	files := dotenv.Loaded()
+	if len(files) == 0 {
+		fmt.Fprintf(out, "• no env files loaded (using shell environment only) — export ANTHROPIC_API_KEY / OPENAI_API_KEY, or run `loop setup`\n")
+	}
+	for i, f := range files {
+		if _, err := os.Stat(f); err == nil {
+			fmt.Fprintf(out, "✓ env file %s (loaded at startup; shell env wins)\n", f)
+		} else if i == 0 {
+			fmt.Fprintf(out, "• %s not found — using shell environment only; export ANTHROPIC_API_KEY / OPENAI_API_KEY, or run `loop setup`\n", f)
+		} else {
+			fmt.Fprintf(out, "• %s not found (skipped)\n", f)
+		}
 	}
 
 	cl := cline.New()

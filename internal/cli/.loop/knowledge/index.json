@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "digest": {
+    "hashes": {
+      ".layout": "52c02ad32f7e06e92e99e8d9040b31fec743353a75353a69c74727190a66e89e"
+    },
+    "updated_at": "2026-09-25T12:21:53.877307Z"
+  },
+  "notes": [
+    {
+      "slug": "assets",
+      "title": "Assets",
+      "scope": "Embedded assets and their access layer.",
+      "dirs": [
+        "assets"
+      ],
+      "files": [
+        "assets.go"
+      ],
+      "hashes": {
+        "assets.go": "5a4f8ec36ad57f98c7a6c33b0a7618276ed457610ee0c35e682885a11dece46c",
+        "assets/room.yaml": "62ce92e1c57072e9674a6890c5003295a55dabafedf368c3059f1d1841c8d803",
+        "assets/workspace-readme.md": "638b57e4394d67bd9afed5dc5076999470ae3326433420b1b8925222a8d50de6"
+      },
+      "updated_at": "2026-09-24T16:37:19.831879Z"
+    },
+    {
+      "slug": "chat",
+      "title": "Chat",
+      "scope": "Conversational commands including chat sessions, daemon mode, ask, and digest.",
+      "dirs": null,
+      "files": [
+        "ask.go",
+        "chat.go",
+        "chat_daemon.go",
+        "digest.go"
+      ],
+      "hashes": {
+        "ask.go": "dcdf1f7b96a0c8ba7520fa1ae3cb5913bdf2c554ae5cac60b0e1ca3a37706f08",
+        "chat.go": "e53aeb67042310a35dcf3dd0947c1d2e6a3a383e156b1cd5eccdd41139600a9f",
+        "chat_daemon.go": "9746f0b0b1529717fbcb7c54340309e69d77ed3110f5bd4cf18fd17eed43c323",
+        "digest.go": "281625faf29ba159487f047721a3a54e57b5725165f385fe439ea81631bccd83"
+      },
+      "updated_at": "2026-09-24T16:37:38.325864Z"
+    },
+    {
+      "slug": "cli-core",
+      "title": "CLI Core",
+      "scope": "Main entrypoint, root command wiring, and init/new project scaffolding commands.",
+      "dirs": null,
+      "files": [
+        "init.go",
+        "new.go",
+        "roomrun.go",
+        "root.go"
+      ],
+      "hashes": {
+        "init.go": "84920b811463c341c6dab889f18c6c510a85039a86b458a9d373f43f65f36629",
+        "new.go": "dfbc914e945864731e602d6a47c890f3be9d5fd7ab9a62af35716d353d84ea3c",
+        "roomrun.go": "a412dabd79089c75a5320c6585274eef300fa6b740bf6562be00fc544a548f38",
+        "root.go": "4274c4bced85b5eef93fb8afea66475c403ff1c054d88f549d06b541feff34d2"
+      },
+      "updated_at": "2026-09-24T18:26:08.557425Z"
+    },
+    {
+      "slug": "providers",
+      "title": "Providers",
+      "scope": "LLM provider abstraction plus architecture, CLI, provider, e2e, and human-in-the-loop tests.",
+      "dirs": null,
+      "files": [
+        "arch_test.go",
+        "cli_test.go",
+        "provider.go",
+        "provider_test.go",
+        "roomrun_e2e_test.go",
+        "roomrun_resolve_test.go",
+        "run_human_test.go"
+      ],
+      "hashes": {
+        "arch_test.go": "999e3807c1816ccb03c2cf9453598a5bc4834843b23d581d60482c54d72d2f37",
+        "cli_test.go": "a4777f2dfded60f94bf8ba0dc748945b47f7c19571817f676e8811fb43b96d3e",
+        "provider.go": "736db1dae961124fbf17393f04127f733cc7950dbdd9ef3e057fb02721d0e463",
+        "provider_test.go": "9a9aee5f140a9fd447df9ae0a8efeb1ee200b50875eaee15139748e9095a6e77",
+        "roomrun_e2e_test.go": "761908d2e4f0663bc9a6a7f41c9564a18113c24440ce7ca913786a311a24081d",
+        "roomrun_resolve_test.go": "4a7ceb61370cc69c8c599ccf9bf7ee64c2ab543a8385a7d464c7f76762afeec3",
+        "run_human_test.go": "fef563458c1984dffe938c274e8a53acef436ad18042d0979c2c4858d0ce7dc7"
+      },
+      "updated_at": "2026-09-25T12:21:39.05544Z"
+    },
+    {
+      "slug": "run",
+      "title": "Run",
+      "scope": "Run command execution and daemon-based task running with the executor.",
+      "dirs": null,
+      "files": [
+        "executor.go",
+        "run.go",
+        "run_daemon.go"
+      ],
+      "hashes": {
+        "executor.go": "63e1ed8d63d46e90b31b0a02b762adf9d5352c38e35d840a0bc8f822f8e7bd18",
+        "run.go": "821b7872847c4eb3c112860c6413b7a060e3e0f2db4e4af3cd41cd7462cc2753",
+        "run_daemon.go": "bcc935c100a9d29244ffa6fd39a9df901a4f01bc03926f4fc051b80b736af54d"
+      },
+      "updated_at": "2026-09-24T16:38:32.893081Z"
+    }
+  ]
+}

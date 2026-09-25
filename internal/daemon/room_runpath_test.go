@@ -1,11 +1,15 @@
 package daemon
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shafi-/loop/internal/chat"
+	"github.com/shafi-/loop/internal/config"
 )
 
 // A typed /run with a pipeline PATH (not a room alias) must start the
@@ -356,4 +360,87 @@ func TestDaemonRoomGateAnswerRecordedInTranscript(t *testing.T) {
 		}
 		return false
 	}, "the answer to land in the room transcript")
+}
+
+// The tool-approval flow at the session level: an agent's held command
+// is shown in the room, answered through the approve route, and the
+// answer travels back — strict yes runs it, anything else declines
+// with the words as the reason. A question nobody answers times out
+// into a deterministic denial.
+func TestDaemonRoomToolAskAnswerCycle(t *testing.T) {
+	dir := t.TempDir()
+	tr, err := chat.OpenTranscript(filepath.Join(dir, ".loop", "rooms", "g"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs := &roomSession{
+		cfg:      config.Room{Name: "g"},
+		roomPath: filepath.Join(dir, "g.yaml"),
+		tr:       tr,
+	}
+
+	// Held ask: visible in the room, and in the room JSON.
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := rs.askToolApproval(context.Background(), "engineer", "run_command", "python3 app.py")
+		done <- err
+	}()
+	waitFor(t, 5*time.Second, func() bool {
+		rs.mu.Lock()
+		defer rs.mu.Unlock()
+		return rs.pending != nil
+	}, "the ask to be held")
+	if got := rs.pendingToolAsk(); got == nil || got.Agent != "engineer" || got.Command != "python3 app.py" {
+		t.Fatalf("pending ask = %+v", got)
+	}
+
+	// Strict yes: runs.
+	if !rs.deliverToolAnswer("yes") {
+		t.Fatal("answer not delivered")
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("ask errored: %v", err)
+	}
+
+	// Free words: decline, and the words travel back as the reason.
+	done = make(chan error, 1)
+	go func() {
+		approved, reason, _ := rs.askToolApproval(context.Background(), "engineer", "run_command", "cat app.py")
+		if approved {
+			t.Error("free words must not approve")
+		}
+		if !strings.Contains(reason, "check the output first") {
+			t.Errorf("reason lost the user's words: %q", reason)
+		}
+		done <- nil
+	}()
+	waitFor(t, 5*time.Second, func() bool {
+		rs.mu.Lock()
+		defer rs.mu.Unlock()
+		return rs.pending != nil
+	}, "the second ask to be held")
+	rs.deliverToolAnswer("check the output first")
+	<-done
+
+	// Timeout: deterministic denial, announced in the room.
+	old := toolAskTimeout
+	toolAskTimeout = 80 * time.Millisecond
+	defer func() { toolAskTimeout = old }()
+	approved, reason, _ := rs.askToolApproval(context.Background(), "engineer", "run_command", "go test ./...")
+	if approved || !strings.Contains(reason, "timed out") {
+		t.Errorf("timed-out ask = %v %q", approved, reason)
+	}
+
+	// The room's record: the ask line, the answer chips, the timeout note.
+	data, _ := os.ReadFile(filepath.Join(dir, ".loop", "rooms", "g", "transcript.jsonl"))
+	for _, want := range []string{
+		"[approval needed] wants to run: python3 app.py",
+		"approve engineer: yes",
+		"approve engineer: check the output first",
+		"no answer for @engineer's command",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("transcript missing %q:\n%s", want, data)
+		}
+	}
 }

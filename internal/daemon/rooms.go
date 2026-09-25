@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/shafi-/loop/internal/chat"
 	"github.com/shafi-/loop/internal/config"
@@ -48,6 +49,92 @@ type roomSession struct {
 
 	mu   sync.Mutex
 	busy bool // a turn is being processed
+	// pending holds the one shell command a room agent is waiting on
+	// (ToolApproval). While set, the turn is parked; the approve
+	// endpoint delivers the room's answer. One ask at a time — a room
+	// thinks, and asks, one thought at a time.
+	pending *toolAsk
+}
+
+// toolAsk is one held shell command awaiting the room's answer.
+type toolAsk struct {
+	agent   string
+	command string
+	answer  chan string
+}
+
+// toolAskTimeout bounds how long a turn waits for the room's answer —
+// a question nobody answers must not park the room forever. On timeout
+// the command is denied deterministically and the agent carries on.
+var toolAskTimeout = 3 * time.Minute
+
+// askToolApproval is the room's ToolApproval: register the ask, show it
+// in the room (transcript line → gate card), wait for the answer.
+// Strict yes approves; anything else — words, silence, timeout —
+// declines, and the words travel back to the agent as the reason.
+func (rs *roomSession) askToolApproval(ctx context.Context, agentName, tool, detail string) (bool, string, error) {
+	ask := &toolAsk{agent: agentName, command: detail, answer: make(chan string, 1)}
+	rs.mu.Lock()
+	if rs.pending != nil {
+		rs.mu.Unlock()
+		return false, "another command approval is already pending", nil
+	}
+	rs.pending = ask
+	rs.mu.Unlock()
+	defer func() {
+		rs.mu.Lock()
+		rs.pending = nil
+		rs.mu.Unlock()
+	}()
+
+	_ = rs.tr.Append(agentName, fmt.Sprintf("[approval needed] wants to run: %s — answer /approve yes | no", firstLine(detail)))
+	select {
+	case text := <-ask.answer:
+		approved := strings.ToLower(strings.TrimSpace(text)) == "yes" || strings.ToLower(strings.TrimSpace(text)) == "y"
+		_ = rs.tr.Append("user", fmt.Sprintf("approve %s: %s", agentName, strings.TrimSpace(text)))
+		if approved {
+			return true, "", nil
+		}
+		return false, "the user said: " + strings.TrimSpace(text), nil
+	case <-ctx.Done():
+		return false, "the turn ended before an answer arrived", nil
+	case <-time.After(toolAskTimeout):
+		_ = rs.tr.Append("system", fmt.Sprintf("! no answer for @%s's command within %s — denied", agentName, toolAskTimeout))
+		return false, "timed out waiting for the room's answer", nil
+	}
+}
+
+// deliverToolAnswer routes the room's answer to the held command; false
+// when no tool ask is pending (the answer belongs to a pipeline gate).
+func (rs *roomSession) deliverToolAnswer(text string) bool {
+	rs.mu.Lock()
+	ask := rs.pending
+	rs.mu.Unlock()
+	if ask == nil {
+		return false
+	}
+	select {
+	case ask.answer <- strings.TrimSpace(text):
+	default:
+	}
+	return true
+}
+
+// pendingToolAsk snapshots the held command for the room JSON (the web
+// gate card); nil when nothing is asking.
+func (rs *roomSession) pendingToolAsk() *ToolAsk {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	if rs.pending == nil {
+		return nil
+	}
+	return &ToolAsk{Agent: rs.pending.agent, Command: rs.pending.command}
+}
+
+// ToolAsk is one shell command awaiting the room's answer.
+type ToolAsk struct {
+	Agent   string `json:"agent"`
+	Command string `json:"command"`
 }
 
 // daemonRoomUI absorbs the per-viewer rendering chat.Room emits: in a
@@ -175,6 +262,10 @@ func (h *hostRooms) host(ctx context.Context, file string) (*roomSession, error)
 	// commands (the CLI's own /run intercepts earlier; the REST endpoint
 	// starts through the same session, so verb and endpoint cannot drift
 	// on hand-off semantics).
+	// Shell commands from room personas are human-in-the-loop: the ask
+	// is held here, shown as a gate card, and answered through the same
+	// approve endpoint the pipeline gates use.
+	rs.room.ToolApproval = rs.askToolApproval
 	if rs.room.Command("run") == nil {
 		rs.room.CustomCommands = append(rs.room.CustomCommands, rs.runCommand())
 	}

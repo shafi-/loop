@@ -281,9 +281,18 @@ type RoomInfo struct {
 	Commands  []chat.CommandInfo `json:"commands"` // room verbs, for "/" menus
 	Busy      bool               `json:"busy"`
 	Lines     int                `json:"transcript_lines"`
-	Runs      []RunInfo          `json:"runs"`        // the room's own pipeline runs
-	Usage     *usage.Total       `json:"usage"`       // the session's token ledger, when calls were made
-	UsageAll  *usage.Total       `json:"usage_total"` // every session since the room began
+	Runs      []RunInfo          `json:"runs"` // the room's own pipeline runs
+	// PendingApproval is a room agent's shell command held for the
+	// room's answer — the chat renders it as a gate card.
+	PendingApproval *ToolAskJSON     `json:"pending_approval,omitempty"`
+	Usage           *usage.Total     `json:"usage"`       // the session's token ledger, when calls were made
+	UsageAll        *usage.Total     `json:"usage_total"` // every session since the room began
+}
+
+// ToolAskJSON mirrors the daemon's held-command ask.
+type ToolAskJSON struct {
+	Agent   string `json:"agent"`
+	Command string `json:"command"`
 }
 
 // PipelineOption is one thing /run accepts by short name in a room.

@@ -307,3 +307,32 @@ func readFile(t *testing.T, path string) string {
 // Compile-time check that the helper stays honest about cobra wiring.
 var _ = cobra.NoArgs
 var _ io.Writer = (*bytes.Buffer)(nil)
+
+// Pins the replace-not-merge contract: with --env-file given, the .env
+// default must not also load (explicit wins over convention).
+func TestEnvPathsExplicitReplacesDefault(t *testing.T) {
+	t.Setenv("LOOP_ENV_FILE", "other.env")
+	got := envPaths([]string{"custom.env"})
+	want := []string{"custom.env"}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("envPaths with explicit flag = %v, want %v (must not merge .env/LOOP_ENV_FILE)", got, want)
+	}
+}
+
+// Without the flag, the default chain holds: .env, then $LOOP_ENV_FILE.
+func TestEnvPathsDefault(t *testing.T) {
+	t.Setenv("LOOP_ENV_FILE", "other.env")
+	got := envPaths(nil)
+	if len(got) != 2 || got[0] != ".env" || got[1] != "other.env" {
+		t.Fatalf("envPaths default = %v, want [.env other.env]", got)
+	}
+}
+
+// Without LOOP_ENV_FILE, only .env is in the default chain.
+func TestEnvPathsDefaultNoLoopEnvFile(t *testing.T) {
+	t.Setenv("LOOP_ENV_FILE", "")
+	got := envPaths(nil)
+	if len(got) != 1 || got[0] != ".env" {
+		t.Fatalf("envPaths with empty LOOP_ENV_FILE = %v, want [.env]", got)
+	}
+}
