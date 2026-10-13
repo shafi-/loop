@@ -2,8 +2,9 @@ package engine
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+
+	"github.com/shafi-/loop/internal/config"
 )
 
 // Context is the run's data spine: pipeline vars plus the accumulated
@@ -24,6 +25,11 @@ type Context struct {
 	// InterpolatePrompt clipped, for the runner to log. Stages run
 	// sequentially on one goroutine, so no lock is needed.
 	lastClipped []string
+	// stageIDs, when set, lets a bad stages.<id> reference fail with the
+	// nearest real id in the message. Creation-time validation
+	// (config.Validate) already rejects these; this is the runtime net
+	// for runs started before that gate existed.
+	stageIDs []string
 }
 
 func NewContext(vars map[string]any) *Context {
@@ -91,6 +97,10 @@ func Restore(data map[string]any) *Context {
 	return c
 }
 
+// SetKnownStages gives the context the pipeline's stage ids, in pipeline
+// order, so an unknown stages.<id> reference says what does exist.
+func (c *Context) SetKnownStages(ids []string) { c.stageIDs = ids }
+
 // resolve walks a dotted reference ("vars.idea", "stages.a.output") and
 // returns its value. The last path element of a stage reference defaults
 // to "output" when omitted.
@@ -130,6 +140,9 @@ func (c *Context) resolve(path string) (string, error) {
 		}
 		m, ok := c.stages[id]
 		if !ok {
+			if c.stageIDs != nil && !containsID(c.stageIDs, id) {
+				return "", fmt.Errorf("unknown stages.%s — no stage with this id%s", id, config.SuggestNearest(id, c.stageIDs))
+			}
 			return "", fmt.Errorf("unknown stages.%s (stage has not run)", id)
 		}
 		v, ok := m[field]
@@ -142,8 +155,20 @@ func (c *Context) resolve(path string) (string, error) {
 	}
 }
 
-// refRe matches both reference syntaxes: {{ path }} and ${path}.
-var refRe = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}|\$\{([^{}]+)\}`)
+// containsID reports whether ids holds id.
+func containsID(ids []string, id string) bool {
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}
+
+// refRe matches both reference syntaxes: {{ path }} and ${path}. It is
+// config.TemplateRefRe — the same expressions load-time validation
+// checks — so resolution and validation cannot drift.
+var refRe = config.TemplateRefRe
 
 // Interpolate resolves every reference in s against the context. Unknown
 // references are hard errors — silent empty strings would corrupt a

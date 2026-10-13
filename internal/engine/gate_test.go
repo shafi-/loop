@@ -185,6 +185,8 @@ func TestTerminalStageEndsRunWithoutFlowingOn(t *testing.T) {
 	// A terminal ends the run where it is; linear successors must not
 	// run, and the recorded done state forbids resume.
 	const src = `name: terminals
+vars:
+  arm: ""
 stages:
   - id: gate
     type: router

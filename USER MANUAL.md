@@ -570,6 +570,12 @@ Reference earlier results with `{{ ... }}` or `${ ... }`:
   overwrites it, so references always see the latest (the revision-loop
   idiom)
 
+References are checked when the pipeline is parsed — `loop validate`,
+`/run`, or a generated draft — not mid-run: `<id>` must be a declared
+stage's id **verbatim** (hyphens included — `architect-signoff` is not
+`architect_signoff`), and only stages listed **before** the referencing
+stage are readable.
+
 Unknown references are **hard errors** — a deterministic run never
 silently substitutes empty strings.
 

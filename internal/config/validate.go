@@ -125,6 +125,12 @@ func (p *Pipeline) Validate() ValidationErrors {
 		}
 	}
 
+	// Template references: checked against the declared stage ids, output
+	// aliases, and vars — with the earlier-stages-only rule execution
+	// follows — so a bad reference fails at creation, not mid-run where
+	// resume cannot fix it.
+	p.validateTemplateRefs(err, ids)
+
 	names := make(map[string]bool, len(p.Personas))
 	for i := range p.Personas {
 		pers := &p.Personas[i]

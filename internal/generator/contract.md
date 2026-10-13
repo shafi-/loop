@@ -47,3 +47,9 @@ Templates reference the run context: `{{ vars.idea }}` for pipeline vars,
 for a human stage's answer, `${stages.<id>.intent}` for a gate's
 classified intent, `${outputs.<name>}` for a stage's named output alias
 (shared and mutable — a revise stage can overwrite it).
+
+`<id>` is the stage's `id` verbatim — hyphens included — and only stages
+listed before the referencing stage are readable. References are
+validated when the pipeline is created: a misspelled id (say, an
+underscore where the id has a hyphen) or a forward reference is rejected
+at draft time, with the nearest real name in the error.

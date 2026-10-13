@@ -62,11 +62,13 @@ func TestLLMStageClipsAndLogs(t *testing.T) {
 	})
 	src := `
 name: clip-demo
+vars:
+  blob: ""
 stages:
   - id: ask
     type: llm
     model: {provider: anthropic, model: test}
-    prompt: "summarize: ${stages.gen.output}"
+    prompt: "summarize: ${vars.blob}"
 `
 	p := parse(t, src)
 	log, err := CreateRunLog(dir, "clip-run", []byte(src))
@@ -75,8 +77,7 @@ stages:
 	}
 	defer log.Close()
 	d := &stageDeps{Providers: mockFactory(m), Log: log, Warnf: func(string, ...any) {}}
-	c := NewContext(nil)
-	c.SetOutput("gen", "output", strings.Repeat("b", MaxPromptValue+2048))
+	c := NewContext(map[string]any{"blob": strings.Repeat("b", MaxPromptValue+2048)})
 
 	if _, err := runLLMStage(context.Background(), &p.Stages[0], c, d); err != nil {
 		t.Fatal(err)

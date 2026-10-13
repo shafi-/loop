@@ -534,28 +534,32 @@ personas:
     system: You design systems.
     model: {provider: anthropic, model: persona-model}
 stages:
+  - id: spec
+    type: tool
+    run: echo spec-doc
+  - id: broken
+    type: tool
+    run: exit 3
   - id: design
     type: agent
     persona: architect
     input: "design ${stages.spec.output}"
     tools: [read_file, write_file]
     max_iterations: 5
-  - id: spec
-    type: tool
-    run: echo spec-doc
 `)
-	// Note: forward reference ${stages.spec.output} resolves because the
-	// agent stage runs after spec in linear order? No — design runs first.
-	// So this pipeline exercises the loud-failure path instead.
+	// The executor is consulted only once every earlier stage has
+	// passed: a failing stage halts the run first. (Bad template
+	// references — the failure mechanism this test once used — are
+	// rejected at parse time now, before any run starts.)
 	r := &Runner{Pipeline: p, Source: []byte("x"), Providers: mockFactory(m), Executors: reg, RunsDir: t.TempDir()}
 	res, err := r.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Completed {
-		t.Fatal("forward reference must fail loudly (spec has not run)")
+		t.Fatal("failing stage must halt before the agent stage")
 	}
-	if res.FailedStage != "design" {
+	if res.FailedStage != "broken" {
 		t.Errorf("failed stage = %q", res.FailedStage)
 	}
 	if len(ex.tasks) != 0 {

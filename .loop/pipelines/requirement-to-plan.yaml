@@ -1,0 +1,117 @@
+name: requirement-to-plan
+description: Product owner writes requirements, architect signs off and plans, two principal engineers review until all agree
+vars:
+  idea: ""
+personas:
+  - name: product-owner
+    role: Product owner
+    system: 'You are a product owner. You gather requirements into a concise, unambiguous requirements document: problem, users, scope (in/out), acceptance criteria. You address every reviewer issue explicitly and update the document rather than arguing. Be terse and concrete.'
+  - name: architect
+    role: Software architect
+    system: You are a pragmatic software architect. You write the simplest solution plan that satisfies the requirements, name concrete trade-offs, and avoid resume-driven development. You either sign off on requirements or raise specific blocking issues. Be terse and concrete.
+  - name: principal-engineer
+    role: Principal engineer
+    system: You are a principal engineer reviewing an implementation plan against the requirements. You question feasibility, edge cases, operability, and scope fit. You either approve the plan or raise specific questions/issues that must be resolved. Be terse and concrete.
+stages:
+  - id: requirements
+    type: llm
+    prompt: |-
+      Acting as the product owner, turn this idea into a concise requirements document. Include: problem, users, scope (in/out), and acceptance criteria.
+
+      Idea: {{ vars.idea }}
+    output: requirements_md
+  - id: architect-signoff
+    type: human
+    gate: true
+    prompt: |-
+      ARCHITECT SIGN-OFF required before hand-over. Review the requirements below. Reply yes to sign off, no to reject, or describe the issues the product owner must address.
+
+      ${outputs.requirements_md}
+    output: architect_signoff.answer
+  - id: architect-router
+    type: router
+    when:
+      - if: ${stages.architect-signoff.intent} == 'yes'
+        next: solution-plan
+      - next: revise-requirements
+  - id: revise-requirements
+    type: llm
+    prompt: |-
+      The architect raised issues on the requirements document below. Address exactly these issues and return the full revised requirements document — same structure, nothing else.
+
+      Architect issues:
+      ${stages.architect-signoff.answer}
+
+      Current requirements:
+      ${outputs.requirements_md}
+    output: requirements_md
+  - id: back-to-architect
+    type: router
+    when:
+      - next: architect-signoff
+  - id: solution-plan
+    type: llm
+    prompt: |-
+      Write an implementation plan that satisfies the requirements below. Include: components, data flow, API/interface changes, testing strategy, and rollout steps. Name concrete trade-offs.
+
+      Requirements:
+      ${outputs.requirements_md}
+    output: plan_md
+  - id: engineer1-review
+    type: human
+    gate: true
+    prompt: |-
+      PRINCIPAL ENGINEER 1 REVIEW. Review the implementation plan against the requirements. Reply yes to approve, no to reject, or raise specific questions/issues — free-form is understood.
+
+      Requirements:
+      ${outputs.requirements_md}
+
+      Plan:
+      ${outputs.plan_md}
+    output: engineer1_review.answer
+  - id: engineer1-router
+    type: router
+    when:
+      - if: ${stages.engineer1-review.intent} == 'yes'
+        next: engineer2-review
+      - next: revise-plan
+  - id: engineer2-review
+    type: human
+    gate: true
+    prompt: |-
+      PRINCIPAL ENGINEER 2 REVIEW. Review the implementation plan against the requirements. Reply yes to approve, no to reject, or raise specific questions/issues — free-form is understood.
+
+      Requirements:
+      ${outputs.requirements_md}
+
+      Plan:
+      ${outputs.plan_md}
+    output: engineer2_review.answer
+  - id: engineer2-router
+    type: router
+    when:
+      - if: ${stages.engineer2-review.intent} == 'yes'
+        next: approved
+      - next: revise-plan
+  - id: revise-plan
+    type: llm
+    model:
+      provider: anthropic
+    prompt: |-
+      Reviewers raised issues on the implementation plan below. Address exactly these issues in the plan (or add an explicit clarification section if a question needs answering rather than a change). Return the full revised plan.
+
+      Reviewer feedback:
+      ${stages.engineer1-review.answer}
+      ${stages.engineer2-review.answer}
+
+      Current plan:
+      ${outputs.plan_md}
+    output: plan_md
+  - id: back-to-reviews
+    type: router
+    when:
+      - next: engineer1-review
+  - id: approved
+    type: tool
+    terminal: true
+    run: echo "plan approved by architect and both principal engineers"

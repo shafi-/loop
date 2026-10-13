@@ -214,7 +214,7 @@ func TestWebUIFlowOverLiveDaemon(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	// Dashboard renders its shell.
-	if resp, body := get(t, ts.URL+"/"); resp.StatusCode != 200 || !strings.Contains(body, "start a run") {
+	if resp, body := get(t, ts.URL+"/"); resp.StatusCode != 200 || !strings.Contains(body, "runs &amp; rooms") {
 		t.Fatalf("dashboard = %d %q", resp.StatusCode, body)
 	}
 
@@ -463,6 +463,12 @@ func TestComposerResetCommand(t *testing.T) {
 		lines, _ = cl.RoomTranscript("demo", 0)
 		return len(lines) == 1 && lines[0].From == "system" && strings.Contains(lines[0].Text, "room reset")
 	}, "the composer /reset to rotate the transcript")
+	// The rotation lands in the transcript before the turn goroutine
+	// releases the room — a /fork posted into the window 409s.
+	waitFor(t, func() bool {
+		info, ok, _ := cl.Room("demo")
+		return ok && !info.Busy
+	}, "the room to settle after the reset")
 	for _, ln := range lines {
 		if ln.Text == "/reset" {
 			t.Errorf("the command leaked into the transcript as a message")

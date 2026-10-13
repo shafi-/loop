@@ -147,8 +147,10 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 		}
 	}
 	indexByID := make(map[string]int, len(r.Pipeline.Stages))
+	stageIDs := make([]string, len(r.Pipeline.Stages))
 	for i := range r.Pipeline.Stages {
 		indexByID[r.Pipeline.Stages[i].ID] = i
+		stageIDs[i] = r.Pipeline.Stages[i].ID
 	}
 	next := 0
 	var state runState
@@ -204,6 +206,9 @@ func (r *Runner) Run(ctx context.Context) (*RunResult, error) {
 			"resume":   false,
 		})
 	}
+	// After the resume branch above may have replaced c with the restored
+	// snapshot: known stage ids ride the live context either way.
+	c.SetKnownStages(stageIDs)
 
 	res := &RunResult{RunID: runID}
 	record := func(stageID string) {

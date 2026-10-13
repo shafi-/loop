@@ -1,0 +1,84 @@
+name: promo-video-production
+description: Analyze a promo video requirement, finalize the design, and gate on approval
+vars:
+  requirement: ""
+personas:
+  - name: requirement-analyzer
+    role: Requirement analyst
+    system: 'You are a meticulous requirements analyst for video production. You take a raw client requirement and produce a finalized, unambiguous requirements document: objective, target audience, key message, tone, duration, required scenes, assets needed, and acceptance criteria. Ask no questions; make reasonable, clearly stated assumptions. Be terse and concrete.'
+    model:
+      provider: anthropic
+  - name: ux-designer
+    role: UX designer
+    system: 'You are a senior UX designer for video content. Given a finalized requirements document, you produce a complete design: storyboard scene by scene, on-screen text, visual style, pacing, transitions, and how each scene serves the key message. Be terse and concrete.'
+    model:
+      provider: anthropic
+stages:
+  - id: analyze-requirements
+    type: agent
+    persona: requirement-analyzer
+    input: |-
+      Raw requirement:
+      {{ vars.requirement }}
+    tools:
+      - read_file
+      - write_file
+    max_iterations: 8
+    output: requirements_md
+  - id: design
+    type: agent
+    persona: ux-designer
+    input: ${stages.analyze-requirements.output}
+    tools:
+      - read_file
+      - write_file
+    max_iterations: 10
+    output: design_md
+  - id: approval
+    type: human
+    gate: true
+    prompt: |-
+      Review the promo video requirements and design below. Reply yes to approve, no to reject, or describe what should change.
+
+      Requirements:
+      ${outputs.requirements_md}
+
+      Design:
+      ${outputs.design_md}
+    output: approval.answer
+  - id: gate
+    type: router
+    when:
+      - if: ${stages.approval.intent} == 'yes'
+        next: finalize
+      - if: ${stages.approval.intent} == 'no'
+        next: rejected
+      - next: revise
+  - id: revise
+    type: llm
+    model:
+      provider: anthropic
+    prompt: |-
+      The reviewer asked for changes to the promo video requirements and design below. Apply exactly these changes and return the full revised requirements followed by the full revised design — same structure, nothing else.
+
+      Change requests:
+      ${stages.approval.answer}
+
+      Current requirements:
+      ${outputs.requirements_md}
+
+      Current design:
+      ${outputs.design_md}
+    output: design_md
+  - id: back
+    type: router
+    when:
+      - next: approval
+  - id: finalize
+    type: tool
+    terminal: true
+    run: echo "requirements and design approved — ready for video production"
+  - id: rejected
+    type: tool
+    terminal: true
+    run: echo "rejected by the reviewer — no design produced"
